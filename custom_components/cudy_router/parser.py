@@ -265,8 +265,7 @@ def parse_modem_info(input_html: str) -> dict[str, Any]:
                     None,
                     (get_band(pcc), get_band(scc1), get_band(scc2), get_band(scc3)),
                 )
-                or None
-            ),
+            ) or None,
             "attributes": {
                 "pcc": get_band(pcc),
                 "scc1": get_band(scc1),
@@ -397,4 +396,10 @@ def parse_lan_status(input_html: str) -> dict[str, Any]:
 def parse_devices_status(input_html: str) -> dict[str, Any]:
     """Parses connected devices status summary."""
     raw_data = parse_tables(input_html)
+    
+    return {
+        "wifi_2g_clients": {"value": as_int(raw_data.get("2.4G Clients"))},
+        "wifi_5g_clients": {"value": as_int(raw_data.get("5G Clients"))},
+        "total_clients": {"value": as_int(raw_data.get("Total Clients"))},
+    }
     
