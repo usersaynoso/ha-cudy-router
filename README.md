@@ -144,7 +144,6 @@ After setup, you can configure:
 
 Testing has been performed against:
 - Cudy P5 (5G router)
-- Cudy LT18 (4G/LTE router)
 
 Compatibility with other models is not guaranteed. Contributions, bug reports, and feedback are welcome.
 
