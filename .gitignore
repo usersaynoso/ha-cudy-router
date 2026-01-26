@@ -1,1 +1,12 @@
-__pycache__
+# Ignore local test file containing credentials
+test.py
+
+# Common Python ignores
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.env.*
+
+# Editor config
+.vscode/
