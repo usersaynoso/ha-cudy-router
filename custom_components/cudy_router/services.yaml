@@ -1,0 +1,51 @@
+send_sms:
+  name: Send SMS
+  description: Send an SMS using the router's SMS functionality.
+  fields:
+    phone_number:
+      description: Destination phone number including country code (e.g. +441234567890)
+      example: "+441234567890"
+    message:
+      description: Text message to send
+      example: "Hello from Home Assistant"
+    entry_id:
+      description: Optional config entry id to target a specific router instance
+      example: "abcd1234"
+
+reboot_router:
+  name: Reboot router
+  description: Reboot the router via the LuCI web UI.
+  fields:
+    entry_id:
+      description: Optional config entry id to target a specific router instance
+      example: "abcd1234"
+
+restart_5g:
+  name: Restart 5G connection
+  description: Restart the router's 5G modem/connection.
+  fields:
+    entry_id:
+      description: Optional config entry id to target a specific router instance
+      example: "abcd1234"
+
+switch_5g_band:
+  name: Switch 5G band
+  description: Change the 5G band setting on the router.
+  fields:
+    band:
+      description: Band value to select (depends on router)
+      example: "B3"
+    entry_id:
+      description: Optional config entry id to target a specific router instance
+      example: "abcd1234"
+
+send_at_command:
+  name: Send AT command
+  description: Send an AT command to the modem via the router's web UI. The result will be logged.
+  fields:
+    command:
+      description: The AT command to send (e.g. AT+CSQ)
+      example: "AT+CSQ"
+    entry_id:
+      description: Optional config entry id to target a specific router instance
+      example: "abcd1234"
