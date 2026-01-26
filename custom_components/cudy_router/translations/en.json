@@ -1,0 +1,87 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Device is already configured"
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication. Please check your username and password, and ensure Remote Management is enabled in router settings.",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "host": "Host URL (e.g., https://192.168.10.1)",
+                    "name": "Device name (optional)",
+                    "password": "Password",
+                    "username": "Username"
+                },
+                "description": "Enter the connection details for your Cudy router.\n\n**Important:** Before adding, enable Remote Management in your router settings:\nSettings > Advanced Settings > Administration > Remote Management\n\nUse the router's local LAN IP address (typically https://192.168.10.1), NOT the remote/WAN IP which may change after reboots.",
+                "title": "Add new router"
+            }
+        }
+    },
+    "options": {
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "init": {
+                "data": {
+                    "device_list": "Comma separated list of devices (MAC or hostname) for detailed reports",
+                    "host": "Host",
+                    "password": "Password",
+                    "scan_interval": "Scan interval",
+                    "username": "Username"
+                },
+                "title": "Configure router"
+            }
+        }
+    },
+    "services": {
+        "reboot_router": {
+            "name": "Reboot router",
+            "description": "Reboots the Cudy router."
+        },
+        "restart_5g_connection": {
+            "name": "Restart 5G connection",
+            "description": "Restarts the 5G modem connection by triggering a modem reset."
+        },
+        "switch_5g_band": {
+            "name": "Switch 5G band",
+            "description": "Changes the 5G band setting on the router.",
+            "fields": {
+                "band": {
+                    "name": "Band",
+                    "description": "The 5G band value to switch to (e.g., 'auto', 'n78', 'n41')."
+                }
+            }
+        },
+        "send_sms": {
+            "name": "Send SMS",
+            "description": "Sends an SMS message via the router's cellular modem.",
+            "fields": {
+                "phone_number": {
+                    "name": "Phone number",
+                    "description": "The destination phone number (e.g., +441234567890)."
+                },
+                "message": {
+                    "name": "Message",
+                    "description": "The SMS message content (max ~70 characters for single SMS)."
+                }
+            }
+        },
+        "send_at_command": {
+            "name": "Send AT command",
+            "description": "Sends a raw AT command to the router's cellular modem.",
+            "fields": {
+                "command": {
+                    "name": "Command",
+                    "description": "The AT command to execute (e.g., 'AT+CSQ')."
+                }
+            }
+        }
+    }
+}
