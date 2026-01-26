@@ -1,0 +1,112 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Cudy Router",
+        "description": "Enter the connection details for your Cudy router.\n\nUse the router's local LAN IP address (e.g., https://192.168.10.1).",
+        "data": {
+          "name": "Device name (optional)",
+          "host": "Host URL",
+          "username": "[%key:common::config_flow::data::username%]",
+          "password": "[%key:common::config_flow::data::password%]"
+        },
+        "data_description": {
+          "host": "The URL of your router (e.g., https://192.168.10.1)",
+          "username": "Admin username for the router",
+          "password": "Admin password for the router"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Cudy Router",
+        "data": {
+          "device_list": "Devices to track",
+          "scan_interval": "Update interval"
+        },
+        "data_description": {
+          "device_list": "Comma-separated list of MAC addresses or hostnames to track individually",
+          "scan_interval": "How often to poll the router for updates (in seconds)"
+        }
+      }
+    }
+  },
+  "services": {
+    "reboot_router": {
+      "name": "Reboot router",
+      "description": "Reboots the Cudy router.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry ID",
+          "description": "The config entry ID of the router (optional if only one router is configured)."
+        }
+      }
+    },
+    "restart_5g_connection": {
+      "name": "Restart 5G connection",
+      "description": "Restarts the 5G/LTE modem connection.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry ID",
+          "description": "The config entry ID of the router (optional if only one router is configured)."
+        }
+      }
+    },
+    "switch_5g_band": {
+      "name": "Switch 5G band",
+      "description": "Switches the 5G modem band preference.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry ID",
+          "description": "The config entry ID of the router (optional if only one router is configured)."
+        },
+        "band": {
+          "name": "Band",
+          "description": "The band value to switch to (e.g., 'auto', '5g-only', 'lte-only')."
+        }
+      }
+    },
+    "send_sms": {
+      "name": "Send SMS",
+      "description": "Sends an SMS message via the router's cellular modem.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry ID",
+          "description": "The config entry ID of the router (optional if only one router is configured)."
+        },
+        "phone_number": {
+          "name": "Phone number",
+          "description": "The destination phone number with country code (e.g., +441234567890)."
+        },
+        "message": {
+          "name": "Message",
+          "description": "The SMS text content."
+        }
+      }
+    },
+    "send_at_command": {
+      "name": "Send AT command",
+      "description": "Sends an AT command directly to the modem (advanced users).",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry ID",
+          "description": "The config entry ID of the router (optional if only one router is configured)."
+        },
+        "command": {
+          "name": "Command",
+          "description": "The AT command to execute (e.g., 'AT+CSQ')."
+        }
+      }
+    }
+  }
+}
