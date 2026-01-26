@@ -10,7 +10,6 @@ If something breaks or behaves oddly, please report issues here rather than cont
 ## Supported Routers
 
 - **Cudy P5** (5G Router) - Fully tested
-- **Cudy LT18** (4G/LTE Router) - Originally tested
 - Other Cudy routers with LuCI web interface should work (feedback welcome)
 
 ---
