@@ -11,12 +11,15 @@
         "step": {
             "user": {
                 "data": {
-                    "host": "Host URL (e.g., https://192.168.10.1)",
+                    "host": "Router IP address",
                     "name": "Device name (optional)",
                     "password": "Password",
                     "username": "Username"
                 },
-                "description": "Enter the connection details for your Cudy router.\n\n**Important:** Before adding, enable Remote Management in your router settings:\nSettings > Advanced Settings > Administration > Remote Management\n\nUse the router's local LAN IP address (typically https://192.168.10.1), NOT the remote/WAN IP which may change after reboots.",
+                "data_description": {
+                    "host": "The IP address of your router (e.g., 192.168.10.1)"
+                },
+                "description": "Enter the connection details for your Cudy router.\n\n**Important:** Before adding, enable Remote Management in your router settings:\nSettings > Advanced Settings > Administration > Remote Management",
                 "title": "Add new router"
             }
         }

@@ -35,7 +35,7 @@ MAX_SCAN_INTERVAL = 3600
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_NAME): str,
-        vol.Required(CONF_HOST): str,
+        vol.Required(CONF_HOST, default="192.168.10.1"): str,
         vol.Required(CONF_USERNAME, default="admin"): str,
         vol.Required(CONF_PASSWORD): str,
     }

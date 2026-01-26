@@ -213,10 +213,10 @@ def parse_devices(input_html: str, device_list_str: str) -> dict[str, Any]:
                 data[SECTION_DETAILED][device.get("hostname")] = device
 
         data["total_down_speed"] = {
-            "value": sum(device.get("down_speed") for device in devices) or 0.0
+            "value": sum(device.get("down_speed") or 0 for device in devices)
         }
         data["total_up_speed"] = {
-            "value": sum(device.get("up_speed") for device in devices) or 0.0
+            "value": sum(device.get("up_speed") or 0 for device in devices)
         }
     return data
 

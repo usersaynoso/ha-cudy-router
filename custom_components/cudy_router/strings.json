@@ -3,15 +3,15 @@
     "step": {
       "user": {
         "title": "Connect to Cudy Router",
-        "description": "Enter the connection details for your Cudy router.\n\nUse the router's local LAN IP address (e.g., https://192.168.10.1).",
+        "description": "Enter the connection details for your Cudy router.",
         "data": {
           "name": "Device name (optional)",
-          "host": "Host URL",
+          "host": "Router IP address",
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]"
         },
         "data_description": {
-          "host": "The URL of your router (e.g., https://192.168.10.1)",
+          "host": "The IP address of your router (e.g., 192.168.10.1)",
           "username": "Admin username for the router",
           "password": "Admin password for the router"
         }
