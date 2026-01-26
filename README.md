@@ -1,3 +1,27 @@
+# Cudy Router — Home Assistant Integration
+
+This repository provides a Home Assistant integration for Cudy routers (including some 5G models).
+
+Installation (HACS)
+
+1. Open HACS in Home Assistant and choose "Integrations" → "Explore & Add Repositories".
+2. Add this repository: `https://github.com/usersaynoso/ha-cudy-router`.
+3. Install the integration and restart Home Assistant.
+
+Manual installation
+
+1. Copy the `custom_components/cudy_router` directory into your Home Assistant `config` directory.
+2. Restart Home Assistant.
+
+Configuration
+
+- Add the integration via Settings → Devices & Services → Add Integration → "Cudy Router".
+- Provide your router host (e.g. `https://192.168.10.1`), username and password.
+
+Notes
+
+- This integration requires access to the router's web interface (Remote Management or local LAN access).
+- For HACS listing metadata is provided in `hacs.json`.
 # Home Assistant Integration for Cudy Routers
 
 This repository contains a **community-built** Home Assistant integration for Cudy routers.
