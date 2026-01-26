@@ -1,0 +1,43 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Device is already configured"
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication. Please check your username and password, and ensure Remote Management is enabled in router settings.",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "host": "Host URL (e.g., https://192.168.10.1)",
+                    "name": "Device name (optional)",
+                    "password": "Password",
+                    "username": "Username"
+                },
+                "description": "Enter the connection details for your Cudy router.\n\n**Important:** Before adding, enable Remote Management in your router settings:\nSettings > Advanced Settings > Administration > Remote Management\n\nUse the router's local LAN IP address (typically https://192.168.10.1), NOT the remote/WAN IP which may change after reboots.",
+                "title": "Add new router"
+            }
+        }
+    },
+    "options": {
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "init": {
+                "data": {
+                    "device_list": "Comma separated list of devices (MAC or hostname) for detailed reports",
+                    "host": "Host",
+                    "password": "Password",
+                    "scan_interval": "Scan interval",
+                    "username": "Username"
+                },
+                "title": "Configure router"
+            }
+        }
+    }
+}
