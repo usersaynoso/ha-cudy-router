@@ -1,4 +1,4 @@
-# Ignore local test file containing credentials
+# Ignore local i on file containing credentials
 test.py
 
 # Common Python ignores
@@ -33,4 +33,12 @@ pip-wheel-metadata/
 .DS_Store
 .idea/
 .mypy_cache/
+
+# Ignore test and CI artifacts kept locally
+tests/
+pytest.ini
+requirements_test.txt
+
+# Ignore accidental root manifest (integration manifest is in custom_components)
+manifest.json
 
