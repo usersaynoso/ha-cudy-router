@@ -10,3 +10,27 @@ __pycache__/
 
 # Editor config
 .vscode/
+
+# Home Assistant runtime / local files
+.storage/
+home-assistant_v2.db
+.HA_VERSION
+.cloud/
+
+# Virtualenvs and build artifacts
+.venv/
+venv/
+env/
+build/
+dist/
+pip-wheel-metadata/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+
+# Editor/OS files
+.DS_Store
+.idea/
+.mypy_cache/
+
