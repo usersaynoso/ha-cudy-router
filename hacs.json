@@ -1,0 +1,11 @@
+{
+  "name": "Cudy Router",
+  "description": "Home Assistant integration for Cudy routers (5G/LTE).",
+  "tags": ["router", "5g", "lte", "cudy"],
+  "owner": "usersaynoso",
+  "repository": "ha-cudy-router",
+  "filename": "custom_components/cudy_router/manifest.json",
+  "issues": "https://github.com/usersaynoso/ha-cudy-router/issues",
+  "category": "integration",
+  "zip_release": false
+}
