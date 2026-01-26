@@ -1,15 +1,12 @@
 {
   "domain": "cudy_router",
   "name": "Cudy Router",
-  "codeowners": ["@corebonts"],
+  "codeowners": ["@usersaynoso"],
   "config_flow": true,
-  "dependencies": [],
-  "documentation": "https://github.com/corebonts/hass-cudy-router",
-  "homekit": {},
-  "version": "0.1.0",
+  "documentation": "https://github.com/usersaynoso/ha-cudy-router",
+  "integration_type": "device",
   "iot_class": "local_polling",
-  "requirements": ["beautifulsoup4==4.12.2"],
-  "image": "logo.svg",
-  "ssdp": [],
-  "zeroconf": []
+  "quality_scale": "silver",
+  "requirements": ["beautifulsoup4==4.12.3", "python-dateutil==2.9.0.post0"],
+  "version": "1.0.0"
 }
