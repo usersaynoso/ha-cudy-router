@@ -1,0 +1,15 @@
+{
+  "domain": "cudy_router",
+  "name": "Cudy Router",
+  "codeowners": ["@corebonts"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/corebonts/hass-cudy-router",
+  "homekit": {},
+  "version": "0.1.0",
+  "iot_class": "local_polling",
+  "requirements": ["beautifulsoup4==4.12.2"],
+  "image": "logo.svg",
+  "ssdp": [],
+  "zeroconf": []
+}
