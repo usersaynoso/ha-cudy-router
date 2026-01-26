@@ -1,5 +1,6 @@
 """Helper methods to parse HTML returned by Cudy routers"""
 
+import logging
 import re
 from typing import Any
 from bs4 import BeautifulSoup
@@ -9,6 +10,8 @@ from datetime import datetime
 from homeassistant.const import STATE_UNAVAILABLE
 
 from .const import SECTION_DETAILED
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def add_unique(data: dict[str, Any], key: str, value: Any):
@@ -30,17 +33,55 @@ def parse_tables(input_html: str) -> dict[str, Any]:
     tables = soup.find_all("table")
     for table in tables:
         for row in table.find_all("tr"):
+            # Try pattern 1: td p.visible-xs (common in older/some firmware)
             cols = row.css.select("td p.visible-xs")
             row_data: list[str] = []
             for col in cols:
                 stripped_text = col.text.strip()
                 if stripped_text:
                     row_data.append(stripped_text)
+            
+            # Try pattern 2: direct td elements (common in newer firmware)
+            if len(row_data) < 2:
+                row_data = []
+                tds = row.find_all("td")
+                for td in tds:
+                    # Check for nested p or span elements first
+                    inner = td.find("p") or td.find("span")
+                    if inner:
+                        text = inner.text.strip()
+                    else:
+                        text = td.text.strip()
+                    if text:
+                        row_data.append(text)
+            
+            # Try pattern 3: th/td pairs (label in th, value in td)
+            if len(row_data) < 2:
+                th = row.find("th")
+                td = row.find("td")
+                if th and td:
+                    th_text = th.text.strip()
+                    td_text = td.text.strip()
+                    if th_text:
+                        row_data = [th_text, td_text]
+            
             if len(row_data) > 1:
                 add_unique(data, row_data[0], re.sub("[\n]", "", row_data[1]))
             elif len(row_data) == 1:
                 add_unique(data, row_data[0], "")
+    
+    # Also try to parse div-based layouts (some status pages use divs instead of tables)
+    for div in soup.find_all("div", class_=re.compile(r"row|item|info")):
+        label_elem = div.find(class_=re.compile(r"label|key|name|title"))
+        value_elem = div.find(class_=re.compile(r"value|data|content"))
+        if label_elem and value_elem:
+            label = label_elem.text.strip()
+            value = value_elem.text.strip()
+            if label and label not in data:
+                add_unique(data, label, re.sub("[\n]", "", value))
 
+    if data:
+        _LOGGER.debug("Parsed table data keys: %s", list(data.keys()))
     return data
 
 
@@ -150,12 +191,29 @@ def hex_as_int(string: str | None):
 def get_band(raw_band_info: str):
     """Gets band information"""
 
-    if raw_band_info:
-        match = re.compile(
-            r".*BAND\s*(?P<band>\d+)\s*/\s*(?P<bandwidth>\d+)\s*MHz.*"
-        ).match(raw_band_info)
-        if match:
-            return f"B{match.group('band')}"
+    if not raw_band_info:
+        return None
+        
+    # Pattern 1: "BAND 3 / 20 MHz" or "BAND3 / 20MHz"
+    match = re.compile(
+        r".*BAND\s*(?P<band>\d+)\s*/\s*(?P<bandwidth>\d+)\s*MHz.*", re.IGNORECASE
+    ).match(raw_band_info)
+    if match:
+        return f"B{match.group('band')}"
+    
+    # Pattern 2: "B3", "B7", "n78" etc. (direct band identifier)
+    match = re.compile(r"^[Bn](\d+)$", re.IGNORECASE).match(raw_band_info.strip())
+    if match:
+        return f"B{match.group(1)}"
+    
+    # Pattern 3: "LTE Band 3" or "NR Band 78"
+    match = re.compile(r"(?:LTE|NR|5G)?\s*Band\s*(\d+)", re.IGNORECASE).search(raw_band_info)
+    if match:
+        return f"B{match.group(1)}"
+    
+    # Pattern 4: Just a number (band number only)
+    if raw_band_info.strip().isdigit():
+        return f"B{raw_band_info.strip()}"
 
     return None
 
@@ -225,19 +283,33 @@ def parse_modem_info(input_html: str) -> dict[str, Any]:
     """Parses modem info page"""
 
     raw_data = parse_tables(input_html)
-    cellid = hex_as_int(raw_data.get("Cell ID"))
-    pcc = raw_data.get("PCC") or (
-        f"BAND {raw_data.get('Band')} / {raw_data.get('DL Bandwidth')}"
-        if (raw_data.get("Band") and raw_data.get("DL Bandwidth"))
-        else None
+    cellid = hex_as_int(raw_data.get("Cell ID") or raw_data.get("CellID"))
+    
+    # Try to get band info from various possible keys
+    band_value = (
+        raw_data.get("Band") or
+        raw_data.get("Current Band") or
+        raw_data.get("LTE Band") or
+        raw_data.get("Active Band")
     )
-    scc1 = raw_data.get("SCC")
+    dl_bandwidth = (
+        raw_data.get("DL Bandwidth") or
+        raw_data.get("Bandwidth") or
+        raw_data.get("DL BW")
+    )
+    
+    pcc = raw_data.get("PCC") or (
+        f"BAND {band_value} / {dl_bandwidth}"
+        if (band_value and dl_bandwidth)
+        else band_value  # Use band_value directly if no bandwidth
+    )
+    scc1 = raw_data.get("SCC") or raw_data.get("SCC1")
     scc2 = raw_data.get("SCC2")
     scc3 = raw_data.get("SCC3")
     scc4 = raw_data.get("SCC4")
     
     # Parse upload/download from "51.60 MB / 368.07 MB" format
-    upload_download = raw_data.get("Upload / Download", "")
+    upload_download = raw_data.get("Upload / Download") or raw_data.get("Upload/Download") or ""
     session_upload = None
     session_download = None
     if " / " in upload_download:
@@ -325,13 +397,28 @@ def parse_system_status(input_html: str) -> dict[str, Any]:
     raw_data = parse_tables(input_html)
     
     # Parse uptime from format like "03:01:16" (HH:MM:SS) or "1 Day 03:01:16"
-    uptime_str = raw_data.get("Uptime", "")
+    uptime_str = raw_data.get("Uptime") or raw_data.get("System Uptime") or ""
     uptime_seconds = get_seconds_duration(uptime_str)
+    
+    # Try multiple possible key names for firmware version
+    firmware = (
+        raw_data.get("Firmware Version") or
+        raw_data.get("Firmware") or
+        raw_data.get("Software Version") or
+        raw_data.get("Version") or
+        raw_data.get("FW Version")
+    )
+    
+    local_time = (
+        raw_data.get("Local Time") or
+        raw_data.get("System Time") or
+        raw_data.get("Time")
+    )
     
     return {
         "uptime": {"value": uptime_seconds},
-        "local_time": {"value": raw_data.get("Local Time")},
-        "firmware_version": {"value": raw_data.get("Firmware Version")},
+        "local_time": {"value": local_time},
+        "firmware_version": {"value": firmware},
     }
 
 
@@ -397,9 +484,32 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
     """Parses connected devices status summary."""
     raw_data = parse_tables(input_html)
     
+    # Try multiple possible key names for client counts
+    wifi_2g = (
+        as_int(raw_data.get("2.4G Clients")) or
+        as_int(raw_data.get("2.4G clients")) or
+        as_int(raw_data.get("2.4GHz Clients")) or
+        as_int(raw_data.get("WiFi 2.4G Clients")) or
+        as_int(raw_data.get("Wireless 2.4G"))
+    )
+    wifi_5g = (
+        as_int(raw_data.get("5G Clients")) or
+        as_int(raw_data.get("5G clients")) or
+        as_int(raw_data.get("5GHz Clients")) or
+        as_int(raw_data.get("WiFi 5G Clients")) or
+        as_int(raw_data.get("Wireless 5G"))
+    )
+    total = (
+        as_int(raw_data.get("Total Clients")) or
+        as_int(raw_data.get("Total clients")) or
+        as_int(raw_data.get("Total")) or
+        as_int(raw_data.get("Connected Clients")) or
+        as_int(raw_data.get("Online Clients"))
+    )
+    
     return {
-        "wifi_2g_clients": {"value": as_int(raw_data.get("2.4G Clients"))},
-        "wifi_5g_clients": {"value": as_int(raw_data.get("5G Clients"))},
-        "total_clients": {"value": as_int(raw_data.get("Total Clients"))},
+        "wifi_2g_clients": {"value": wifi_2g},
+        "wifi_5g_clients": {"value": wifi_5g},
+        "total_clients": {"value": total},
     }
     
