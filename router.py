@@ -1,26 +1,43 @@
-"""Provides the backend for a Cudy router"""
+"""Provides the backend for a Cudy router."""
 
-from datetime import timedelta
-from typing import Any, Optional, Tuple
-import requests
-import logging
-import urllib.parse
+from __future__ import annotations
+
 import hashlib
-import re
-import ssl
-import time
 from http.cookies import SimpleCookie
+import logging
+import re
+import time
+from typing import Any
+import urllib.parse
 
-from .const import MODULE_DEVICES, MODULE_MODEM, MODULE_SYSTEM, MODULE_DATA_USAGE, MODULE_SMS, MODULE_WIFI_2G, MODULE_WIFI_5G, MODULE_LAN, OPTIONS_DEVICELIST
-from .parser import parse_devices, parse_modem_info, parse_system_status, parse_data_usage, parse_sms_status, parse_wifi_status, parse_lan_status, parse_devices_status
+import requests
+import urllib3
 
 from homeassistant.core import HomeAssistant
 
-_LOGGER = logging.getLogger(__name__)
+from .const import (
+    MODULE_DATA_USAGE,
+    MODULE_DEVICES,
+    MODULE_LAN,
+    MODULE_MODEM,
+    MODULE_SMS,
+    MODULE_SYSTEM,
+    MODULE_WIFI_2G,
+    MODULE_WIFI_5G,
+    OPTIONS_DEVICELIST,
+)
+from .parser import (
+    parse_data_usage,
+    parse_devices,
+    parse_devices_status,
+    parse_lan_status,
+    parse_modem_info,
+    parse_sms_status,
+    parse_system_status,
+    parse_wifi_status,
+)
 
-MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=15)
-SCAN_INTERVAL = timedelta(seconds=30)
-RETRY_INTERVAL = timedelta(seconds=300)
+_LOGGER = logging.getLogger(__name__)
 
 
 def _sha256_hex(s: str) -> str:
@@ -30,13 +47,13 @@ def _sha256_hex(s: str) -> str:
 
 def _extract_hidden(html: str, name: str) -> str:
     """Extract value from hidden input field."""
-    m = re.search(r'name="%s"[^>]*value="([^"]*)"' % re.escape(name), html)
-    return m.group(1) if m else ""
+    match = re.search(r'name="%s"[^>]*value="([^"]*)"' % re.escape(name), html)
+    return match.group(1) if match else ""
 
 
 def _compute_luci_password(plain_password: str, salt: str, token: str) -> str:
-    """
-    Compute the LuCI password hash.
+    """Compute the LuCI password hash.
+
     h1 = sha256(password + salt)
     luci_password = sha256(h1 + token)
     """
@@ -50,13 +67,13 @@ class CudyRouter:
     def __init__(
         self, hass: HomeAssistant, host: str, username: str, password: str
     ) -> None:
-        """Initialize."""
+        """Initialize the router."""
         self.host = host
-        self.auth_cookie = None
+        self.auth_cookie: str | None = None
         self.hass = hass
         self.username = username
         self.password = password
-        self._session: Optional[requests.Session] = None
+        self._session: requests.Session | None = None
         # Determine base URL - always use https if no scheme provided
         if host.startswith("https://"):
             self.base_url = host.rstrip("/")
@@ -73,7 +90,6 @@ class CudyRouter:
             self._session = requests.Session()
             self._session.verify = False
             # Suppress SSL warnings for self-signed certs
-            import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         return self._session
 
@@ -240,7 +256,9 @@ class CudyRouter:
         _LOGGER.error("Error retrieving data from %s", url)
         return ""
 
-    def _post_action_on_page(self, page: str, button_text_substring: str, extra_fields: Optional[dict] = None) -> Tuple[int, str]:
+    def _post_action_on_page(
+        self, page: str, button_text_substring: str, extra_fields: dict[str, str] | None = None
+    ) -> tuple[int, str]:
         """Fetch a page, find a button by text/value substring and POST the action.
 
         Returns (status_code, head_of_response).
@@ -291,7 +309,7 @@ class CudyRouter:
             _LOGGER.error("Action on %s failed: %s", page, e)
             return code or 0, str(e)[:220]
 
-    def reboot_router(self) -> Tuple[int, str]:
+    def reboot_router(self) -> tuple[int, str]:
         """Trigger router reboot via LuCI web UI."""
         # The Cudy router reboot page is at /admin/system/reboot/reboot
         # It has a simple form with token and a cbi.apply button
@@ -325,10 +343,11 @@ class CudyRouter:
             _LOGGER.error("Reboot failed: %s", e)
             return 0, str(e)[:220]
 
-    def restart_5g_connection(self) -> Tuple[int, str]:
+    def restart_5g_connection(self) -> tuple[int, str]:
         """Restart the 5G modem connection by triggering Modem Reset.
 
-        Note: On Cudy P5, this is a modem factory reset which restarts the cellular connection.
+        Note: On Cudy P5, this is a modem factory reset which restarts the
+        cellular connection.
         """
         # The reset page is at /admin/network/gcom/reset
         # Button name="cbid.reset.1.reset" value="Modem Reset"
@@ -362,10 +381,11 @@ class CudyRouter:
             _LOGGER.error("Restart 5G failed: %s", e)
             return 0, str(e)[:220]
 
-    def switch_5g_band(self, band_value: str) -> Tuple[int, str]:
+    def switch_5g_band(self, band_value: str) -> tuple[int, str]:
         """Attempt to set the 5G band by finding a select element on the settings page.
 
-        The method looks for a select whose name contains 'band' and submits the chosen value.
+        The method looks for a select whose name contains 'band' and submits
+        the chosen value.
         """
         session = self._get_session()
         page = "admin/network/gcom/setting"
@@ -392,7 +412,7 @@ class CudyRouter:
             _LOGGER.error("Switch band failed: %s", e)
             return 0, str(e)[:220]
 
-    def send_sms(self, phone_number: str, message: str) -> Tuple[int, str]:
+    def send_sms(self, phone_number: str, message: str) -> tuple[int, str]:
         """Send an SMS via the router's LuCI web interface.
 
         Args:
@@ -401,6 +421,7 @@ class CudyRouter:
 
         Returns:
             Tuple of (HTTP status code, response snippet or error message)
+
         """
         session = self._get_session()
         page = "admin/network/gcom/sms/smsnew"
@@ -449,7 +470,7 @@ class CudyRouter:
             _LOGGER.error("SMS send failed: %s", e)
             return 0, str(e)[:220]
 
-    def send_at_command(self, command: str) -> Tuple[int, str]:
+    def send_at_command(self, command: str) -> tuple[int, str]:
         """Send an AT command to the modem via the router's LuCI web interface.
 
         Args:
@@ -457,6 +478,7 @@ class CudyRouter:
 
         Returns:
             Tuple of (HTTP status code, response text or error message)
+
         """
         session = self._get_session()
         page = "admin/network/gcom/atcmd"
