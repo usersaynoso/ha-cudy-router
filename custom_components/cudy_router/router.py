@@ -19,6 +19,7 @@ from .const import (
     MODULE_DATA_USAGE,
     MODULE_DEVICES,
     MODULE_LAN,
+    MODULE_MESH,
     MODULE_MODEM,
     MODULE_SMS,
     MODULE_SYSTEM,
@@ -31,6 +32,7 @@ from .parser import (
     parse_devices,
     parse_devices_status,
     parse_lan_status,
+    parse_mesh_devices,
     parse_modem_info,
     parse_sms_status,
     parse_system_status,
@@ -549,14 +551,34 @@ class CudyRouter:
         )
         
         # Add device client counts to the devices module
-        devices_status = parse_devices_status(
-            await hass.async_add_executor_job(self.get, "admin/network/devices/status")
+        # Try multiple possible endpoints for device status
+        devices_status_html = await hass.async_add_executor_job(
+            self.get, "admin/network/devices/status"
         )
+        # Also try the main panel which sometimes has client counts
+        if not devices_status_html or "client" not in devices_status_html.lower():
+            panel_html = await hass.async_add_executor_job(
+                self.get, "admin/panel"
+            )
+            devices_status_html = f"{devices_status_html}{panel_html}"
+        
+        devices_status = parse_devices_status(devices_status_html)
         data[MODULE_DEVICES].update(devices_status)
         
         # System status (uptime, firmware, local time)
+        # Fetch from multiple endpoints to increase chances of finding firmware
+        system_html = await hass.async_add_executor_job(
+            self.get, "admin/system/status"
+        )
+        # Also try the main panel and system info pages
+        panel_html = await hass.async_add_executor_job(
+            self.get, "admin/panel"
+        )
+        sysinfo_html = await hass.async_add_executor_job(
+            self.get, "admin/system/sysinfo"
+        )
         data[MODULE_SYSTEM] = parse_system_status(
-            await hass.async_add_executor_job(self.get, "admin/system/status")
+            f"{system_html}{panel_html}{sysinfo_html}"
         )
         
         # Data usage statistics
@@ -583,5 +605,201 @@ class CudyRouter:
         data[MODULE_LAN] = parse_lan_status(
             await hass.async_add_executor_job(self.get, "admin/network/lan/status")
         )
+        
+        # Mesh devices
+        data[MODULE_MESH] = parse_mesh_devices(
+            await hass.async_add_executor_job(self.get, "admin/network/mesh/status")
+        )
 
         return data
+
+    def reboot_mesh_device(self, mac_address: str) -> tuple[int, str]:
+        """Reboot a specific mesh device by MAC address.
+
+        Args:
+            mac_address: The MAC address of the mesh device to reboot
+
+        Returns:
+            Tuple of (HTTP status code, response snippet or error message)
+        """
+        session = self._get_session()
+        # Try multiple possible mesh management endpoints
+        endpoints = [
+            "admin/network/mesh/node",
+            "admin/network/mesh/reboot",
+            "admin/network/mesh/manage",
+        ]
+        
+        for endpoint in endpoints:
+            page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/mesh",
+            }
+
+            try:
+                resp = session.get(page_url, timeout=15, headers=headers)
+                if resp.status_code == 404:
+                    continue
+                    
+                html = resp.text
+                token = _extract_hidden(html, "token")
+                if not token:
+                    continue
+
+                # Try different POST field patterns for mesh reboot
+                post_patterns = [
+                    {"token": token, "timeclock": "0", "cbi.submit": "1", 
+                     "mac": mac_address, "action": "reboot"},
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "cbid.mesh.1.mac": mac_address, "cbid.mesh.1.reboot": "Reboot"},
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "node_mac": mac_address, "reboot": "1"},
+                ]
+                
+                for post_fields in post_patterns:
+                    r = session.post(
+                        page_url,
+                        timeout=30,
+                        headers={
+                            **headers,
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "Origin": self.base_url,
+                        },
+                        data=urllib.parse.urlencode(post_fields),
+                        allow_redirects=False,
+                    )
+                    if r.status_code in (200, 302):
+                        _LOGGER.debug("Mesh reboot for %s successful via %s", mac_address, endpoint)
+                        return r.status_code, f"Reboot initiated for {mac_address}"
+                        
+            except Exception as e:
+                _LOGGER.debug("Mesh reboot attempt on %s failed: %s", endpoint, e)
+                continue
+        
+        _LOGGER.error("Failed to reboot mesh device %s - no working endpoint found", mac_address)
+        return 0, f"Failed to reboot mesh device {mac_address}"
+
+    def set_mesh_led(self, mac_address: str, enabled: bool) -> tuple[int, str]:
+        """Set LED state for a specific mesh device.
+
+        Args:
+            mac_address: The MAC address of the mesh device
+            enabled: True to turn LEDs on, False to turn off
+
+        Returns:
+            Tuple of (HTTP status code, response snippet or error message)
+        """
+        session = self._get_session()
+        # Try multiple possible LED control endpoints
+        endpoints = [
+            "admin/network/mesh/led",
+            "admin/network/mesh/settings",
+            "admin/system/led",
+        ]
+        
+        for endpoint in endpoints:
+            page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/mesh",
+            }
+
+            try:
+                resp = session.get(page_url, timeout=15, headers=headers)
+                if resp.status_code == 404:
+                    continue
+                    
+                html = resp.text
+                token = _extract_hidden(html, "token")
+                if not token:
+                    continue
+
+                led_value = "1" if enabled else "0"
+                # Try different POST field patterns for LED control
+                post_patterns = [
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "mac": mac_address, "led": led_value},
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "cbid.led.1.enable": led_value, "node_mac": mac_address},
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "led_enable": led_value, "mac_address": mac_address},
+                    # Global LED control (no MAC needed)
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "cbid.system.led.trigger": "none" if not enabled else "default-on"},
+                ]
+                
+                for post_fields in post_patterns:
+                    r = session.post(
+                        page_url,
+                        timeout=30,
+                        headers={
+                            **headers,
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "Origin": self.base_url,
+                        },
+                        data=urllib.parse.urlencode(post_fields),
+                        allow_redirects=False,
+                    )
+                    if r.status_code in (200, 302):
+                        _LOGGER.debug("Mesh LED %s for %s successful via %s", 
+                                     "on" if enabled else "off", mac_address, endpoint)
+                        return r.status_code, f"LED {'on' if enabled else 'off'} for {mac_address}"
+                        
+            except Exception as e:
+                _LOGGER.debug("Mesh LED control attempt on %s failed: %s", endpoint, e)
+                continue
+        
+        _LOGGER.error("Failed to set mesh LED for %s - no working endpoint found", mac_address)
+        return 0, f"Failed to set LED for mesh device {mac_address}"
+
+    def get_mesh_led_state(self, mac_address: str) -> bool | None:
+        """Get current LED state for a mesh device.
+
+        Args:
+            mac_address: The MAC address of the mesh device
+
+        Returns:
+            True if LEDs are on, False if off, None if unknown
+        """
+        session = self._get_session()
+        endpoints = [
+            "admin/network/mesh/led",
+            "admin/network/mesh/settings",
+            "admin/network/mesh/status",
+        ]
+        
+        for endpoint in endpoints:
+            page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/mesh",
+            }
+
+            try:
+                resp = session.get(page_url, timeout=15, headers=headers)
+                if resp.status_code == 404:
+                    continue
+                    
+                html = resp.text
+                
+                # Look for LED state indicators in HTML
+                # Check for checked checkbox or selected option
+                if mac_address.lower() in html.lower() or "led" in html.lower():
+                    # Check various patterns for LED on state
+                    if re.search(r'led["\s]*[:=]\s*["\']?(?:on|1|true|enabled)', html, re.IGNORECASE):
+                        return True
+                    if re.search(r'led["\s]*[:=]\s*["\']?(?:off|0|false|disabled)', html, re.IGNORECASE):
+                        return False
+                    # Check for checked checkbox
+                    if re.search(r'name="[^"]*led[^"]*"[^>]*checked', html, re.IGNORECASE):
+                        return True
+                    if re.search(r'name="[^"]*led[^"]*"[^>]*(?!checked)', html, re.IGNORECASE):
+                        return False
+                        
+            except Exception as e:
+                _LOGGER.debug("Get mesh LED state on %s failed: %s", endpoint, e)
+                continue
+        
+        # Default to True (LEDs on) if we can't determine state
+        return True
