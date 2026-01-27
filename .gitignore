@@ -42,3 +42,4 @@ requirements_test.txt
 # Ignore accidental root manifest (integration manifest is in custom_components)
 manifest.json
 
+.ssh-command
