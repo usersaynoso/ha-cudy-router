@@ -497,6 +497,8 @@ async def async_setup_entry(
         ])
 
     # Add mesh device sensors
+    # NOTE: Satellite mesh devices often only have name and status available.
+    # Firmware, IP, and model may show as Unknown due to Cudy router limitations.
     if coordinator.data:
         mesh_data = coordinator.data.get(MODULE_MESH, {})
         _LOGGER.debug("Mesh data for sensors: %s", mesh_data)
