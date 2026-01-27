@@ -581,8 +581,16 @@ class CudyRouter:
         panel_html = await hass.async_add_executor_job(
             self.get, "admin/panel"
         )
+        # Try overview page which sometimes has firmware (silently)
+        overview_html = await hass.async_add_executor_job(
+            self.get, "admin/status/overview", True  # silent
+        )
+        # Try system page which sometimes has firmware (silently)
+        system_page_html = await hass.async_add_executor_job(
+            self.get, "admin/system/system", True  # silent
+        )
         data[MODULE_SYSTEM] = parse_system_status(
-            f"{system_html}{panel_html}"
+            f"{system_html}{panel_html}{overview_html or ''}{system_page_html or ''}"
         )
         
         # Data usage statistics
@@ -625,9 +633,8 @@ class CudyRouter:
                 self.get, endpoint, True  # silent=True
             )
             if result and ("mesh" in result.lower() or "node" in result.lower() or "satellite" in result.lower()):
-                mesh_html = result
-                _LOGGER.debug("Found mesh data at endpoint: %s", endpoint)
-                break
+                mesh_html += result  # Combine results from multiple endpoints
+                _LOGGER.debug("Found mesh data at endpoint: %s (length: %d)", endpoint, len(result))
         
         data[MODULE_MESH] = parse_mesh_devices(mesh_html)
 

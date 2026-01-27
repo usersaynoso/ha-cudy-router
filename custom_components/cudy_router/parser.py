@@ -404,7 +404,7 @@ def parse_system_status(input_html: str) -> dict[str, Any]:
     """Parses system status page."""
     raw_data = parse_tables(input_html)
     
-    _LOGGER.debug("System status parsed keys: %s", list(raw_data.keys()))
+    _LOGGER.debug("System status parsed keys: %s (HTML len: %d)", list(raw_data.keys()), len(input_html) if input_html else 0)
     
     # Parse uptime from format like "03:01:16" (HH:MM:SS) or "1 Day 03:01:16"
     uptime_str = raw_data.get("Uptime") or raw_data.get("System Uptime") or ""
@@ -421,7 +421,10 @@ def parse_system_status(input_html: str) -> dict[str, Any]:
         raw_data.get("Firmware Ver.") or
         raw_data.get("System Version") or
         raw_data.get("Router Firmware") or
-        raw_data.get("Current Version")
+        raw_data.get("Current Version") or
+        raw_data.get("SW Version") or
+        raw_data.get("Build Version") or
+        raw_data.get("Release")
     )
     
     # Try to extract firmware from JavaScript or hidden elements if not found
@@ -431,6 +434,8 @@ def parse_system_status(input_html: str) -> dict[str, Any]:
             r'["\']?(?:firmware|fw|version)["\']?\s*[=:]\s*["\']([\d\.]+[^"\']*)["\'\s,]',
             r'data-firmware=["\']([^"\']*)["\'\s]',
             r'>\s*([vV]?\d+\.\d+\.\d+[^<]*)\s*<',  # Version number in element
+            r'Firmware[:\s]+([vV]?\d+\.\d+\.\d+[^\s<]*)',  # Cudy format
+            r'Firmware Version</th><th[^>]*>([^<]+)<',  # Cudy P5 specific format
         ]
         for pattern in fw_patterns:
             match = re.search(pattern, input_html, re.IGNORECASE)
@@ -516,6 +521,10 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
     raw_data = parse_tables(input_html)
     
     _LOGGER.debug("Devices status parsed keys: %s", list(raw_data.keys()))
+    # Log actual values for debugging
+    for k in ["2.4G WiFi", "5G WiFi", "2.4G Clients", "5G Clients", "Total"]:
+        if k in raw_data:
+            _LOGGER.debug("Devices status %s = '%s'", k, raw_data.get(k))
     
     # Try multiple possible key names for client counts
     wifi_2g = (
@@ -528,7 +537,8 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
         as_int(raw_data.get("2.4 GHz")) or
         as_int(raw_data.get("2.4GHz")) or
         as_int(raw_data.get("WLAN 2.4G")) or
-        as_int(raw_data.get("Wi-Fi 2.4G"))
+        as_int(raw_data.get("Wi-Fi 2.4G")) or
+        as_int(raw_data.get("2.4G WiFi"))  # Cudy P5 format
     )
     wifi_5g = (
         as_int(raw_data.get("5G Clients")) or
@@ -540,7 +550,8 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
         as_int(raw_data.get("5 GHz")) or
         as_int(raw_data.get("5GHz")) or
         as_int(raw_data.get("WLAN 5G")) or
-        as_int(raw_data.get("Wi-Fi 5G"))
+        as_int(raw_data.get("Wi-Fi 5G")) or
+        as_int(raw_data.get("5G WiFi"))  # Cudy P5 format
     )
     total = (
         as_int(raw_data.get("Total Clients")) or
@@ -588,11 +599,33 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
                 total = as_int(match.group(1))
                 break
     
+    # Calculate total if not provided explicitly but we have 2G and 5G counts
+    if total is None and (wifi_2g is not None or wifi_5g is not None):
+        total = (wifi_2g or 0) + (wifi_5g or 0)
+    
+    _LOGGER.debug("Devices status parsed: wifi_2g=%s, wifi_5g=%s, total=%s", wifi_2g, wifi_5g, total)
+    
     return {
         "wifi_2g_clients": {"value": wifi_2g},
         "wifi_5g_clients": {"value": wifi_5g},
         "total_clients": {"value": total},
     }
+
+
+def _generate_pseudo_mac(name: str) -> str:
+    """Generate a deterministic pseudo-MAC address from a device name.
+    
+    Uses MD5 hash which is deterministic across Python sessions.
+    """
+    import hashlib
+    # Use MD5 for deterministic hash (not for security, just for consistency)
+    name_bytes = name.encode('utf-8')
+    hash_bytes = hashlib.md5(name_bytes).digest()
+    # Take first 6 bytes and format as MAC address
+    # Set locally administered bit (second nibble = 2, 6, A, or E)
+    mac_bytes = list(hash_bytes[:6])
+    mac_bytes[0] = (mac_bytes[0] & 0xFC) | 0x02  # Set locally administered, unicast
+    return ":".join(f"{b:02X}" for b in mac_bytes)
 
 
 def parse_mesh_devices(input_html: str) -> dict[str, Any]:
@@ -608,21 +641,65 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
     }
     
     if not input_html:
+        _LOGGER.debug("Mesh: No HTML to parse")
         return data
+    
+    _LOGGER.debug("Mesh HTML length: %d chars", len(input_html))
     
     soup = BeautifulSoup(input_html, "html.parser")
     mesh_devices: list[dict[str, Any]] = []
     
+    # First try to parse tables to see what data is available
+    raw_data = parse_tables(input_html)
+    if raw_data:
+        _LOGGER.debug("Mesh page table keys: %s", list(raw_data.keys()))
+        # Log the actual values for debugging
+        for key, value in raw_data.items():
+            _LOGGER.debug("Mesh table: %s = %s", key, value[:100] if len(str(value)) > 100 else value)
+    
+    # Check if this is a Cudy mesh page with "Device Name" and "Mesh Units"
+    if raw_data.get("Device Name") or raw_data.get("Mesh Units"):
+        # This appears to be a simple mesh status page
+        device_name = raw_data.get("Device Name")
+        mesh_units = raw_data.get("Mesh Units")
+        _LOGGER.debug("Mesh: Device Name=%s, Mesh Units=%s", device_name, mesh_units)
+        
+        # Try to extract mesh unit count (subtract 1 for main router which is already added)
+        if mesh_units:
+            try:
+                mesh_count = int(mesh_units)
+                # Mesh count represents satellite devices only (exclude main router)
+                satellite_count = max(0, mesh_count - 1)
+                data["mesh_count"] = {"value": satellite_count}
+            except (ValueError, TypeError):
+                pass
+        
+        # NOTE: We do NOT add the "Main Router" as a mesh device here
+        # because it's already represented by the main integration device.
+        # Only satellite/additional mesh devices should be added.
+    
     # Pattern 1: Look for mesh device cards/panels (common layout)
     # Mesh devices are often in div panels with device info
-    for panel in soup.find_all("div", class_=re.compile(r"panel|card|device|node", re.IGNORECASE)):
+    panels = soup.find_all("div", class_=re.compile(r"panel|card|device|node", re.IGNORECASE))
+    _LOGGER.debug("Mesh: Found %d panel/card/device/node divs", len(panels))
+    
+    for i, panel in enumerate(panels):
+        panel_text = panel.get_text(separator=" ", strip=True)[:200]
+        _LOGGER.debug("Mesh panel %d text preview: %s", i, panel_text)
+        
         device_info = _extract_mesh_device_info(panel)
         if device_info and device_info.get("mac_address"):
             mesh_devices.append(device_info)
+        else:
+            # Try Cudy-specific extraction without requiring MAC
+            device_info = _extract_cudy_mesh_device(panel, i)
+            if device_info:
+                mesh_devices.append(device_info)
     
     # Pattern 2: Look in tables for mesh device rows
     if not mesh_devices:
         tables = soup.find_all("table")
+        _LOGGER.debug("Mesh: Found %d tables", len(tables))
         for table in tables:
             for row in table.find_all("tr"):
                 device_info = _extract_mesh_device_from_row(row)
@@ -640,16 +717,27 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
     if not mesh_devices:
         mesh_devices = _extract_mesh_from_script(input_html)
     
-    # Remove duplicates by MAC address
+    # Remove duplicates by MAC address and filter out main router devices
     seen_macs: set[str] = set()
     unique_devices: list[dict[str, Any]] = []
     for device in mesh_devices:
         mac = device.get("mac_address", "").upper()
+        name = (device.get("name") or "").lower()
+        
+        # Skip the main router - it's already represented by the main integration device
+        if device.get("is_main_router"):
+            continue
+        if name in ["main router", "mainrouter", "main_router", "router"]:
+            continue
+            
         if mac and mac not in seen_macs:
             seen_macs.add(mac)
             unique_devices.append(device)
     
-    data["mesh_count"] = {"value": len(unique_devices)}
+    # Update mesh count to reflect only satellite devices
+    if unique_devices:
+        data["mesh_count"] = {"value": len(unique_devices)}
+    
     data["mesh_devices"] = {
         device.get("mac_address", f"mesh_{i}"): device 
         for i, device in enumerate(unique_devices)
@@ -727,6 +815,90 @@ def _extract_mesh_device_info(element) -> dict[str, Any] | None:
     return device_info
 
 
+def _extract_cudy_mesh_device(element, index: int) -> dict[str, Any] | None:
+    """Extract Cudy mesh device info without requiring MAC address.
+    
+    Cudy mesh pages may show devices without MAC addresses visible.
+    """
+    text_content = element.get_text(separator="\n", strip=True)
+    
+    # Skip if this doesn't look like a device panel (too short or no useful content)
+    if len(text_content) < 20:
+        return None
+    
+    # Skip navigation/menu/header panels
+    skip_patterns = ["logout", "menu", "settings", "wizard", "more details"]
+    if any(skip in text_content.lower() for skip in skip_patterns):
+        # But check if it ALSO contains an actual device name like "Main Router"
+        if not re.search(r"(Main\s*Router|Satellite|Node\s*\d+)", text_content, re.IGNORECASE):
+            return None
+    
+    # Skip if this is just a label panel without actual device data
+    # These panels just contain duplicate headers like "Device Name Device Name"
+    if text_content.lower().count("device name") > 1 and "main router" not in text_content.lower():
+        return None
+    
+    device_info: dict[str, Any] = {
+        "mac_address": None,
+        "name": None,
+        "model": None,
+        "firmware_version": None,
+        "status": "online",
+        "ip_address": None,
+    }
+    
+    # Look for MAC address (might be present in some layouts)
+    mac_match = re.search(r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}", text_content)
+    if mac_match:
+        device_info["mac_address"] = mac_match.group(0).upper().replace("-", ":")
+    
+    # Try to find actual device names (not labels)
+    # Look for specific device type names first
+    specific_name_match = re.search(r"(Main\s*Router|Satellite|Node\s*\d+)", text_content, re.IGNORECASE)
+    if specific_name_match:
+        device_info["name"] = specific_name_match.group(1).strip()
+    else:
+        # Try to extract from "Device Name: Value" pattern
+        # Match pattern where we have Device Name followed by an actual value
+        name_match = re.search(r"Device\s*Name[:\s]+([A-Za-z][A-Za-z0-9\s\-_]+?)(?:\s+(?:Mesh|Device|Status|More)|$)", text_content, re.IGNORECASE)
+        if name_match:
+            potential_name = name_match.group(1).strip()
+            # Skip if the "name" is just another label
+            if potential_name.lower() not in ["device name", "name", "hostname", "device"]:
+                device_info["name"] = potential_name
+    
+    # Look for model (Cudy models often like M1800, P5, etc.)
+    model_match = re.search(r"((?:Cudy\s*)?[A-Z]?\d{3,4}[A-Z]?)", text_content)
+    if model_match:
+        device_info["model"] = model_match.group(1).strip()
+    
+    # Look for firmware version
+    fw_match = re.search(r"(\d+\.\d+\.\d+(?:\.\d+)?)", text_content)
+    if fw_match:
+        device_info["firmware_version"] = fw_match.group(1)
+    
+    # Look for IP address
+    ip_match = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", text_content)
+    if ip_match:
+        device_info["ip_address"] = ip_match.group(1)
+    
+    # Look for status
+    if re.search(r"(?:offline|disconnected|down)", text_content, re.IGNORECASE):
+        device_info["status"] = "offline"
+    elif re.search(r"(?:online|connected|up)", text_content, re.IGNORECASE):
+        device_info["status"] = "online"
+    
+    # Only proceed if we found an actual device name
+    if not device_info.get("name"):
+        return None
+    
+    # Generate a pseudo-MAC if needed (based on name)
+    if not device_info["mac_address"]:
+        device_info["mac_address"] = _generate_pseudo_mac(device_info["name"])
+    
+    return device_info
+
+
 def _extract_mesh_device_from_row(row) -> dict[str, Any] | None:
     """Extract mesh device info from a table row."""
     cells = row.find_all(["td", "th"])
@@ -786,6 +958,9 @@ def _extract_mesh_from_script(html: str) -> list[dict[str, Any]]:
     patterns = [
         r"(?:meshNodes|mesh_nodes|nodes)\s*[=:]\s*(\[[\s\S]*?\])\s*[;,]",
         r"(?:satellites|mesh_devices)\s*[=:]\s*(\[[\s\S]*?\])\s*[;,]",
+        r"(?:unit_list|mesh_units)\s*[=:]\s*(\[[\s\S]*?\])\s*[;,]",
+        r'"nodes"\s*:\s*(\[[\s\S]*?\])',
+        r'"devices"\s*:\s*(\[[\s\S]*?\])',
     ]
     
     for pattern in patterns:
