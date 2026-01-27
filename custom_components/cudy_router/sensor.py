@@ -15,7 +15,6 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
-    CONF_NAME,
     SIGNAL_STRENGTH_DECIBELS,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfDataRate,
@@ -425,6 +424,15 @@ MESH_DEVICE_IP_SENSOR = CudyRouterSensorEntityDescription(
     name_suffix="IP address",
 )
 
+MESH_DEVICE_CONNECTED_SENSOR = CudyRouterSensorEntityDescription(
+    key="connected_devices",
+    module="mesh",
+    name_suffix="Connected devices",
+    state_class=SensorStateClass.MEASUREMENT,
+)
+
+
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -435,15 +443,12 @@ async def async_setup_entry(
     coordinator: CudyRouterDataUpdateCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
     ]
-    # Use configured name, or mesh main_router_name, or default to "Cudy Router"
-    configured_name = config_entry.data.get(CONF_NAME)
-    
-    # Try to get the main router's mesh name if not explicitly configured
+    # Use mesh main_router_name, or default to "Cudy Router"
     mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
     main_router_mesh_name = mesh_data.get("main_router_name")
     
-    # Priority: configured name > mesh main_router_name > "Cudy Router"
-    router_name = configured_name or main_router_mesh_name or "Cudy Router"
+    # Priority: mesh main_router_name > "Cudy Router"
+    router_name = main_router_mesh_name or "Cudy Router"
     
     entities: list[SensorEntity] = []
     
@@ -526,6 +531,9 @@ async def async_setup_entry(
                 ),
                 CudyRouterMeshDeviceSensor(
                     coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_IP_SENSOR
+                ),
+                CudyRouterMeshDeviceSensor(
+                    coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_CONNECTED_SENSOR
                 ),
             ])
 

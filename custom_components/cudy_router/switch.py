@@ -7,7 +7,7 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -34,13 +34,20 @@ async def async_setup_entry(
     coordinator: CudyRouterDataUpdateCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
     ]
-    # Use configured name, or mesh main_router_name, or default to "Cudy Router"
-    configured_name = config_entry.data.get(CONF_NAME)
+    # Use mesh main_router_name, or default to "Cudy Router"
     mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
     main_router_mesh_name = mesh_data.get("main_router_name")
-    router_name = configured_name or main_router_mesh_name or "Cudy Router"
+    router_name = main_router_mesh_name or "Cudy Router"
     
     entities: list[SwitchEntity] = []
+
+    # Add main router LED switch
+    entities.append(
+        CudyMainRouterLEDSwitch(
+            coordinator,
+            router_name,
+        )
+    )
 
     # Add mesh device switches
     if coordinator.data:
@@ -61,6 +68,78 @@ async def async_setup_entry(
             )
 
     async_add_entities(entities)
+
+
+class CudyMainRouterLEDSwitch(
+    CoordinatorEntity[CudyRouterDataUpdateCoordinator], SwitchEntity
+):
+    """Switch to control main router LEDs."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:led-on"
+
+    def __init__(
+        self,
+        coordinator: CudyRouterDataUpdateCoordinator,
+        router_name: str,
+    ) -> None:
+        """Initialize the main router LED switch."""
+        super().__init__(coordinator)
+        self._router_name = router_name
+        self._attr_name = "LED"
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}-main-router-led"
+        )
+        # Link to the main router device
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.config_entry.entry_id)},
+            manufacturer="Cudy",
+            name=router_name,
+        )
+        self._is_on: bool = True  # Default to on
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if LED is on."""
+        return self._is_on
+
+    @property
+    def icon(self) -> str:
+        """Return the icon based on LED state."""
+        return "mdi:led-on" if self._is_on else "mdi:led-off"
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the LED on."""
+        # Main router uses MAC 000000000000 for LED control
+        result = await self.hass.async_add_executor_job(
+            self.coordinator.api.set_main_router_led, True
+        )
+        if result[0] in (200, 302):
+            self._is_on = True
+            self.async_write_ha_state()
+        else:
+            _LOGGER.error("Failed to turn on LED for main router: %s", result[1])
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the LED off."""
+        result = await self.hass.async_add_executor_job(
+            self.coordinator.api.set_main_router_led, False
+        )
+        if result[0] in (200, 302):
+            self._is_on = False
+            self.async_write_ha_state()
+        else:
+            _LOGGER.error("Failed to turn off LED for main router: %s", result[1])
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity about to be added to hass."""
+        await super().async_added_to_hass()
+        # Try to get initial LED state from mesh data
+        if self.coordinator.data:
+            mesh_data = self.coordinator.data.get(MODULE_MESH, {})
+            led_status = mesh_data.get("main_router_led_status")
+            if led_status is not None:
+                self._is_on = led_status == "on"
 
 
 class CudyMeshLEDSwitch(

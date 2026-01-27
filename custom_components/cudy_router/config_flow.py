@@ -14,7 +14,6 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import (
     CONF_HOST,
-    CONF_NAME,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_USERNAME,
@@ -34,7 +33,6 @@ MAX_SCAN_INTERVAL = 3600
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Optional(CONF_NAME): str,
         vol.Required(CONF_HOST, default="192.168.10.1"): str,
         vol.Required(CONF_USERNAME, default="admin"): str,
         vol.Required(CONF_PASSWORD): str,
@@ -67,9 +65,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     if not authenticated:
         raise InvalidAuth
 
-    # Use provided name, or default to "Cudy Router" (not the IP address)
-    title = data.get(CONF_NAME) or "Cudy Router"
-    return {"title": title, "host": host}
+    # Default title to "Cudy Router"
+    return {"title": "Cudy Router", "host": host}
 
 
 class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
