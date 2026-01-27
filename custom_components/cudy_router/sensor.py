@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -26,6 +27,8 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+_LOGGER = logging.getLogger(__name__)
 
 from .const import (
     DOMAIN,
@@ -434,6 +437,9 @@ async def async_setup_entry(
     ]
     router_name = config_entry.data.get(CONF_NAME) or config_entry.data.get(CONF_HOST)
     entities: list[SensorEntity] = []
+    
+    _LOGGER.debug("Setting up Cudy Router sensors, coordinator.data keys: %s", 
+                  list(coordinator.data.keys()) if coordinator.data else "None")
 
     # Add sensors based on available data from coordinator
     if coordinator.data:
@@ -484,8 +490,11 @@ async def async_setup_entry(
     # Add mesh device sensors
     if coordinator.data:
         mesh_data = coordinator.data.get(MODULE_MESH, {})
+        _LOGGER.debug("Mesh data for sensors: %s", mesh_data)
         mesh_devices = mesh_data.get("mesh_devices", {})
+        _LOGGER.debug("Mesh devices found for sensors: %d devices", len(mesh_devices))
         for mesh_mac, mesh_device in mesh_devices.items():
+            _LOGGER.debug("Creating sensors for mesh device: %s (MAC: %s)", mesh_device.get("name"), mesh_mac)
             # Create a friendly name for the mesh device
             mesh_name = mesh_device.get("name") or mesh_mac
             entities.extend([
