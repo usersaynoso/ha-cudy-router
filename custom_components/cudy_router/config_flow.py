@@ -67,7 +67,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     if not authenticated:
         raise InvalidAuth
 
-    return {"title": data.get(CONF_NAME) or host, "host": host}
+    # Use provided name, or default to "Cudy Router" (not the IP address)
+    title = data.get(CONF_NAME) or "Cudy Router"
+    return {"title": title, "host": host}
 
 
 class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
