@@ -6,7 +6,7 @@ import logging
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -27,11 +27,10 @@ async def async_setup_entry(
     coordinator: CudyRouterDataUpdateCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
     ]
-    # Use configured name, or mesh main_router_name, or default to "Cudy Router"
-    configured_name = config_entry.data.get(CONF_NAME)
+    # Use mesh main_router_name, or default to "Cudy Router"
     mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
     main_router_mesh_name = mesh_data.get("main_router_name")
-    router_name = configured_name or main_router_mesh_name or "Cudy Router"
+    router_name = main_router_mesh_name or "Cudy Router"
     
     entities: list[ButtonEntity] = []
 
