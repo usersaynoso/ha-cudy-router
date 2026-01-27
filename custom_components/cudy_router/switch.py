@@ -34,7 +34,12 @@ async def async_setup_entry(
     coordinator: CudyRouterDataUpdateCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
     ]
-    router_name = config_entry.data.get(CONF_NAME) or config_entry.data.get(CONF_HOST)
+    # Use configured name, or mesh main_router_name, or default to "Cudy Router"
+    configured_name = config_entry.data.get(CONF_NAME)
+    mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
+    main_router_mesh_name = mesh_data.get("main_router_name")
+    router_name = configured_name or main_router_mesh_name or "Cudy Router"
+    
     entities: list[SwitchEntity] = []
 
     # Add mesh device switches
@@ -82,10 +87,11 @@ class CudyMeshLEDSwitch(
             f"{coordinator.config_entry.entry_id}-mesh-{mesh_mac}-led"
         )
         # Link to the mesh device
+        # Use just the mesh device name, not "Mesh <name>"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{coordinator.config_entry.entry_id}-mesh-{mesh_mac}")},
             manufacturer="Cudy",
-            name=f"Mesh {mesh_name}",
+            name=mesh_name,
             via_device=(DOMAIN, coordinator.config_entry.entry_id),
         )
         self._is_on: bool = True  # Default to on

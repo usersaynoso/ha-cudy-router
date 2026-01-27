@@ -632,12 +632,14 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
     """Parses mesh devices page to extract mesh router information.
     
     Returns a dict with:
-    - mesh_count: number of mesh devices
+    - mesh_count: number of mesh devices (satellites only)
     - mesh_devices: dict of mesh devices keyed by MAC address
+    - main_router_name: the device name set for the main router in mesh settings
     """
     data: dict[str, Any] = {
         "mesh_count": {"value": 0},
         "mesh_devices": {},
+        "main_router_name": None,
     }
     
     if not input_html:
@@ -673,6 +675,11 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
                 data["mesh_count"] = {"value": satellite_count}
             except (ValueError, TypeError):
                 pass
+        
+        # Store the main router's device name from mesh settings
+        # This can be used to name the main device in Home Assistant
+        if device_name:
+            data["main_router_name"] = device_name
         
         # NOTE: We do NOT add the "Main Router" as a mesh device here
         # because it's already represented by the main integration device.
