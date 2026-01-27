@@ -110,10 +110,11 @@ class CudyMainRouterLEDSwitch(
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the LED on."""
-        # Main router uses MAC 000000000000 for LED control
+        _LOGGER.info("Main router LED switch: turning ON")
         result = await self.hass.async_add_executor_job(
             self.coordinator.api.set_main_router_led, True
         )
+        _LOGGER.info("Main router LED ON result: %s", result)
         if result[0] in (200, 302):
             self._is_on = True
             self.async_write_ha_state()
@@ -122,14 +123,25 @@ class CudyMainRouterLEDSwitch(
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the LED off."""
+        _LOGGER.info("Main router LED switch: turning OFF")
         result = await self.hass.async_add_executor_job(
             self.coordinator.api.set_main_router_led, False
         )
+        _LOGGER.info("Main router LED OFF result: %s", result)
         if result[0] in (200, 302):
             self._is_on = False
             self.async_write_ha_state()
         else:
             _LOGGER.error("Failed to turn off LED for main router: %s", result[1])
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data:
+            mesh_data = self.coordinator.data.get(MODULE_MESH, {})
+            led_status = mesh_data.get("main_router_led_status")
+            if led_status is not None:
+                self._is_on = led_status == "on"
+        super()._handle_coordinator_update()
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
@@ -187,9 +199,11 @@ class CudyMeshLEDSwitch(
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the LED on."""
+        _LOGGER.info("Mesh LED switch for %s: turning ON", self._mesh_name)
         result = await self.hass.async_add_executor_job(
             self.coordinator.api.set_mesh_led, self._mesh_mac, True
         )
+        _LOGGER.info("Mesh LED ON result for %s: %s", self._mesh_name, result)
         if result[0] in (200, 302):
             self._is_on = True
             self.async_write_ha_state()
@@ -198,21 +212,36 @@ class CudyMeshLEDSwitch(
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the LED off."""
+        _LOGGER.info("Mesh LED switch for %s: turning OFF", self._mesh_name)
         result = await self.hass.async_add_executor_job(
             self.coordinator.api.set_mesh_led, self._mesh_mac, False
         )
+        _LOGGER.info("Mesh LED OFF result for %s: %s", self._mesh_name, result)
         if result[0] in (200, 302):
             self._is_on = False
             self.async_write_ha_state()
         else:
             _LOGGER.error("Failed to turn off LED for %s: %s", self._mesh_name, result[1])
 
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data:
+            mesh_data = self.coordinator.data.get(MODULE_MESH, {})
+            mesh_devices = mesh_data.get("mesh_devices", {})
+            device_data = mesh_devices.get(self._mesh_mac, {})
+            led_status = device_data.get("led_status")
+            if led_status is not None:
+                self._is_on = led_status == "on"
+        super()._handle_coordinator_update()
+
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
         await super().async_added_to_hass()
-        # Try to get initial LED state
-        state = await self.hass.async_add_executor_job(
-            self.coordinator.api.get_mesh_led_state, self._mesh_mac
-        )
-        if state is not None:
-            self._is_on = state
+        # Try to get initial LED state from coordinator data
+        if self.coordinator.data:
+            mesh_data = self.coordinator.data.get(MODULE_MESH, {})
+            mesh_devices = mesh_data.get("mesh_devices", {})
+            device_data = mesh_devices.get(self._mesh_mac, {})
+            led_status = device_data.get("led_status")
+            if led_status is not None:
+                self._is_on = led_status == "on"
