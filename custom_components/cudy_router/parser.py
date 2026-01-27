@@ -821,21 +821,29 @@ def _extract_cudy_mesh_device(element, index: int) -> dict[str, Any] | None:
     Cudy mesh pages may show devices without MAC addresses visible.
     """
     text_content = element.get_text(separator="\n", strip=True)
+    text_lower = text_content.lower().strip()
+    
+    # Check if this is a short panel with just a device name (common for Cudy satellites)
+    # Satellite devices may just show as "Mesh", "Satellite", "Node1", etc.
+    short_device_names = ["mesh", "satellite", "node", "extender", "repeater"]
+    is_short_device_name = any(text_lower == name or text_lower.startswith(name + " ") 
+                               for name in short_device_names)
     
     # Skip if this doesn't look like a device panel (too short or no useful content)
-    if len(text_content) < 20:
+    # BUT allow short valid device names
+    if len(text_content) < 20 and not is_short_device_name:
         return None
     
     # Skip navigation/menu/header panels
     skip_patterns = ["logout", "menu", "settings", "wizard", "more details"]
-    if any(skip in text_content.lower() for skip in skip_patterns):
+    if any(skip in text_lower for skip in skip_patterns):
         # But check if it ALSO contains an actual device name like "Main Router"
-        if not re.search(r"(Main\s*Router|Satellite|Node\s*\d+)", text_content, re.IGNORECASE):
+        if not re.search(r"(Main\s*Router|Satellite|Node\s*\d+|^Mesh$)", text_content, re.IGNORECASE):
             return None
     
     # Skip if this is just a label panel without actual device data
     # These panels just contain duplicate headers like "Device Name Device Name"
-    if text_content.lower().count("device name") > 1 and "main router" not in text_content.lower():
+    if text_lower.count("device name") > 1 and "main router" not in text_lower:
         return None
     
     device_info: dict[str, Any] = {
@@ -853,19 +861,25 @@ def _extract_cudy_mesh_device(element, index: int) -> dict[str, Any] | None:
         device_info["mac_address"] = mac_match.group(0).upper().replace("-", ":")
     
     # Try to find actual device names (not labels)
-    # Look for specific device type names first
-    specific_name_match = re.search(r"(Main\s*Router|Satellite|Node\s*\d+)", text_content, re.IGNORECASE)
-    if specific_name_match:
-        device_info["name"] = specific_name_match.group(1).strip()
+    # First check if this is a short panel with just a device name like "Mesh"
+    if is_short_device_name:
+        # The panel text IS the device name
+        device_info["name"] = text_content.strip()
+        _LOGGER.debug("Mesh: Found short device name panel: %s", device_info["name"])
     else:
-        # Try to extract from "Device Name: Value" pattern
-        # Match pattern where we have Device Name followed by an actual value
-        name_match = re.search(r"Device\s*Name[:\s]+([A-Za-z][A-Za-z0-9\s\-_]+?)(?:\s+(?:Mesh|Device|Status|More)|$)", text_content, re.IGNORECASE)
-        if name_match:
-            potential_name = name_match.group(1).strip()
-            # Skip if the "name" is just another label
-            if potential_name.lower() not in ["device name", "name", "hostname", "device"]:
-                device_info["name"] = potential_name
+        # Look for specific device type names first
+        specific_name_match = re.search(r"(Main\s*Router|Satellite|Node\s*\d+|^Mesh$)", text_content, re.IGNORECASE)
+        if specific_name_match:
+            device_info["name"] = specific_name_match.group(1).strip()
+        else:
+            # Try to extract from "Device Name: Value" pattern
+            # Match pattern where we have Device Name followed by an actual value
+            name_match = re.search(r"Device\s*Name[:\s]+([A-Za-z][A-Za-z0-9\s\-_]+?)(?:\s+(?:Mesh|Device|Status|More)|$)", text_content, re.IGNORECASE)
+            if name_match:
+                potential_name = name_match.group(1).strip()
+                # Skip if the "name" is just another label
+                if potential_name.lower() not in ["device name", "name", "hostname", "device"]:
+                    device_info["name"] = potential_name
     
     # Look for model (Cudy models often like M1800, P5, etc.)
     model_match = re.search(r"((?:Cudy\s*)?[A-Z]?\d{3,4}[A-Z]?)", text_content)
