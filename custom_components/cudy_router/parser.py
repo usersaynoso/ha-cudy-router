@@ -687,11 +687,12 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
     
     # Pattern 1: Look for mesh device cards/panels (common layout)
     # Mesh devices are often in div panels with device info
-    panels = soup.find_all("div", class_=re.compile(r"panel|card|device|node", re.IGNORECASE))
-    _LOGGER.debug("Mesh: Found %d panel/card/device/node divs", len(panels))
+    # Look for complete panel structures, not individual panel parts
+    panels = soup.find_all("div", class_="panel")
+    _LOGGER.debug("Mesh: Found %d complete panel divs", len(panels))
     
     for i, panel in enumerate(panels):
-        panel_text = panel.get_text(separator=" ", strip=True)[:200]
+        panel_text = panel.get_text(separator=" ", strip=True)[:300]
         _LOGGER.debug("Mesh panel %d text preview: %s", i, panel_text)
         
         device_info = _extract_mesh_device_info(panel)
@@ -826,6 +827,11 @@ def _extract_cudy_mesh_device(element, index: int) -> dict[str, Any] | None:
     """Extract Cudy mesh device info without requiring MAC address.
     
     Cudy mesh pages may show devices without MAC addresses visible.
+    
+    NOTE: Cudy routers typically only provide device names for satellite mesh units
+    in the static HTML. Firmware version, IP address, and model information are often
+    loaded via JavaScript/AJAX and not available in the page source. These fields
+    will show as None/Unknown for satellite devices.
     """
     text_content = element.get_text(separator="\n", strip=True)
     text_lower = text_content.lower().strip()
