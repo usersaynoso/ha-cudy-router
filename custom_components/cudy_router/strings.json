@@ -108,5 +108,43 @@
         }
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "mesh_count": {
+        "name": "Mesh devices"
+      },
+      "mesh_name": {
+        "name": "Name"
+      },
+      "mesh_model": {
+        "name": "Model"
+      },
+      "mesh_mac_address": {
+        "name": "MAC address"
+      },
+      "mesh_firmware_version": {
+        "name": "Firmware"
+      },
+      "mesh_status": {
+        "name": "Status"
+      },
+      "mesh_ip_address": {
+        "name": "IP address"
+      }
+    },
+    "switch": {
+      "mesh_led": {
+        "name": "LED"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Reboot"
+      },
+      "mesh_reboot": {
+        "name": "Reboot"
+      }
+    }
   }
 }

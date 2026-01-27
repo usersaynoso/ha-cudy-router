@@ -18,7 +18,7 @@ from .router import CudyRouter
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: Final[list[Platform]] = [Platform.SENSOR]
+PLATFORMS: Final[list[Platform]] = [Platform.SENSOR, Platform.SWITCH, Platform.BUTTON]
 
 # Service constants
 SERVICE_REBOOT: Final = "reboot_router"

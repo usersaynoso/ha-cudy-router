@@ -111,6 +111,30 @@ The integration authenticates against the router's **web-based admin interface**
 | Top Uploader | Device with highest upload speed |
 | Total Download/Upload Speed | Aggregate bandwidth usage |
 
+#### Mesh Network (v1.1.0+)
+| Sensor | Description |
+|--------|-------------|
+| Mesh Devices | Number of mesh nodes connected |
+| Mesh Device Name | Name of each mesh node |
+| Mesh Device Model | Model of each mesh node |
+| Mesh Device MAC | MAC address of each mesh node |
+| Mesh Device Firmware | Firmware version of each mesh node |
+| Mesh Device Status | Online/offline status of each node |
+| Mesh Device IP | IP address of each mesh node |
+
+### Switches
+
+#### Mesh LED Control (v1.1.0+)
+Each mesh device gets a LED switch entity to turn the device LEDs on or off.
+
+### Buttons
+
+#### Router Reboot (v1.1.0+)
+A button entity to reboot the main router.
+
+#### Mesh Device Reboot (v1.1.0+)
+Each mesh device gets a reboot button to restart that specific node.
+
 ### Services
 
 #### `cudy_router.reboot_router`
