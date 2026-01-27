@@ -218,8 +218,13 @@ class CudyRouter:
         _LOGGER.debug("New auth failed, trying legacy auth")
         return self._authenticate_legacy()
 
-    def get(self, url: str) -> str:
-        """Retrieves data from the given URL using an authenticated session."""
+    def get(self, url: str, silent: bool = False) -> str:
+        """Retrieves data from the given URL using an authenticated session.
+        
+        Args:
+            url: The URL path to fetch (relative to /cgi-bin/luci/)
+            silent: If True, don't log errors for failed requests (for optional endpoints)
+        """
 
         retries = 2
         while retries > 0:
@@ -245,7 +250,8 @@ class CudyRouter:
                     if self.authenticate():
                         continue
                     else:
-                        _LOGGER.error("Error during authentication to %s", url)
+                        if not silent:
+                            _LOGGER.error("Error during authentication to %s", url)
                         break
                 if response.ok:
                     return response.text
@@ -255,7 +261,8 @@ class CudyRouter:
                 _LOGGER.debug("Exception during GET %s", url)
                 pass
 
-        _LOGGER.error("Error retrieving data from %s", url)
+        if not silent:
+            _LOGGER.debug("Failed to retrieve data from %s", url)
         return ""
 
     def _post_action_on_page(
@@ -570,15 +577,12 @@ class CudyRouter:
         system_html = await hass.async_add_executor_job(
             self.get, "admin/system/status"
         )
-        # Also try the main panel and system info pages
+        # Also try the main panel which often has firmware info
         panel_html = await hass.async_add_executor_job(
             self.get, "admin/panel"
         )
-        sysinfo_html = await hass.async_add_executor_job(
-            self.get, "admin/system/sysinfo"
-        )
         data[MODULE_SYSTEM] = parse_system_status(
-            f"{system_html}{panel_html}{sysinfo_html}"
+            f"{system_html}{panel_html}"
         )
         
         # Data usage statistics
@@ -606,10 +610,26 @@ class CudyRouter:
             await hass.async_add_executor_job(self.get, "admin/network/lan/status")
         )
         
-        # Mesh devices
-        data[MODULE_MESH] = parse_mesh_devices(
-            await hass.async_add_executor_job(self.get, "admin/network/mesh/status")
-        )
+        # Mesh devices - try multiple possible endpoints (silent since mesh is optional)
+        mesh_html = ""
+        mesh_endpoints = [
+            "admin/network/mesh/status",
+            "admin/network/mesh",
+            "admin/network/mesh/topology",
+            "admin/network/mesh/nodes",
+            "admin/easymesh/status",
+            "admin/easymesh",
+        ]
+        for endpoint in mesh_endpoints:
+            result = await hass.async_add_executor_job(
+                self.get, endpoint, True  # silent=True
+            )
+            if result and ("mesh" in result.lower() or "node" in result.lower() or "satellite" in result.lower()):
+                mesh_html = result
+                _LOGGER.debug("Found mesh data at endpoint: %s", endpoint)
+                break
+        
+        data[MODULE_MESH] = parse_mesh_devices(mesh_html)
 
         return data
 

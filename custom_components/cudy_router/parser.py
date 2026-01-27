@@ -178,14 +178,22 @@ def as_int(string: str | None):
 
     if not string:
         return None
-    return int(string)
+    # Handle cases where value is '-' or other non-numeric
+    try:
+        return int(string)
+    except ValueError:
+        return None
 
 def hex_as_int(string: str | None):
     """Parses hexadecimal string as integer or returns None"""
 
     if not string:
         return None
-    return int(string, 16)
+    # Handle cases where value is '-' or other non-hex values
+    try:
+        return int(string, 16)
+    except ValueError:
+        return None
 
 
 def get_band(raw_band_info: str):
