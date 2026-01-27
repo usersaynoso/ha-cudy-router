@@ -12,7 +12,6 @@
             "user": {
                 "data": {
                     "host": "Router IP address",
-                    "name": "Device name (optional)",
                     "password": "Password",
                     "username": "Username"
                 },

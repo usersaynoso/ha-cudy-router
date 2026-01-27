@@ -758,6 +758,84 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
     return data
 
 
+def parse_mesh_client_status(devstatus_html: str, devlist_html: str | None = None) -> dict[str, Any] | None:
+    """Parse mesh client device status page to extract detailed info.
+    
+    Args:
+        devstatus_html: HTML from /admin/network/mesh/client/devstatus endpoint
+        devlist_html: Optional HTML from /admin/network/mesh/client/devlist endpoint
+        
+    Returns:
+        Dict with device info: model, name, ip_address, mac_address, firmware_version, 
+        backhaul, connected_devices, status
+    """
+    if not devstatus_html:
+        return None
+    
+    device_info: dict[str, Any] = {
+        "model": None,
+        "name": None,
+        "ip_address": None,
+        "mac_address": None,
+        "firmware_version": None,
+        "backhaul": None,
+        "connected_devices": 0,
+        "status": "online",
+    }
+    
+    # Parse the status page table
+    soup = BeautifulSoup(devstatus_html, "html.parser")
+    
+    # The status table has rows with "content" (label) and "data" (value) divs
+    # Pattern: <td><div id="cbi-table-X-content">Label</div></td><td><div id="cbi-table-X-data">Value</div></td>
+    for row in soup.find_all("tr"):
+        content_div = row.find("div", id=re.compile(r"cbi-table-\d+-content"))
+        data_div = row.find("div", id=re.compile(r"cbi-table-\d+-data"))
+        
+        if content_div and data_div:
+            label = content_div.get_text(strip=True)
+            value = data_div.get_text(strip=True)
+            
+            label_lower = label.lower()
+            
+            if label_lower == "model":
+                device_info["model"] = value
+            elif label_lower in ["device name", "name"]:
+                device_info["name"] = value
+            elif label_lower in ["ip address", "ip-address", "ipaddress"]:
+                device_info["ip_address"] = value
+            elif label_lower in ["mac-address", "mac address", "macaddress"]:
+                device_info["mac_address"] = value.upper()
+            elif label_lower in ["firmware version", "firmware"]:
+                device_info["firmware_version"] = value
+            elif label_lower == "backhaul":
+                device_info["backhaul"] = value
+            elif label_lower == "status":
+                # Check if online/offline
+                if "online" in value.lower():
+                    device_info["status"] = "online"
+                elif "offline" in value.lower():
+                    device_info["status"] = "offline"
+    
+    # Parse connected devices count from devlist page
+    if devlist_html:
+        devlist_soup = BeautifulSoup(devlist_html, "html.parser")
+        # Count rows in the device table (excluding header)
+        device_rows = devlist_soup.find_all("tr", id=re.compile(r"cbi-table-\d+"))
+        device_info["connected_devices"] = len(device_rows)
+        _LOGGER.debug("Mesh client %s has %d connected devices", 
+                     device_info.get("name") or device_info.get("mac_address"), 
+                     device_info["connected_devices"])
+    
+    # Return if we found any meaningful data (name, mac, model, or connected_devices)
+    if (device_info.get("name") or device_info.get("mac_address") or 
+        device_info.get("model") or device_info.get("connected_devices")):
+        _LOGGER.debug("Parsed mesh client status: %s", device_info)
+        return device_info
+    
+    return None
+
+
 def _extract_mesh_device_info(element) -> dict[str, Any] | None:
     """Extract mesh device information from a DOM element."""
     text_content = element.get_text(separator="\n", strip=True)

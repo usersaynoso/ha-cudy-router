@@ -32,6 +32,7 @@ from .parser import (
     parse_devices,
     parse_devices_status,
     parse_lan_status,
+    parse_mesh_client_status,
     parse_mesh_devices,
     parse_modem_info,
     parse_sms_status,
@@ -636,7 +637,152 @@ class CudyRouter:
                 mesh_html += result  # Combine results from multiple endpoints
                 _LOGGER.debug("Found mesh data at endpoint: %s (length: %d)", endpoint, len(result))
         
-        data[MODULE_MESH] = parse_mesh_devices(mesh_html)
+        # Parse basic mesh data first to get list of satellites
+        mesh_data = parse_mesh_devices(mesh_html)
+        
+        # Try to get list of mesh clients via JSON endpoint
+        import re
+        import json
+        client_macs = []
+        clients_json_data = []
+        
+        # First try the clients JSON endpoint - this returns rich data!
+        clients_result = await hass.async_add_executor_job(
+            self.get, "admin/network/mesh/clients?clients=all", True
+        )
+        if clients_result:
+            _LOGGER.debug("Mesh clients endpoint result (first 500): %s", clients_result[:500] if clients_result else "None")
+            # Try to parse as JSON - get the full array
+            try:
+                # The response should be a JSON array
+                json_match = re.search(r'\[.*\]', clients_result, re.DOTALL)
+                if json_match:
+                    clients_json_data = json.loads(json_match.group(0))
+                    for client in clients_json_data:
+                        if isinstance(client, dict) and client.get("id"):
+                            client_macs.append(client["id"])
+            except (json.JSONDecodeError, TypeError) as e:
+                _LOGGER.debug("Could not parse clients JSON: %s", e)
+        
+        # Also look for client MAC addresses in tab IDs from mesh HTML
+        html_macs = re.findall(r'tab-([0-9A-Fa-f]{12})-', mesh_html)
+        html_macs.extend(re.findall(r'client=([0-9A-Fa-f]{12})', mesh_html))
+        client_macs.extend(html_macs)
+        
+        # Remove duplicates and filter out invalid entries
+        client_macs = list(set(mac for mac in client_macs if len(mac) == 12))
+        _LOGGER.debug("Found mesh client MACs: %s", client_macs)
+        
+        # First, extract data from JSON for each client
+        json_client_data: dict[str, dict] = {}
+        for client_json in clients_json_data:
+            if not isinstance(client_json, dict):
+                continue
+            client_id = client_json.get("id", "")
+            if not client_id:
+                continue
+            
+            # Format MAC
+            formatted_mac = ':'.join(client_id[i:i+2] for i in range(0, 12, 2)).upper()
+            
+            # Extract data from JSON
+            sysreport = client_json.get("sysreport", {})
+            # Use hardware name (e.g. "RE1200 V1.0") as model if available, fall back to model code
+            hardware = sysreport.get("hardware", "")
+            model_name = hardware.split(" ")[0] if hardware else sysreport.get("board") or sysreport.get("model")
+            json_client_data[formatted_mac] = {
+                "name": client_json.get("name"),
+                "model": model_name,
+                "firmware_version": sysreport.get("firmware"),
+                "ip_address": sysreport.get("ipaddr"),
+                "mac_address": formatted_mac,
+                "hardware": hardware,
+                "status": "online" if client_json.get("state") == "connected" else "online",  # Default online
+                "led_status": sysreport.get("ledstatus"),
+            }
+            _LOGGER.debug("Parsed mesh client from JSON: %s -> %s", client_id, json_client_data[formatted_mac])
+        
+        for client_mac in client_macs:
+            # Skip the main router (id=000000000000) for mesh devices
+            # but extract its LED status for the main router LED switch
+            if client_mac == "000000000000":
+                formatted_mac = ':'.join(client_mac[i:i+2] for i in range(0, 12, 2)).upper()
+                _LOGGER.debug("Skipping main router in mesh client loop, formatted_mac=%s, in json_data=%s", 
+                             formatted_mac, formatted_mac in json_client_data)
+                if formatted_mac in json_client_data:
+                    main_router_data = json_client_data[formatted_mac]
+                    mesh_data["main_router_led_status"] = main_router_data.get("led_status")
+                    _LOGGER.debug("Main router LED status: %s", mesh_data["main_router_led_status"])
+                continue
+            
+            # Format MAC address with colons
+            formatted_mac = ':'.join(client_mac[i:i+2] for i in range(0, 12, 2)).upper()
+            
+            # Start with JSON data if available
+            client_info = {}
+            if formatted_mac in json_client_data:
+                client_info = json_client_data[formatted_mac].copy()
+                _LOGGER.debug("Using JSON data for %s: %s", formatted_mac, client_info)
+            
+            # Fetch device status for this mesh client to get additional details
+            devstatus_url = f"admin/network/mesh/client/devstatus?embedded=&client={client_mac}"
+            devstatus_html = await hass.async_add_executor_job(
+                self.get, devstatus_url, True
+            )
+            
+            # Fetch device list (connected devices) for this mesh client
+            devlist_url = f"admin/network/mesh/client/devlist?embedded=&client={client_mac}"
+            devlist_html = await hass.async_add_executor_job(
+                self.get, devlist_url, True
+            )
+            
+            if devstatus_html:
+                _LOGGER.debug("Got mesh client devstatus for %s (length: %d)", client_mac, len(devstatus_html))
+                # Parse HTML for additional info (backhaul, pre-hop, connected_devices count)
+                html_info = parse_mesh_client_status(devstatus_html, devlist_html)
+                if html_info:
+                    _LOGGER.debug("Parsed HTML info for %s: %s", formatted_mac, html_info)
+                    # Merge HTML data, but prefer JSON data for fields that exist in both
+                    for key, value in html_info.items():
+                        # For connected_devices, always use HTML value (JSON doesn't have this)
+                        if key == "connected_devices":
+                            client_info[key] = value
+                        elif key not in client_info or not client_info.get(key) or client_info.get(key) == "Unknown":
+                            client_info[key] = value
+            
+            # Ensure we have required fields
+            if not client_info.get("name"):
+                client_info["name"] = f"Mesh Device {client_mac[-6:]}"
+            client_info["mac_address"] = formatted_mac
+            
+            _LOGGER.info("Final mesh device info for %s: name=%s, model=%s, firmware=%s, ip=%s, connected=%s", 
+                        formatted_mac, client_info.get("name"), client_info.get("model"), 
+                        client_info.get("firmware_version"), client_info.get("ip_address"),
+                        client_info.get("connected_devices"))
+            
+            # Find matching device in mesh_data or add new one
+            found = False
+            for mac, device in list(mesh_data.get("mesh_devices", {}).items()):
+                # Match by MAC or by name
+                if mac.replace(":", "").upper() == client_mac.upper():
+                    device.update(client_info)
+                    found = True
+                    _LOGGER.debug("Updated existing device by MAC: %s", mac)
+                    break
+                elif device.get("name", "").lower() == client_info.get("name", "").lower() and mac.startswith("mesh_"):
+                    # Found by name with placeholder MAC - remove old entry and add new one
+                    mesh_data["mesh_devices"].pop(mac)
+                    mesh_data["mesh_devices"][formatted_mac] = client_info
+                    found = True
+                    _LOGGER.debug("Replaced placeholder device %s with real MAC %s", mac, formatted_mac)
+                    break
+            
+            if not found:
+                # Add as new device with real MAC
+                mesh_data["mesh_devices"][formatted_mac] = client_info
+                _LOGGER.debug("Added new mesh device: %s", formatted_mac)
+        
+        data[MODULE_MESH] = mesh_data
 
         return data
 
@@ -779,6 +925,77 @@ class CudyRouter:
         
         _LOGGER.error("Failed to set mesh LED for %s - no working endpoint found", mac_address)
         return 0, f"Failed to set LED for mesh device {mac_address}"
+
+    def set_main_router_led(self, enabled: bool) -> tuple[int, str]:
+        """Set LED state for the main router.
+
+        Args:
+            enabled: True to turn LEDs on, False to turn off
+
+        Returns:
+            Tuple of (HTTP status code, response snippet or error message)
+        """
+        session = self._get_session()
+        # Try system LED control endpoints
+        endpoints = [
+            "admin/system/led",
+            "admin/network/mesh/led",
+            "admin/network/mesh/settings",
+        ]
+        
+        for endpoint in endpoints:
+            page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin/system",
+            }
+
+            try:
+                resp = session.get(page_url, timeout=15, headers=headers)
+                if resp.status_code == 404:
+                    continue
+                    
+                html = resp.text
+                token = _extract_hidden(html, "token")
+                if not token:
+                    continue
+
+                led_value = "1" if enabled else "0"
+                # Try different POST field patterns for LED control
+                post_patterns = [
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "cbid.system.led.trigger": "none" if not enabled else "default-on"},
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "led": led_value},
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "cbid.led.1.enable": led_value},
+                    {"token": token, "timeclock": "0", "cbi.submit": "1",
+                     "led_enable": led_value},
+                ]
+                
+                for post_fields in post_patterns:
+                    r = session.post(
+                        page_url,
+                        timeout=30,
+                        headers={
+                            **headers,
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "Origin": self.base_url,
+                        },
+                        data=urllib.parse.urlencode(post_fields),
+                        allow_redirects=False,
+                    )
+                    if r.status_code in (200, 302):
+                        _LOGGER.debug("Main router LED %s successful via %s", 
+                                     "on" if enabled else "off", endpoint)
+                        return r.status_code, f"LED {'on' if enabled else 'off'} for main router"
+                        
+            except Exception as e:
+                _LOGGER.debug("Main router LED control attempt on %s failed: %s", endpoint, e)
+                continue
+        
+        _LOGGER.error("Failed to set main router LED - no working endpoint found")
+        return 0, "Failed to set LED for main router"
 
     def get_mesh_led_state(self, mac_address: str) -> bool | None:
         """Get current LED state for a mesh device.
