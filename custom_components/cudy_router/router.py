@@ -853,7 +853,7 @@ class CudyRouter:
         
         # Try POST endpoints with form data
         form_endpoints = [
-            f"admin/network/mesh/client/reboot",
+            "admin/network/mesh/client/reboot",
             "admin/network/mesh/reboot",
             "admin/network/mesh",
         ]
