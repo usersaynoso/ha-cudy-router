@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -14,7 +14,6 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    CONF_HOST,
     SIGNAL_STRENGTH_DECIBELS,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfDataRate,
@@ -27,8 +26,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-_LOGGER = logging.getLogger(__name__)
-
 from .const import (
     DOMAIN,
     MODULE_DEVICES,
@@ -38,6 +35,8 @@ from .const import (
     SECTION_DETAILED,
 )
 from .coordinator import CudyRouterDataUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -432,8 +431,6 @@ MESH_DEVICE_CONNECTED_SENSOR = CudyRouterSensorEntityDescription(
 )
 
 
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -446,14 +443,16 @@ async def async_setup_entry(
     # Use mesh main_router_name, or default to "Cudy Router"
     mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
     main_router_mesh_name = mesh_data.get("main_router_name")
-    
+
     # Priority: mesh main_router_name > "Cudy Router"
     router_name = main_router_mesh_name or "Cudy Router"
-    
+
     entities: list[SensorEntity] = []
-    
-    _LOGGER.debug("Setting up Cudy Router sensors, coordinator.data keys: %s", 
-                  list(coordinator.data.keys()) if coordinator.data else "None")
+
+    _LOGGER.debug(
+        "Setting up Cudy Router sensors, coordinator.data keys: %s",
+        list(coordinator.data.keys()) if coordinator.data else "None",
+    )
 
     # Add sensors based on available data from coordinator
     if coordinator.data:
@@ -486,20 +485,22 @@ async def async_setup_entry(
     device_list = [x.strip() for x in device_list_str.split(",") if x.strip()]
 
     for device_id in device_list:
-        entities.extend([
-            CudyRouterDeviceSensor(
-                coordinator, router_name, device_id, DEVICE_MAC_SENSOR
-            ),
-            CudyRouterDeviceSensor(
-                coordinator, router_name, device_id, DEVICE_HOSTNAME_SENSOR
-            ),
-            CudyRouterDeviceSensor(
-                coordinator, router_name, device_id, DEVICE_UPLOAD_SENSOR
-            ),
-            CudyRouterDeviceSensor(
-                coordinator, router_name, device_id, DEVICE_DOWNLOAD_SENSOR
-            ),
-        ])
+        entities.extend(
+            [
+                CudyRouterDeviceSensor(
+                    coordinator, router_name, device_id, DEVICE_MAC_SENSOR
+                ),
+                CudyRouterDeviceSensor(
+                    coordinator, router_name, device_id, DEVICE_HOSTNAME_SENSOR
+                ),
+                CudyRouterDeviceSensor(
+                    coordinator, router_name, device_id, DEVICE_UPLOAD_SENSOR
+                ),
+                CudyRouterDeviceSensor(
+                    coordinator, router_name, device_id, DEVICE_DOWNLOAD_SENSOR
+                ),
+            ]
+        )
 
     # Add mesh device sensors
     # NOTE: Satellite mesh devices often only have name and status available.
@@ -510,32 +511,66 @@ async def async_setup_entry(
         mesh_devices = mesh_data.get("mesh_devices", {})
         _LOGGER.debug("Mesh devices found for sensors: %d devices", len(mesh_devices))
         for mesh_mac, mesh_device in mesh_devices.items():
-            _LOGGER.debug("Creating sensors for mesh device: %s (MAC: %s)", mesh_device.get("name"), mesh_mac)
+            _LOGGER.debug(
+                "Creating sensors for mesh device: %s (MAC: %s)",
+                mesh_device.get("name"),
+                mesh_mac,
+            )
             # Create a friendly name for the mesh device
             mesh_name = mesh_device.get("name") or mesh_mac
-            entities.extend([
-                CudyRouterMeshDeviceSensor(
-                    coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_NAME_SENSOR
-                ),
-                CudyRouterMeshDeviceSensor(
-                    coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_MODEL_SENSOR
-                ),
-                CudyRouterMeshDeviceSensor(
-                    coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_MAC_SENSOR
-                ),
-                CudyRouterMeshDeviceSensor(
-                    coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_FIRMWARE_SENSOR
-                ),
-                CudyRouterMeshDeviceSensor(
-                    coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_STATUS_SENSOR
-                ),
-                CudyRouterMeshDeviceSensor(
-                    coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_IP_SENSOR
-                ),
-                CudyRouterMeshDeviceSensor(
-                    coordinator, router_name, mesh_mac, mesh_name, MESH_DEVICE_CONNECTED_SENSOR
-                ),
-            ])
+            entities.extend(
+                [
+                    CudyRouterMeshDeviceSensor(
+                        coordinator,
+                        router_name,
+                        mesh_mac,
+                        mesh_name,
+                        MESH_DEVICE_NAME_SENSOR,
+                    ),
+                    CudyRouterMeshDeviceSensor(
+                        coordinator,
+                        router_name,
+                        mesh_mac,
+                        mesh_name,
+                        MESH_DEVICE_MODEL_SENSOR,
+                    ),
+                    CudyRouterMeshDeviceSensor(
+                        coordinator,
+                        router_name,
+                        mesh_mac,
+                        mesh_name,
+                        MESH_DEVICE_MAC_SENSOR,
+                    ),
+                    CudyRouterMeshDeviceSensor(
+                        coordinator,
+                        router_name,
+                        mesh_mac,
+                        mesh_name,
+                        MESH_DEVICE_FIRMWARE_SENSOR,
+                    ),
+                    CudyRouterMeshDeviceSensor(
+                        coordinator,
+                        router_name,
+                        mesh_mac,
+                        mesh_name,
+                        MESH_DEVICE_STATUS_SENSOR,
+                    ),
+                    CudyRouterMeshDeviceSensor(
+                        coordinator,
+                        router_name,
+                        mesh_mac,
+                        mesh_name,
+                        MESH_DEVICE_IP_SENSOR,
+                    ),
+                    CudyRouterMeshDeviceSensor(
+                        coordinator,
+                        router_name,
+                        mesh_mac,
+                        mesh_name,
+                        MESH_DEVICE_CONNECTED_SENSOR,
+                    ),
+                ]
+            )
 
     async_add_entities(entities)
 
@@ -611,7 +646,9 @@ class CudyRouterMeshDeviceSensor(
         # Create a separate device entry for each mesh node
         # Use just the mesh device name, not "Mesh <name>"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{coordinator.config_entry.entry_id}-mesh-{mesh_mac}")},
+            identifiers={
+                (DOMAIN, f"{coordinator.config_entry.entry_id}-mesh-{mesh_mac}")
+            },
             manufacturer="Cudy",
             name=mesh_name,
             via_device=(DOMAIN, coordinator.config_entry.entry_id),
@@ -669,9 +706,7 @@ class CudyRouterSensor(
         self.entity_description = description
         self._sensor_key = sensor_key
         self._attr_name = description.name_suffix
-        self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}-{description.module}-{description.key}"
-        )
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}-{description.module}-{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.config_entry.entry_id)},
             manufacturer="Cudy",
