@@ -402,6 +402,12 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         name_suffix="WiFi 5G clients",
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    ("devices", "wired_clients"): CudyRouterSensorEntityDescription(
+        key="wired_clients",
+        module="devices",
+        name_suffix="Wired clients",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
     ("devices", "total_clients"): CudyRouterSensorEntityDescription(
         key="total_clients",
         module="devices",
