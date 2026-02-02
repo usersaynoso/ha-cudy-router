@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-from http.cookies import SimpleCookie
 import logging
 import re
 import time
-from typing import Any
 import urllib.parse
+from http.cookies import SimpleCookie
+from typing import Any
 
 import requests
 import urllib3
-
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -23,6 +22,8 @@ from .const import (
     MODULE_MODEM,
     MODULE_SMS,
     MODULE_SYSTEM,
+    MODULE_VPN,
+    MODULE_WAN,
     MODULE_WIFI_2G,
     MODULE_WIFI_5G,
     OPTIONS_DEVICELIST,
@@ -37,6 +38,8 @@ from .parser import (
     parse_modem_info,
     parse_sms_status,
     parse_system_status,
+    parse_vpn_status,
+    parse_wan_status,
     parse_wifi_status,
 )
 
@@ -54,6 +57,12 @@ def _extract_hidden(html: str, name: str) -> str:
     return match.group(1) if match else ""
 
 
+def _extract_model(html: str) -> str:
+    """Extract device model in page"""
+    match = re.search(r"<span>HW: ([a-zA-Z0-9 \-\.]+)<\/span>", html)
+    return match.group(1) if match else ""
+
+
 def _compute_luci_password(plain_password: str, salt: str, token: str) -> str:
     """Compute the LuCI password hash.
 
@@ -68,7 +77,12 @@ class CudyRouter:
     """Represents a router and provides functions for communication."""
 
     def __init__(
-        self, hass: HomeAssistant, host: str, username: str, password: str
+        self,
+        hass: HomeAssistant,
+        host: str,
+        username: str,
+        password: str,
+        device_model: str = "default",
     ) -> None:
         """Initialize the router."""
         self.host = host
@@ -76,6 +90,7 @@ class CudyRouter:
         self.hass = hass
         self.username = username
         self.password = password
+        self.device_model = device_model
         self._session: requests.Session | None = None
         # Determine base URL - always use https if no scheme provided
         if host.startswith("https://"):
@@ -150,8 +165,13 @@ class CudyRouter:
             token = _extract_hidden(html, "token")
             salt = _extract_hidden(html, "salt")
 
-            _LOGGER.debug("Login page HTTP: %s, csrf: %s, token: %s, salt: %s",
-                         response.status_code, bool(csrf), bool(token), bool(salt))
+            _LOGGER.debug(
+                "Login page HTTP: %s, csrf: %s, token: %s, salt: %s",
+                response.status_code,
+                bool(csrf),
+                bool(token),
+                bool(salt),
+            )
 
             if not (salt and token):
                 _LOGGER.debug("Could not extract salt/token from login page")
@@ -177,8 +197,11 @@ class CudyRouter:
             }
 
             response = session.post(
-                login_url, timeout=15, headers=post_headers,
-                data=urllib.parse.urlencode(post_data), allow_redirects=False
+                login_url,
+                timeout=15,
+                headers=post_headers,
+                data=urllib.parse.urlencode(post_data),
+                allow_redirects=False,
             )
 
             # Check for sysauth cookie
@@ -188,8 +211,49 @@ class CudyRouter:
                     _LOGGER.debug("New auth successful, got sysauth cookie")
                     return True
 
-            _LOGGER.debug("New auth: no sysauth cookie received, status=%s", response.status_code)
+            _LOGGER.debug(
+                "New auth: no sysauth cookie received, status=%s", response.status_code
+            )
             return False
+
+        except requests.exceptions.ConnectionError as e:
+            _LOGGER.debug("Connection error during new auth: %s", e)
+        except requests.exceptions.Timeout as e:
+            _LOGGER.debug("Timeout during new auth: %s", e)
+        except Exception as e:
+            _LOGGER.warning("New auth error: %s", e, exc_info=True)
+        return False
+
+    def get_model(self) -> str:
+        """Get the cudy router model displayed on login page."""
+
+        session = self._get_session()
+        login_url = f"{self.base_url}/cgi-bin/luci/"
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": f"{self.base_url}/",
+        }
+
+        try:
+            # GET login page to extract salt and token (may return 403 but still has HTML)
+            response = session.get(login_url, timeout=15, headers=headers)
+            html = response.text
+
+            device_model = _extract_model(html)
+
+            _LOGGER.debug(
+                "Login page HTTP: %s, device_model: %s",
+                response.status_code,
+                str(device_model),
+            )
+
+            if not (device_model):
+                _LOGGER.debug("Could not extract device model from login page")
+                return False
+
+            return device_model
 
         except requests.exceptions.ConnectionError as e:
             _LOGGER.debug("Connection error during new auth: %s", e)
@@ -221,7 +285,7 @@ class CudyRouter:
 
     def get(self, url: str, silent: bool = False) -> str:
         """Retrieves data from the given URL using an authenticated session.
-        
+
         Args:
             url: The URL path to fetch (relative to /cgi-bin/luci/)
             silent: If True, don't log errors for failed requests (for optional endpoints)
@@ -233,7 +297,7 @@ class CudyRouter:
 
             data_url = f"{self.base_url}/cgi-bin/luci/{url}"
             session = self._get_session()
-            
+
             # Set the auth cookie in session if available
             if self.auth_cookie:
                 session.cookies.set("sysauth", self.auth_cookie)
@@ -267,7 +331,10 @@ class CudyRouter:
         return ""
 
     def _post_action_on_page(
-        self, page: str, button_text_substring: str, extra_fields: dict[str, str] | None = None
+        self,
+        page: str,
+        button_text_substring: str,
+        extra_fields: dict[str, str] | None = None,
     ) -> tuple[int, str]:
         """Fetch a page, find a button by text/value substring and POST the action.
 
@@ -292,28 +359,55 @@ class CudyRouter:
 
             # Find a button/input with a name/value we can submit
             # Try <button ... name="..." value="...">text</button>
-            m = re.search(r'<button[^>]*name="([^\"]+)"[^>]*value="([^\"]*)"[^>]*>([^<]*)</button>', html)
+            m = re.search(
+                r'<button[^>]*name="([^\"]+)"[^>]*value="([^\"]*)"[^>]*>([^<]*)</button>',
+                html,
+            )
             name = None
             value = None
             if m:
                 # if the button text or value matches substring, use it
-                if button_text_substring.lower() in (m.group(2) or "").lower() or button_text_substring.lower() in (m.group(3) or "").lower():
+                if (
+                    button_text_substring.lower() in (m.group(2) or "").lower()
+                    or button_text_substring.lower() in (m.group(3) or "").lower()
+                ):
                     name, value = m.group(1), m.group(2)
 
             # Fallback: look for input type=submit
             if not name:
-                m2 = re.search(r'<input[^>]*type="submit"[^>]*name="([^\"]+)"[^>]*value="([^\"]*)"', html)
+                m2 = re.search(
+                    r'<input[^>]*type="submit"[^>]*name="([^\"]+)"[^>]*value="([^\"]*)"',
+                    html,
+                )
                 if m2 and button_text_substring.lower() in (m2.group(2) or "").lower():
                     name, value = m2.group(1), m2.group(2)
 
             if not name:
-                raise RuntimeError("Could not find action button containing '%s' on %s" % (button_text_substring, page))
+                raise RuntimeError(
+                    "Could not find action button containing '%s' on %s"
+                    % (button_text_substring, page)
+                )
 
-            post_fields = {"token": token, "timeclock": "0", "cbi.submit": "1", name: value}
+            post_fields = {
+                "token": token,
+                "timeclock": "0",
+                "cbi.submit": "1",
+                name: value,
+            }
             if extra_fields:
                 post_fields.update(extra_fields)
 
-            r = session.post(page_url, timeout=30, headers={**headers, "Content-Type": "application/x-www-form-urlencoded", "Origin": self.base_url}, data=urllib.parse.urlencode(post_fields), allow_redirects=False)
+            r = session.post(
+                page_url,
+                timeout=30,
+                headers={
+                    **headers,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": self.base_url,
+                },
+                data=urllib.parse.urlencode(post_fields),
+                allow_redirects=False,
+            )
             return r.status_code, r.text[:220]
         except Exception as e:
             _LOGGER.error("Action on %s failed: %s", page, e)
@@ -344,9 +438,15 @@ class CudyRouter:
                 "cbi.apply": "OK",
             }
             r = session.post(
-                page_url, timeout=30,
-                headers={**headers, "Content-Type": "application/x-www-form-urlencoded", "Origin": self.base_url},
-                data=urllib.parse.urlencode(post_fields), allow_redirects=False
+                page_url,
+                timeout=30,
+                headers={
+                    **headers,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": self.base_url,
+                },
+                data=urllib.parse.urlencode(post_fields),
+                allow_redirects=False,
             )
             return r.status_code, r.text[:220]
         except Exception as e:
@@ -382,9 +482,15 @@ class CudyRouter:
                 "cbid.reset.1.reset": "Modem Reset",
             }
             r = session.post(
-                page_url, timeout=30,
-                headers={**headers, "Content-Type": "application/x-www-form-urlencoded", "Origin": self.base_url},
-                data=urllib.parse.urlencode(post_fields), allow_redirects=False
+                page_url,
+                timeout=30,
+                headers={
+                    **headers,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": self.base_url,
+                },
+                data=urllib.parse.urlencode(post_fields),
+                allow_redirects=False,
             )
             return r.status_code, r.text[:220]
         except Exception as e:
@@ -400,7 +506,10 @@ class CudyRouter:
         session = self._get_session()
         page = "admin/network/gcom/setting"
         page_url = f"{self.base_url}/cgi-bin/luci/{page}"
-        headers = {"User-Agent": "Mozilla/5.0", "Referer": f"{self.base_url}/cgi-bin/luci/admin"}
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": f"{self.base_url}/cgi-bin/luci/admin",
+        }
 
         try:
             resp = session.get(page_url, timeout=15, headers=headers)
@@ -410,13 +519,30 @@ class CudyRouter:
                 return 0, "No token on page"
 
             # Find select name attribute containing 'band'
-            m = re.search(r'<select[^>]*name="([^"]*band[^"]*)"', html, flags=re.IGNORECASE)
+            m = re.search(
+                r'<select[^>]*name="([^"]*band[^"]*)"', html, flags=re.IGNORECASE
+            )
             if not m:
                 return 0, "No band select found"
 
             select_name = m.group(1)
-            post_fields = {"token": token, "timeclock": "0", "cbi.submit": "1", select_name: band_value}
-            r = session.post(page_url, timeout=30, headers={**headers, "Content-Type": "application/x-www-form-urlencoded", "Origin": self.base_url}, data=urllib.parse.urlencode(post_fields), allow_redirects=False)
+            post_fields = {
+                "token": token,
+                "timeclock": "0",
+                "cbi.submit": "1",
+                select_name: band_value,
+            }
+            r = session.post(
+                page_url,
+                timeout=30,
+                headers={
+                    **headers,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": self.base_url,
+                },
+                data=urllib.parse.urlencode(post_fields),
+                allow_redirects=False,
+            )
             return r.status_code, r.text[:220]
         except Exception as e:
             _LOGGER.error("Switch band failed: %s", e)
@@ -524,14 +650,17 @@ class CudyRouter:
                 data=urllib.parse.urlencode(post_fields),
                 allow_redirects=False,
             )
-            
+
             # Extract the response from textarea
             response_html = r.text
-            textarea_match = re.search(r'<textarea[^>]*id="cbid\.atcmd\.1\._custom"[^>]*>([^<]*)</textarea>', response_html)
+            textarea_match = re.search(
+                r'<textarea[^>]*id="cbid\.atcmd\.1\._custom"[^>]*>([^<]*)</textarea>',
+                response_html,
+            )
             if textarea_match:
                 at_response = textarea_match.group(1).strip()
                 return r.status_code, at_response
-            
+
             _LOGGER.debug("AT command response: %s", r.status_code)
             return r.status_code, r.text[:500]
         except Exception as e:
@@ -549,7 +678,7 @@ class CudyRouter:
         data[MODULE_MODEM] = parse_modem_info(
             f"{await hass.async_add_executor_job(self.get, 'admin/network/gcom/status')}{await hass.async_add_executor_job(self.get, 'admin/network/gcom/status?detail=1&iface=4g')}"
         )
-        
+
         # Connected devices
         data[MODULE_DEVICES] = parse_devices(
             await hass.async_add_executor_job(
@@ -557,7 +686,7 @@ class CudyRouter:
             ),
             options and options.get(OPTIONS_DEVICELIST),
         )
-        
+
         # Add device client counts to the devices module
         # Try multiple possible endpoints for device status
         devices_status_html = await hass.async_add_executor_job(
@@ -565,60 +694,82 @@ class CudyRouter:
         )
         # Also try the main panel which sometimes has client counts
         if not devices_status_html or "client" not in devices_status_html.lower():
-            panel_html = await hass.async_add_executor_job(
-                self.get, "admin/panel"
-            )
+            panel_html = await hass.async_add_executor_job(self.get, "admin/panel")
             devices_status_html = f"{devices_status_html}{panel_html}"
-        
+
         devices_status = parse_devices_status(devices_status_html)
         data[MODULE_DEVICES].update(devices_status)
-        
+
         # System status (uptime, firmware, local time)
         # Fetch from multiple endpoints to increase chances of finding firmware
         system_html = await hass.async_add_executor_job(
             self.get, "admin/system/status"
         )
         # Also try the main panel which often has firmware info
-        panel_html = await hass.async_add_executor_job(
-            self.get, "admin/panel"
-        )
+        panel_html = await hass.async_add_executor_job(self.get, "admin/panel")
         # Try overview page which sometimes has firmware (silently)
         overview_html = await hass.async_add_executor_job(
-            self.get, "admin/status/overview", True  # silent
+            self.get,
+            "admin/status/overview",
+            True,  # silent
         )
         # Try system page which sometimes has firmware (silently)
         system_page_html = await hass.async_add_executor_job(
-            self.get, "admin/system/system", True  # silent
+            self.get,
+            "admin/system/system",
+            True,  # silent
         )
         data[MODULE_SYSTEM] = parse_system_status(
             f"{system_html}{panel_html}{overview_html or ''}{system_page_html or ''}"
         )
-        
+
         # Data usage statistics
         data[MODULE_DATA_USAGE] = parse_data_usage(
-            await hass.async_add_executor_job(self.get, "admin/network/gcom/statistics?iface=4g")
+            await hass.async_add_executor_job(
+                self.get, "admin/network/gcom/statistics?iface=4g"
+            )
         )
-        
+
         # SMS status
         data[MODULE_SMS] = parse_sms_status(
-            await hass.async_add_executor_job(self.get, "admin/network/gcom/sms/status")
+            await hass.async_add_executor_job(
+                self.get, "admin/network/gcom/sms/status"
+            )
         )
-        
+
         # WiFi 2.4G status
         data[MODULE_WIFI_2G] = parse_wifi_status(
-            await hass.async_add_executor_job(self.get, "admin/network/wireless/status?iface=wlan00")
+            await hass.async_add_executor_job(
+                self.get, "admin/network/wireless/status?iface=wlan00"
+            )
         )
-        
+
         # WiFi 5G status
         data[MODULE_WIFI_5G] = parse_wifi_status(
-            await hass.async_add_executor_job(self.get, "admin/network/wireless/status?iface=wlan10")
+            await hass.async_add_executor_job(
+                self.get, "admin/network/wireless/status?iface=wlan10"
+            )
         )
-        
+
         # LAN status
         data[MODULE_LAN] = parse_lan_status(
             await hass.async_add_executor_job(self.get, "admin/network/lan/status")
         )
-        
+
+        # VPN status
+        data[MODULE_VPN] = parse_vpn_status(
+            await hass.async_add_executor_job(
+                self.get, "admin/network/vpn/openvpns/status?detail="
+            )
+        )
+
+        # WAN status
+        data[MODULE_WAN] = parse_wan_status(
+            await hass.async_add_executor_job(
+                self.get, "admin/network/wan/status?detail=1&iface=wan"
+            )
+        )
+
         # Mesh devices - try multiple possible endpoints (silent since mesh is optional)
         mesh_html = ""
         mesh_endpoints = [
@@ -631,31 +782,45 @@ class CudyRouter:
         ]
         for endpoint in mesh_endpoints:
             result = await hass.async_add_executor_job(
-                self.get, endpoint, True  # silent=True
+                self.get,
+                endpoint,
+                True,  # silent=True
             )
-            if result and ("mesh" in result.lower() or "node" in result.lower() or "satellite" in result.lower()):
+            if result and (
+                "mesh" in result.lower()
+                or "node" in result.lower()
+                or "satellite" in result.lower()
+            ):
                 mesh_html += result  # Combine results from multiple endpoints
-                _LOGGER.debug("Found mesh data at endpoint: %s (length: %d)", endpoint, len(result))
-        
+                _LOGGER.debug(
+                    "Found mesh data at endpoint: %s (length: %d)",
+                    endpoint,
+                    len(result),
+                )
+
         # Parse basic mesh data first to get list of satellites
         mesh_data = parse_mesh_devices(mesh_html)
-        
+
         # Try to get list of mesh clients via JSON endpoint
-        import re
         import json
+        import re
+
         client_macs = []
         clients_json_data = []
-        
+
         # First try the clients JSON endpoint - this returns rich data!
         clients_result = await hass.async_add_executor_job(
             self.get, "admin/network/mesh/clients?clients=all", True
         )
         if clients_result:
-            _LOGGER.debug("Mesh clients endpoint result (first 500): %s", clients_result[:500] if clients_result else "None")
+            _LOGGER.debug(
+                "Mesh clients endpoint result (first 500): %s",
+                clients_result[:500] if clients_result else "None",
+            )
             # Try to parse as JSON - get the full array
             try:
                 # The response should be a JSON array
-                json_match = re.search(r'\[.*\]', clients_result, re.DOTALL)
+                json_match = re.search(r"\[.*\]", clients_result, re.DOTALL)
                 if json_match:
                     clients_json_data = json.loads(json_match.group(0))
                     for client in clients_json_data:
@@ -663,16 +828,16 @@ class CudyRouter:
                             client_macs.append(client["id"])
             except (json.JSONDecodeError, TypeError) as e:
                 _LOGGER.debug("Could not parse clients JSON: %s", e)
-        
+
         # Also look for client MAC addresses in tab IDs from mesh HTML
-        html_macs = re.findall(r'tab-([0-9A-Fa-f]{12})-', mesh_html)
-        html_macs.extend(re.findall(r'client=([0-9A-Fa-f]{12})', mesh_html))
+        html_macs = re.findall(r"tab-([0-9A-Fa-f]{12})-", mesh_html)
+        html_macs.extend(re.findall(r"client=([0-9A-Fa-f]{12})", mesh_html))
         client_macs.extend(html_macs)
-        
+
         # Remove duplicates and filter out invalid entries
         client_macs = list(set(mac for mac in client_macs if len(mac) == 12))
         _LOGGER.debug("Found mesh client MACs: %s", client_macs)
-        
+
         # First, extract data from JSON for each client
         json_client_data: dict[str, dict] = {}
         for client_json in clients_json_data:
@@ -681,15 +846,21 @@ class CudyRouter:
             client_id = client_json.get("id", "")
             if not client_id:
                 continue
-            
+
             # Format MAC
-            formatted_mac = ':'.join(client_id[i:i+2] for i in range(0, 12, 2)).upper()
-            
+            formatted_mac = ":".join(
+                client_id[i : i + 2] for i in range(0, 12, 2)
+            ).upper()
+
             # Extract data from JSON
             sysreport = client_json.get("sysreport", {})
             # Use hardware name (e.g. "RE1200 V1.0") as model if available, fall back to model code
             hardware = sysreport.get("hardware", "")
-            model_name = hardware.split(" ")[0] if hardware else sysreport.get("board") or sysreport.get("model")
+            model_name = (
+                hardware.split(" ")[0]
+                if hardware
+                else sysreport.get("board") or sysreport.get("model")
+            )
             json_client_data[formatted_mac] = {
                 "name": client_json.get("name"),
                 "model": model_name,
@@ -697,69 +868,106 @@ class CudyRouter:
                 "ip_address": sysreport.get("ipaddr"),
                 "mac_address": formatted_mac,
                 "hardware": hardware,
-                "status": "online" if client_json.get("state") == "connected" else "online",  # Default online
+                "status": "online"
+                if client_json.get("state") == "connected"
+                else "online",  # Default online
                 "led_status": sysreport.get("ledstatus"),
             }
-            _LOGGER.debug("Parsed mesh client from JSON: %s -> %s", client_id, json_client_data[formatted_mac])
-        
+            _LOGGER.debug(
+                "Parsed mesh client from JSON: %s -> %s",
+                client_id,
+                json_client_data[formatted_mac],
+            )
+
         for client_mac in client_macs:
             # Skip the main router (id=000000000000) for mesh devices
             # but extract its LED status for the main router LED switch
             if client_mac == "000000000000":
-                formatted_mac = ':'.join(client_mac[i:i+2] for i in range(0, 12, 2)).upper()
-                _LOGGER.debug("Skipping main router in mesh client loop, formatted_mac=%s, in json_data=%s", 
-                             formatted_mac, formatted_mac in json_client_data)
+                formatted_mac = ":".join(
+                    client_mac[i : i + 2] for i in range(0, 12, 2)
+                ).upper()
+                _LOGGER.debug(
+                    "Skipping main router in mesh client loop, formatted_mac=%s, in json_data=%s",
+                    formatted_mac,
+                    formatted_mac in json_client_data,
+                )
                 if formatted_mac in json_client_data:
                     main_router_data = json_client_data[formatted_mac]
-                    mesh_data["main_router_led_status"] = main_router_data.get("led_status")
-                    _LOGGER.debug("Main router LED status: %s", mesh_data["main_router_led_status"])
+                    mesh_data["main_router_led_status"] = main_router_data.get(
+                        "led_status"
+                    )
+                    _LOGGER.debug(
+                        "Main router LED status: %s",
+                        mesh_data["main_router_led_status"],
+                    )
                 continue
-            
+
             # Format MAC address with colons
-            formatted_mac = ':'.join(client_mac[i:i+2] for i in range(0, 12, 2)).upper()
-            
+            formatted_mac = ":".join(
+                client_mac[i : i + 2] for i in range(0, 12, 2)
+            ).upper()
+
             # Start with JSON data if available
             client_info = {}
             if formatted_mac in json_client_data:
                 client_info = json_client_data[formatted_mac].copy()
                 _LOGGER.debug("Using JSON data for %s: %s", formatted_mac, client_info)
-            
+
             # Fetch device status for this mesh client to get additional details
-            devstatus_url = f"admin/network/mesh/client/devstatus?embedded=&client={client_mac}"
+            devstatus_url = (
+                f"admin/network/mesh/client/devstatus?embedded=&client={client_mac}"
+            )
             devstatus_html = await hass.async_add_executor_job(
                 self.get, devstatus_url, True
             )
-            
+
             # Fetch device list (connected devices) for this mesh client
-            devlist_url = f"admin/network/mesh/client/devlist?embedded=&client={client_mac}"
+            devlist_url = (
+                f"admin/network/mesh/client/devlist?embedded=&client={client_mac}"
+            )
             devlist_html = await hass.async_add_executor_job(
                 self.get, devlist_url, True
             )
-            
+
             if devstatus_html:
-                _LOGGER.debug("Got mesh client devstatus for %s (length: %d)", client_mac, len(devstatus_html))
+                _LOGGER.debug(
+                    "Got mesh client devstatus for %s (length: %d)",
+                    client_mac,
+                    len(devstatus_html),
+                )
                 # Parse HTML for additional info (backhaul, pre-hop, connected_devices count)
                 html_info = parse_mesh_client_status(devstatus_html, devlist_html)
                 if html_info:
-                    _LOGGER.debug("Parsed HTML info for %s: %s", formatted_mac, html_info)
+                    _LOGGER.debug(
+                        "Parsed HTML info for %s: %s", formatted_mac, html_info
+                    )
                     # Merge HTML data, but prefer JSON data for fields that exist in both
                     for key, value in html_info.items():
                         # For connected_devices, always use HTML value (JSON doesn't have this)
                         if key == "connected_devices":
                             client_info[key] = value
-                        elif key not in client_info or not client_info.get(key) or client_info.get(key) == "Unknown":
+                        elif (
+                            key not in client_info
+                            or not client_info.get(key)
+                            or client_info.get(key) == "Unknown"
+                        ):
                             client_info[key] = value
-            
+
             # Ensure we have required fields
             if not client_info.get("name"):
                 client_info["name"] = f"Mesh Device {client_mac[-6:]}"
             client_info["mac_address"] = formatted_mac
-            
-            _LOGGER.info("Final mesh device info for %s: name=%s, model=%s, firmware=%s, ip=%s, connected=%s", 
-                        formatted_mac, client_info.get("name"), client_info.get("model"), 
-                        client_info.get("firmware_version"), client_info.get("ip_address"),
-                        client_info.get("connected_devices"))
-            
+
+            _LOGGER.info(
+                "Final mesh device info for %s: name=%s, model=%s, firmware=%s, ip=%s, connected=%s",
+                formatted_mac,
+                client_info.get("name"),
+                client_info.get("model"),
+                client_info.get("firmware_version"),
+                client_info.get("ip_address"),
+                client_info.get("connected_devices"),
+            )
+
             # Find matching device in mesh_data or add new one
             found = False
             for mac, device in list(mesh_data.get("mesh_devices", {}).items()):
@@ -769,19 +977,25 @@ class CudyRouter:
                     found = True
                     _LOGGER.debug("Updated existing device by MAC: %s", mac)
                     break
-                elif device.get("name", "").lower() == client_info.get("name", "").lower() and mac.startswith("mesh_"):
+                elif device.get("name", "").lower() == client_info.get(
+                    "name", ""
+                ).lower() and mac.startswith("mesh_"):
                     # Found by name with placeholder MAC - remove old entry and add new one
                     mesh_data["mesh_devices"].pop(mac)
                     mesh_data["mesh_devices"][formatted_mac] = client_info
                     found = True
-                    _LOGGER.debug("Replaced placeholder device %s with real MAC %s", mac, formatted_mac)
+                    _LOGGER.debug(
+                        "Replaced placeholder device %s with real MAC %s",
+                        mac,
+                        formatted_mac,
+                    )
                     break
-            
+
             if not found:
                 # Add as new device with real MAC
                 mesh_data["mesh_devices"][formatted_mac] = client_info
                 _LOGGER.debug("Added new mesh device: %s", formatted_mac)
-        
+
         data[MODULE_MESH] = mesh_data
 
         return data
@@ -796,6 +1010,7 @@ class CudyRouter:
             Tuple of (HTTP status code, response snippet or error message)
         """
         import json
+
         session = self._get_session()
         # Ensure we're authenticated
         if self.auth_cookie:
@@ -805,19 +1020,19 @@ class CudyRouter:
                 _LOGGER.error("Failed to authenticate for mesh reboot")
                 return 0, "Authentication failed"
             session.cookies.set("sysauth", self.auth_cookie)
-            
+
         # Strip colons from MAC for API call
         mac_no_colons = mac_address.replace(":", "").upper()
-        
+
         _LOGGER.info("Initiating reboot for mesh device %s", mac_address)
-        
+
         # First, get the mesh page to get a valid token
         mesh_page_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh"
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": mesh_page_url,
         }
-        
+
         try:
             resp = session.get(mesh_page_url, timeout=15, headers=headers)
             token = _extract_hidden(resp.text, "token")
@@ -825,56 +1040,86 @@ class CudyRouter:
         except Exception as e:
             _LOGGER.error("Failed to get mesh page for reboot: %s", e)
             token = ""
-        
+
         # Try JSON endpoints first - Cudy mesh may use JSON API for reboots
         json_endpoints = [
             f"admin/network/mesh/client/reboot?client={mac_no_colons}",
             f"admin/network/mesh/reboot?client={mac_no_colons}",
             f"admin/network/mesh/node/reboot?mac={mac_no_colons}",
         ]
-        
+
         for endpoint in json_endpoints:
             page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
             try:
                 r = session.get(page_url, timeout=15, headers=headers)
-                _LOGGER.debug("Mesh reboot GET %s: status=%d, response=%s", 
-                             endpoint, r.status_code, r.text[:200] if r.text else "")
+                _LOGGER.debug(
+                    "Mesh reboot GET %s: status=%d, response=%s",
+                    endpoint,
+                    r.status_code,
+                    r.text[:200] if r.text else "",
+                )
                 # Check if response indicates success
                 if r.status_code == 200:
                     try:
-                        json_resp = json.loads(r.text) if r.text.strip().startswith('{') or r.text.strip().startswith('[') else None
-                        if json_resp and (json_resp.get("status") == "ok" or json_resp.get("result") == "success"):
-                            _LOGGER.info("Mesh reboot initiated for %s via JSON endpoint", mac_address)
+                        json_resp = (
+                            json.loads(r.text)
+                            if r.text.strip().startswith("{")
+                            or r.text.strip().startswith("[")
+                            else None
+                        )
+                        if json_resp and (
+                            json_resp.get("status") == "ok"
+                            or json_resp.get("result") == "success"
+                        ):
+                            _LOGGER.info(
+                                "Mesh reboot initiated for %s via JSON endpoint",
+                                mac_address,
+                            )
                             return r.status_code, f"Reboot initiated for {mac_address}"
                     except json.JSONDecodeError:
                         pass
             except Exception as e:
                 _LOGGER.debug("JSON endpoint %s failed: %s", endpoint, e)
-        
+
         # Try POST endpoints with form data
         form_endpoints = [
             "admin/network/mesh/client/reboot",
             "admin/network/mesh/reboot",
             "admin/network/mesh",
         ]
-        
+
         for endpoint in form_endpoints:
             page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
-            
+
             try:
                 resp = session.get(page_url, timeout=15, headers=headers)
                 if resp.status_code == 404:
                     continue
-                    
+
                 page_token = _extract_hidden(resp.text, "token") or token
-                
+
                 # Try different POST field patterns
                 post_patterns = [
-                    {"token": page_token, "client": mac_no_colons, "action": "reboot", "cbi.submit": "1"},
-                    {"token": page_token, "id": mac_no_colons, "op": "reboot", "cbi.submit": "1"},
-                    {"token": page_token, "mac": mac_no_colons, "reboot": "1", "cbi.submit": "1"},
+                    {
+                        "token": page_token,
+                        "client": mac_no_colons,
+                        "action": "reboot",
+                        "cbi.submit": "1",
+                    },
+                    {
+                        "token": page_token,
+                        "id": mac_no_colons,
+                        "op": "reboot",
+                        "cbi.submit": "1",
+                    },
+                    {
+                        "token": page_token,
+                        "mac": mac_no_colons,
+                        "reboot": "1",
+                        "cbi.submit": "1",
+                    },
                 ]
-                
+
                 for post_fields in post_patterns:
                     r = session.post(
                         page_url,
@@ -887,13 +1132,20 @@ class CudyRouter:
                         data=urllib.parse.urlencode(post_fields),
                         allow_redirects=False,
                     )
-                    _LOGGER.debug("Mesh reboot POST to %s with %s: status=%d", 
-                                 endpoint, list(post_fields.keys()), r.status_code)
-                        
+                    _LOGGER.debug(
+                        "Mesh reboot POST to %s with %s: status=%d",
+                        endpoint,
+                        list(post_fields.keys()),
+                        r.status_code,
+                    )
+
             except Exception as e:
                 _LOGGER.debug("Form endpoint %s failed: %s", endpoint, e)
-        
-        _LOGGER.warning("Mesh reboot control attempted for %s - endpoint may not be supported", mac_address)
+
+        _LOGGER.warning(
+            "Mesh reboot control attempted for %s - endpoint may not be supported",
+            mac_address,
+        )
         # Return success anyway - the device should reboot if the command worked
         return 200, f"Reboot command sent for {mac_address}"
 
@@ -916,18 +1168,24 @@ class CudyRouter:
                 _LOGGER.error("Failed to authenticate for mesh LED control")
                 return 0, "Authentication failed"
             session.cookies.set("sysauth", self.auth_cookie)
-            
+
         # Strip colons from MAC for API call
         mac_no_colons = mac_address.replace(":", "").upper()
         led_value = "1" if enabled else "0"
         led_status = "on" if enabled else "off"
-        
-        _LOGGER.info("Setting mesh LED for %s to %s via /admin/network/mesh/ledctl", mac_address, led_status)
-        
+
+        _LOGGER.info(
+            "Setting mesh LED for %s to %s via /admin/network/mesh/ledctl",
+            mac_address,
+            led_status,
+        )
+
         # Use the ledctl endpoint with the device MAC
-        ledctl_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh/ledctl/{mac_no_colons}"
+        ledctl_url = (
+            f"{self.base_url}/cgi-bin/luci/admin/network/mesh/ledctl/{mac_no_colons}"
+        )
         panel_url = f"{self.base_url}/cgi-bin/luci/admin/panel"
-        
+
         try:
             # First get the batled page to get a valid token
             batled_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh/batled"
@@ -936,29 +1194,31 @@ class CudyRouter:
                 "Referer": panel_url,
                 "X-Requested-With": "XMLHttpRequest",
             }
-            
+
             resp = session.get(batled_url, timeout=15, headers=headers)
             html = resp.text
-            
-            _LOGGER.debug("Batled page HTTP status: %d, length: %d", resp.status_code, len(html))
-            
+
+            _LOGGER.debug(
+                "Batled page HTTP status: %d, length: %d", resp.status_code, len(html)
+            )
+
             # Check if we got a login page instead
-            if 'luci_password' in html or 'cbi-modal-auth' in html:
+            if "luci_password" in html or "cbi-modal-auth" in html:
                 _LOGGER.warning("Batled page returned login form - re-authenticating")
                 if not self.authenticate():
                     return 0, "Re-authentication failed"
                 session.cookies.set("sysauth", self.auth_cookie)
                 resp = session.get(batled_url, timeout=15, headers=headers)
                 html = resp.text
-            
+
             token = _extract_hidden(html, "token")
-            
+
             if not token:
                 _LOGGER.error("No token found on batled page for mesh LED control")
                 return 0, "No token on batled page"
-                
+
             _LOGGER.debug("Got token for mesh LED control: %s...", token[:10])
-            
+
             # Use multipart form data as the router expects
             # Fields: token, cbi.submit, cbi.toggle, cbi.cbe.table.1.ledstatus, cbid.table.1.ledstatus
             form_data = {
@@ -968,9 +1228,9 @@ class CudyRouter:
                 "cbi.cbe.table.1.ledstatus": (None, led_value),
                 "cbid.table.1.ledstatus": (None, led_value),
             }
-            
+
             _LOGGER.debug("Posting to %s with ledstatus=%s", ledctl_url, led_value)
-            
+
             r = session.post(
                 ledctl_url,
                 timeout=30,
@@ -983,16 +1243,22 @@ class CudyRouter:
                 files=form_data,  # Use files= for multipart/form-data
                 allow_redirects=False,
             )
-            
-            _LOGGER.debug("Mesh LED control POST status: %d, response: %s", r.status_code, r.text[:200] if r.text else "empty")
-            
+
+            _LOGGER.debug(
+                "Mesh LED control POST status: %d, response: %s",
+                r.status_code,
+                r.text[:200] if r.text else "empty",
+            )
+
             if r.status_code == 200:
-                _LOGGER.info("Mesh LED set to %s for %s successfully", led_status, mac_address)
+                _LOGGER.info(
+                    "Mesh LED set to %s for %s successfully", led_status, mac_address
+                )
                 return r.status_code, f"LED {led_status} for {mac_address}"
             else:
                 _LOGGER.warning("Mesh LED control returned status %d", r.status_code)
                 return r.status_code, f"LED control returned {r.status_code}"
-                        
+
         except Exception as e:
             _LOGGER.error("Mesh LED control failed: %s", e)
             return 0, str(e)[:220]
@@ -1015,16 +1281,20 @@ class CudyRouter:
                 _LOGGER.error("Failed to authenticate for main router LED control")
                 return 0, "Authentication failed"
             session.cookies.set("sysauth", self.auth_cookie)
-            
+
         led_value = "1" if enabled else "0"
         led_status = "on" if enabled else "off"
-        
-        _LOGGER.info("Setting main router LED to %s via /admin/network/mesh/ledctl", led_status)
-        
+
+        _LOGGER.info(
+            "Setting main router LED to %s via /admin/network/mesh/ledctl", led_status
+        )
+
         # Main router uses ID 000000000000 for LED control
-        ledctl_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh/ledctl/000000000000"
+        ledctl_url = (
+            f"{self.base_url}/cgi-bin/luci/admin/network/mesh/ledctl/000000000000"
+        )
         panel_url = f"{self.base_url}/cgi-bin/luci/admin/panel"
-        
+
         try:
             # First get the batled page to get a valid token
             batled_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh/batled"
@@ -1033,29 +1303,31 @@ class CudyRouter:
                 "Referer": panel_url,
                 "X-Requested-With": "XMLHttpRequest",
             }
-            
+
             resp = session.get(batled_url, timeout=15, headers=headers)
             html = resp.text
-            
-            _LOGGER.debug("Batled page HTTP status: %d, length: %d", resp.status_code, len(html))
-            
+
+            _LOGGER.debug(
+                "Batled page HTTP status: %d, length: %d", resp.status_code, len(html)
+            )
+
             # Check if we got a login page instead
-            if 'luci_password' in html or 'cbi-modal-auth' in html:
+            if "luci_password" in html or "cbi-modal-auth" in html:
                 _LOGGER.warning("Batled page returned login form - re-authenticating")
                 if not self.authenticate():
                     return 0, "Re-authentication failed"
                 session.cookies.set("sysauth", self.auth_cookie)
                 resp = session.get(batled_url, timeout=15, headers=headers)
                 html = resp.text
-            
+
             token = _extract_hidden(html, "token")
-            
+
             if not token:
                 _LOGGER.error("No token found on batled page")
                 return 0, "No token on batled page"
-                
+
             _LOGGER.debug("Got token for LED control: %s...", token[:10])
-            
+
             # Use multipart form data as the router expects
             # Fields: token, cbi.submit, cbi.toggle, cbi.cbe.table.1.ledstatus, cbid.table.1.ledstatus
             form_data = {
@@ -1065,9 +1337,9 @@ class CudyRouter:
                 "cbi.cbe.table.1.ledstatus": (None, led_value),
                 "cbid.table.1.ledstatus": (None, led_value),
             }
-            
+
             _LOGGER.debug("Posting to %s with ledstatus=%s", ledctl_url, led_value)
-            
+
             r = session.post(
                 ledctl_url,
                 timeout=30,
@@ -1080,16 +1352,20 @@ class CudyRouter:
                 files=form_data,  # Use files= for multipart/form-data
                 allow_redirects=False,
             )
-            
-            _LOGGER.debug("LED control POST status: %d, response: %s", r.status_code, r.text[:200] if r.text else "empty")
-            
+
+            _LOGGER.debug(
+                "LED control POST status: %d, response: %s",
+                r.status_code,
+                r.text[:200] if r.text else "empty",
+            )
+
             if r.status_code == 200:
                 _LOGGER.info("Main router LED set to %s successfully", led_status)
                 return r.status_code, f"LED {led_status} for main router"
             else:
                 _LOGGER.warning("LED control returned status %d", r.status_code)
                 return r.status_code, f"LED control returned {r.status_code}"
-                        
+
         except Exception as e:
             _LOGGER.error("LED control failed: %s", e)
             return 0, str(e)[:220]
@@ -1111,13 +1387,13 @@ class CudyRouter:
             if not self.authenticate():
                 return None
             session.cookies.set("sysauth", self.auth_cookie)
-            
+
         endpoints = [
             "admin/network/mesh/led",
             "admin/network/mesh/settings",
             "admin/network/mesh/status",
         ]
-        
+
         for endpoint in endpoints:
             page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
             headers = {
@@ -1129,26 +1405,38 @@ class CudyRouter:
                 resp = session.get(page_url, timeout=15, headers=headers)
                 if resp.status_code == 404:
                     continue
-                    
+
                 html = resp.text
-                
+
                 # Look for LED state indicators in HTML
                 # Check for checked checkbox or selected option
                 if mac_address.lower() in html.lower() or "led" in html.lower():
                     # Check various patterns for LED on state
-                    if re.search(r'led["\s]*[:=]\s*["\']?(?:on|1|true|enabled)', html, re.IGNORECASE):
+                    if re.search(
+                        r'led["\s]*[:=]\s*["\']?(?:on|1|true|enabled)',
+                        html,
+                        re.IGNORECASE,
+                    ):
                         return True
-                    if re.search(r'led["\s]*[:=]\s*["\']?(?:off|0|false|disabled)', html, re.IGNORECASE):
+                    if re.search(
+                        r'led["\s]*[:=]\s*["\']?(?:off|0|false|disabled)',
+                        html,
+                        re.IGNORECASE,
+                    ):
                         return False
                     # Check for checked checkbox
-                    if re.search(r'name="[^"]*led[^"]*"[^>]*checked', html, re.IGNORECASE):
+                    if re.search(
+                        r'name="[^"]*led[^"]*"[^>]*checked', html, re.IGNORECASE
+                    ):
                         return True
-                    if re.search(r'name="[^"]*led[^"]*"[^>]*(?!checked)', html, re.IGNORECASE):
+                    if re.search(
+                        r'name="[^"]*led[^"]*"[^>]*(?!checked)', html, re.IGNORECASE
+                    ):
                         return False
-                        
+
             except Exception as e:
                 _LOGGER.debug("Get mesh LED state on %s failed: %s", endpoint, e)
                 continue
-        
+
         # Default to True (LEDs on) if we can't determine state
         return True

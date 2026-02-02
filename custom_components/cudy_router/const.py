@@ -11,6 +11,8 @@ MODULE_WIFI_2G = "wifi_2g"
 MODULE_WIFI_5G = "wifi_5g"
 MODULE_LAN = "lan"
 MODULE_MESH = "mesh"
+MODULE_VPN = "vpn"
+MODULE_WAN = "wan"
 
 SECTION_DETAILED = "detailed"
 SECTION_MESH_DEVICES = "mesh_devices"

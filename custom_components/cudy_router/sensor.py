@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    CONF_MODEL,
     SIGNAL_STRENGTH_DECIBELS,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfDataRate,
@@ -31,10 +32,12 @@ from .const import (
     MODULE_DEVICES,
     MODULE_MESH,
     MODULE_MODEM,
+    MODULE_WAN,
     OPTIONS_DEVICELIST,
     SECTION_DETAILED,
 )
 from .coordinator import CudyRouterDataUpdateCoordinator
+from .features import existing_feature
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,6 +56,7 @@ SIGNAL_SENSOR = CudyRouterSensorEntityDescription(
     name_suffix="Signal strength",
     state_class=SensorStateClass.MEASUREMENT,
 )
+
 NETWORK_SENSOR = CudyRouterSensorEntityDescription(
     key="network",
     module="modem",
@@ -227,6 +231,66 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         device_class=SensorDeviceClass.DATA_SIZE,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
+    # New wan sensors
+    (MODULE_WAN, "protocol"): CudyRouterSensorEntityDescription(
+        key="protocol",
+        module=MODULE_WAN,
+        name_suffix="Protocol",
+    ),
+    (MODULE_WAN, "connected_time"): CudyRouterSensorEntityDescription(
+        key="connected_time",
+        module=MODULE_WAN,
+        name_suffix="Connected time",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    (MODULE_WAN, "mac_address"): CudyRouterSensorEntityDescription(
+        key="mac_address",
+        module=MODULE_WAN,
+        name_suffix="WAN MAC",
+    ),
+    (MODULE_WAN, "public_ip"): CudyRouterSensorEntityDescription(
+        key="public_ip",
+        module=MODULE_WAN,
+        name_suffix="Public IP",
+    ),
+    (MODULE_WAN, "wan_ip"): CudyRouterSensorEntityDescription(
+        key="wan_ip",
+        module=MODULE_WAN,
+        name_suffix="WAN IP",
+    ),
+    (MODULE_WAN, "subnet_mask"): CudyRouterSensorEntityDescription(
+        key="subnet_mask",
+        module=MODULE_WAN,
+        name_suffix="Subnet mask",
+    ),
+    (MODULE_WAN, "gateway"): CudyRouterSensorEntityDescription(
+        key="gateway",
+        module=MODULE_WAN,
+        name_suffix="Gateway",
+    ),
+    (MODULE_WAN, "dns"): CudyRouterSensorEntityDescription(
+        key="dns",
+        module=MODULE_WAN,
+        name_suffix="DNS",
+    ),
+    (MODULE_WAN, "session_upload"): CudyRouterSensorEntityDescription(
+        key="session_upload",
+        module=MODULE_WAN,
+        name_suffix="Session upload",
+        native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    (MODULE_WAN, "session_download"): CudyRouterSensorEntityDescription(
+        key="session_download",
+        module=MODULE_WAN,
+        name_suffix="Session download",
+        native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
     # System sensors
     ("system", "uptime"): CudyRouterSensorEntityDescription(
         key="uptime",
@@ -385,11 +449,13 @@ DEVICE_DOWNLOAD_SENSOR = CudyRouterSensorEntityDescription(
 )
 
 # Mesh device sensor descriptions
+
 MESH_DEVICE_NAME_SENSOR = CudyRouterSensorEntityDescription(
     key="name",
     module="mesh",
     name_suffix="Name",
 )
+
 
 MESH_DEVICE_MODEL_SENSOR = CudyRouterSensorEntityDescription(
     key="model",
@@ -397,11 +463,13 @@ MESH_DEVICE_MODEL_SENSOR = CudyRouterSensorEntityDescription(
     name_suffix="Model",
 )
 
+
 MESH_DEVICE_MAC_SENSOR = CudyRouterSensorEntityDescription(
     key="mac_address",
     module="mesh",
     name_suffix="MAC address",
 )
+
 
 MESH_DEVICE_FIRMWARE_SENSOR = CudyRouterSensorEntityDescription(
     key="firmware_version",
@@ -454,12 +522,20 @@ async def async_setup_entry(
         list(coordinator.data.keys()) if coordinator.data else "None",
     )
 
+    device_model: str = config_entry.data[CONF_MODEL]
+
     # Add sensors based on available data from coordinator
     if coordinator.data:
         for module, sensors in coordinator.data.items():
             if not isinstance(sensors, dict):
                 continue
+
+            if module in ["modem", "data_usage", "sms"]:
+                continue
+
             for sensor_label in sensors:
+                if existing_feature(device_model, module, sensor_label) is False:
+                    continue
                 sensor_description = SENSOR_TYPES.get((module, sensor_label))
                 if sensor_description:
                     entities.append(
@@ -472,12 +548,15 @@ async def async_setup_entry(
                     )
 
     # Always add signal and network sensors
-    entities.append(
-        CudyRouterSignalSensor(coordinator, router_name, "signal", SIGNAL_SENSOR)
-    )
-    entities.append(
-        CudyRouterSignalSensor(coordinator, router_name, "network", NETWORK_SENSOR)
-    )
+    if existing_feature(device_model, "modem", "signal") is True:
+        entities.append(
+            CudyRouterSignalSensor(coordinator, router_name, "signal", SIGNAL_SENSOR)
+        )
+
+    if existing_feature(device_model, "modem", "network") is True:
+        entities.append(
+            CudyRouterSignalSensor(coordinator, router_name, "network", NETWORK_SENSOR)
+        )
 
     # Add device-specific sensors based on options
     options = config_entry.options
