@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant
 from .const import (
     MODULE_DATA_USAGE,
     MODULE_DEVICES,
+    MODULE_DHCP,
     MODULE_LAN,
     MODULE_MESH,
     MODULE_MODEM,
@@ -33,6 +34,7 @@ from .parser import (
     parse_data_usage,
     parse_devices,
     parse_devices_status,
+    parse_dhcp_status,
     parse_lan_status,
     parse_mesh_client_status,
     parse_mesh_devices,
@@ -766,7 +768,7 @@ class CudyRouter:
         # VPN status
         data[MODULE_VPN] = parse_vpn_status(
             await hass.async_add_executor_job(
-                self.get, "admin/network/vpn/openvpns/status?detail="
+                self.get, "admin/network/vpn/openvpns/status?status="
             )
         )
 
@@ -774,6 +776,13 @@ class CudyRouter:
         data[MODULE_WAN] = parse_wan_status(
             await hass.async_add_executor_job(
                 self.get, "admin/network/wan/status?detail=1&iface=wan"
+            )
+        )
+
+        # DHCP status
+        data[MODULE_DHCP] = parse_dhcp_status(
+            await hass.async_add_executor_job(
+                self.get, "admin/services/dhcp/status?detail=1"
             )
         )
 

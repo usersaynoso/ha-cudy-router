@@ -536,12 +536,10 @@ def parse_vpn_status(input_html: str) -> dict[str, Any]:
     """Parses VPN status page."""
     raw_data = parse_tables(input_html)
 
-    # return {
-    #     "ip_address": {"value": raw_data.get("IP Address")},
-    #     "mac_address": {"value": raw_data.get("MAC-Address")},
-    # }
-
-    return {}
+    return {
+        "protocol": {"value": raw_data.get("Protocol")},
+        "devices": {"value": raw_data.get("Devices")},
+    }
 
 
 def parse_wan_status(input_html: str) -> dict[str, Any]:
@@ -559,19 +557,33 @@ def parse_wan_status(input_html: str) -> dict[str, Any]:
         session_upload = parse_data_size(parts[0].strip())
         session_download = parse_data_size(parts[1].strip())
 
+    public_ip: str = str(raw_data.get("Public IP")).replace("*", "").strip()
+    connected_time: str = get_seconds_duration(raw_data.get("Connected Time"))
+
     return {
         "protocol": {"value": raw_data.get("Protocol")},
-        "connected_time": {
-            "value": get_seconds_duration(raw_data.get("Connected Time"))
-        },
+        "connected_time": {"value": connected_time},
         "mac_address": {"value": raw_data.get("MAC-Address")},
-        "public_ip": {"value": raw_data.get("Public IP")},
+        "public_ip": {"value": public_ip},
         "wan_ip": {"value": raw_data.get("IP Address")},
         "subnet_mask": {"value": raw_data.get("Subnet Mask")},
         "gateway": {"value": raw_data.get("Gateway")},
         "dns": {"value": raw_data.get("DNS")},
         "session_upload": {"value": session_upload},
         "session_download": {"value": session_download},
+    }
+
+
+def parse_dhcp_status(input_html: str) -> dict[str, Any]:
+    """Parses DHCP status page."""
+    raw_data = parse_tables(input_html)
+
+    return {
+        "dhcp_ip_start": {"value": raw_data.get("IP Start")},
+        "dhcp_ip_end": {"value": raw_data.get("IP End")},
+        "dhcp_prefered_dns": {"value": raw_data.get("Preferred DNS")},
+        "dhcp_default_gateway": {"value": raw_data.get("Default Gateway")},
+        "dhcp_leasetime": {"value": raw_data.get("Leasetime")},
     }
 
 
