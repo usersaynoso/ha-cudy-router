@@ -1,15 +1,19 @@
 """Coordinator for Cudy Router integration."""
+
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
 import logging
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_SCAN_INTERVAL
+from homeassistant.const import CONF_HOST, CONF_MODEL, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .const import DOMAIN
 from .router import CudyRouter
@@ -44,7 +48,11 @@ class CudyRouterDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Get the latest data from the router."""
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT):
-                return await self.api.get_data(self.hass, self.config_entry.options)
+                return await self.api.get_data(
+                    self.hass,
+                    self.config_entry.options,
+                    self.config_entry.data[CONF_MODEL],
+                )
         except TimeoutError as err:
             raise UpdateFailed(f"Timeout communicating with router: {err}") from err
         except Exception as err:

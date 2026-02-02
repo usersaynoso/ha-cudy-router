@@ -28,6 +28,7 @@ from .const import (
     MODULE_WIFI_5G,
     OPTIONS_DEVICELIST,
 )
+from .features import existing_feature
 from .parser import (
     parse_data_usage,
     parse_devices,
@@ -668,16 +669,17 @@ class CudyRouter:
             return 0, str(e)[:220]
 
     async def get_data(
-        self, hass: HomeAssistant, options: dict[str, Any]
+        self, hass: HomeAssistant, options: dict[str, Any], device_model: str
     ) -> dict[str, Any]:
         """Retrieves data from the router"""
 
         data: dict[str, Any] = {}
 
         # Modem status (5G/LTE info)
-        data[MODULE_MODEM] = parse_modem_info(
-            f"{await hass.async_add_executor_job(self.get, 'admin/network/gcom/status')}{await hass.async_add_executor_job(self.get, 'admin/network/gcom/status?detail=1&iface=4g')}"
-        )
+        if existing_feature(device_model, MODULE_MODEM, "signal") is True:
+            data[MODULE_MODEM] = parse_modem_info(
+                f"{await hass.async_add_executor_job(self.get, 'admin/network/gcom/status')}{await hass.async_add_executor_job(self.get, 'admin/network/gcom/status?detail=1&iface=4g')}"
+            )
 
         # Connected devices
         data[MODULE_DEVICES] = parse_devices(
@@ -724,18 +726,23 @@ class CudyRouter:
         )
 
         # Data usage statistics
-        data[MODULE_DATA_USAGE] = parse_data_usage(
-            await hass.async_add_executor_job(
-                self.get, "admin/network/gcom/statistics?iface=4g"
+        if (
+            existing_feature(device_model, MODULE_DATA_USAGE, "current_traffic")
+            is True
+        ):
+            data[MODULE_DATA_USAGE] = parse_data_usage(
+                await hass.async_add_executor_job(
+                    self.get, "admin/network/gcom/statistics?iface=4g"
+                )
             )
-        )
 
         # SMS status
-        data[MODULE_SMS] = parse_sms_status(
-            await hass.async_add_executor_job(
-                self.get, "admin/network/gcom/sms/status"
+        if existing_feature(device_model, MODULE_SMS, "inbox_count") is True:
+            data[MODULE_SMS] = parse_sms_status(
+                await hass.async_add_executor_job(
+                    self.get, "admin/network/gcom/sms/status"
+                )
             )
-        )
 
         # WiFi 2.4G status
         data[MODULE_WIFI_2G] = parse_wifi_status(
