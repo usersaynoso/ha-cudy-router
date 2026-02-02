@@ -692,7 +692,7 @@ class CudyRouter:
         # Add device client counts to the devices module
         # Try multiple possible endpoints for device status
         devices_status_html = await hass.async_add_executor_job(
-            self.get, "admin/network/devices/status"
+            self.get, "admin/network/devices/status?detail=1"
         )
         # Also try the main panel which sometimes has client counts
         if not devices_status_html or "client" not in devices_status_html.lower():

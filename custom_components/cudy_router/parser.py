@@ -581,7 +581,7 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
 
     _LOGGER.debug("Devices status parsed keys: %s", list(raw_data.keys()))
     # Log actual values for debugging
-    for k in ["2.4G WiFi", "5G WiFi", "2.4G Clients", "5G Clients", "Total"]:
+    for k in ["2.4G WiFi", "5G WiFi", "2.4G Clients", "5G Clients", "Wired", "Total"]:
         if k in raw_data:
             _LOGGER.debug("Devices status %s = '%s'", k, raw_data.get(k))
 
@@ -612,6 +612,7 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
         or as_int(raw_data.get("Wi-Fi 5G"))
         or as_int(raw_data.get("5G WiFi"))  # Cudy P5 format
     )
+    wired = as_int(raw_data.get("Wired"))
     total = (
         as_int(raw_data.get("Total Clients"))
         or as_int(raw_data.get("Total clients"))
@@ -660,18 +661,20 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
 
     # Calculate total if not provided explicitly but we have 2G and 5G counts
     if total is None and (wifi_2g is not None or wifi_5g is not None):
-        total = (wifi_2g or 0) + (wifi_5g or 0)
+        total = (wifi_2g or 0) + (wifi_5g or 0) + (wired or 0)
 
     _LOGGER.debug(
-        "Devices status parsed: wifi_2g=%s, wifi_5g=%s, total=%s",
+        "Devices status parsed: wifi_2g=%s, wifi_5g=%s, wired=%s, total=%s",
         wifi_2g,
         wifi_5g,
+        wired,
         total,
     )
 
     return {
         "wifi_2g_clients": {"value": wifi_2g},
         "wifi_5g_clients": {"value": wifi_5g},
+        "wired_clients": {"value": wired},
         "total_clients": {"value": total},
     }
 
