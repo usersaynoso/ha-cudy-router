@@ -13,6 +13,7 @@ MODULE_LAN = "lan"
 MODULE_MESH = "mesh"
 MODULE_VPN = "vpn"
 MODULE_WAN = "wan"
+MODULE_DHCP = "dhcp"
 
 SECTION_DETAILED = "detailed"
 SECTION_MESH_DEVICES = "mesh_devices"

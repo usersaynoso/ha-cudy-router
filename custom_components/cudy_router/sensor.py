@@ -30,8 +30,10 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
     MODULE_DEVICES,
+    MODULE_DHCP,
     MODULE_MESH,
     MODULE_MODEM,
+    MODULE_VPN,
     MODULE_WAN,
     OPTIONS_DEVICELIST,
     SECTION_DETAILED,
@@ -126,6 +128,7 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module="devices",
         name_suffix="Device count",
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:devices",
     ),
     ("devices", "top_downloader_speed"): CudyRouterSensorEntityDescription(
         key="top_downloader_speed",
@@ -134,16 +137,19 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         device_class=SensorDeviceClass.DATA_RATE,
         native_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:star-check",
     ),
     ("devices", "top_downloader_mac"): CudyRouterSensorEntityDescription(
         key="top_downloader_mac",
         module="devices",
         name_suffix="Top downloader MAC",
+        icon="mdi:star-check",
     ),
     ("devices", "top_downloader_hostname"): CudyRouterSensorEntityDescription(
         key="top_downloader_hostname",
         module="devices",
         name_suffix="Top downloader hostname",
+        icon="mdi:star-check",
     ),
     ("devices", "top_uploader_speed"): CudyRouterSensorEntityDescription(
         key="top_uploader_speed",
@@ -152,16 +158,19 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         device_class=SensorDeviceClass.DATA_RATE,
         native_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:star-check-outline",
     ),
     ("devices", "top_uploader_mac"): CudyRouterSensorEntityDescription(
         key="top_uploader_mac",
         module="devices",
         name_suffix="Top uploader MAC",
+        icon="mdi:star-check-outline",
     ),
     ("devices", "top_uploader_hostname"): CudyRouterSensorEntityDescription(
         key="top_uploader_hostname",
         module="devices",
         name_suffix="Top uploader hostname",
+        icon="mdi:star-check-outline",
     ),
     ("devices", "total_down_speed"): CudyRouterSensorEntityDescription(
         key="total_down_speed",
@@ -236,6 +245,7 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         key="protocol",
         module=MODULE_WAN,
         name_suffix="Protocol",
+        icon="mdi:protocol",
     ),
     (MODULE_WAN, "connected_time"): CudyRouterSensorEntityDescription(
         key="connected_time",
@@ -249,31 +259,37 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         key="mac_address",
         module=MODULE_WAN,
         name_suffix="WAN MAC",
+        icon="mdi:wan",
     ),
     (MODULE_WAN, "public_ip"): CudyRouterSensorEntityDescription(
         key="public_ip",
         module=MODULE_WAN,
         name_suffix="Public IP",
+        icon="mdi:ip",
     ),
     (MODULE_WAN, "wan_ip"): CudyRouterSensorEntityDescription(
         key="wan_ip",
         module=MODULE_WAN,
         name_suffix="WAN IP",
+        icon="mdi:ip",
     ),
     (MODULE_WAN, "subnet_mask"): CudyRouterSensorEntityDescription(
         key="subnet_mask",
         module=MODULE_WAN,
         name_suffix="Subnet mask",
+        icon="mdi:ip",
     ),
     (MODULE_WAN, "gateway"): CudyRouterSensorEntityDescription(
         key="gateway",
         module=MODULE_WAN,
         name_suffix="Gateway",
+        icon="mdi:router-network",
     ),
     (MODULE_WAN, "dns"): CudyRouterSensorEntityDescription(
         key="dns",
         module=MODULE_WAN,
         name_suffix="DNS",
+        icon="mdi:dns",
     ),
     (MODULE_WAN, "session_upload"): CudyRouterSensorEntityDescription(
         key="session_upload",
@@ -304,11 +320,13 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         key="local_time",
         module="system",
         name_suffix="Local time",
+        icon="mdi:clock",
     ),
     ("system", "firmware_version"): CudyRouterSensorEntityDescription(
         key="firmware_version",
         module="system",
         name_suffix="Firmware version",
+        icon="mdi:label",
     ),
     # Data usage sensors
     ("data_usage", "current_traffic"): CudyRouterSensorEntityDescription(
@@ -359,35 +377,41 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         key="ssid",
         module="wifi_2g",
         name_suffix="WiFi 2.4G SSID",
+        icon="mdi:wifi",
     ),
     ("wifi_2g", "channel"): CudyRouterSensorEntityDescription(
         key="channel",
         module="wifi_2g",
         name_suffix="WiFi 2.4G channel",
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:wifi",
     ),
     # WiFi 5G sensors
     ("wifi_5g", "ssid"): CudyRouterSensorEntityDescription(
         key="ssid",
         module="wifi_5g",
         name_suffix="WiFi 5G SSID",
+        icon="mdi:wifi",
     ),
     ("wifi_5g", "channel"): CudyRouterSensorEntityDescription(
         key="channel",
         module="wifi_5g",
         name_suffix="WiFi 5G channel",
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:wifi",
     ),
     # LAN sensors
     ("lan", "ip_address"): CudyRouterSensorEntityDescription(
         key="ip_address",
         module="lan",
         name_suffix="LAN IP",
+        icon="mdi:ip",
     ),
     ("lan", "mac_address"): CudyRouterSensorEntityDescription(
         key="mac_address",
         module="lan",
         name_suffix="LAN MAC",
+        icon="mdi:lan",
     ),
     # Devices status sensors (client counts)
     ("devices", "wifi_2g_clients"): CudyRouterSensorEntityDescription(
@@ -395,24 +419,28 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module="devices",
         name_suffix="WiFi 2.4G clients",
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:account",
     ),
     ("devices", "wifi_5g_clients"): CudyRouterSensorEntityDescription(
         key="wifi_5g_clients",
         module="devices",
         name_suffix="WiFi 5G clients",
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:account",
     ),
     ("devices", "wired_clients"): CudyRouterSensorEntityDescription(
         key="wired_clients",
         module="devices",
         name_suffix="Wired clients",
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:account",
     ),
     ("devices", "total_clients"): CudyRouterSensorEntityDescription(
         key="total_clients",
         module="devices",
         name_suffix="Total clients",
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:account-group",
     ),
     # Mesh sensors
     ("mesh", "mesh_count"): CudyRouterSensorEntityDescription(
@@ -420,9 +448,51 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module="mesh",
         name_suffix="Mesh devices",
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:table-network",
+    ),
+    (MODULE_VPN, "protocol"): CudyRouterSensorEntityDescription(
+        key="protocol",
+        module=MODULE_VPN,
+        name_suffix="VPN protocol",
+        icon="mdi:protocol",
+    ),
+    (MODULE_VPN, "devices"): CudyRouterSensorEntityDescription(
+        key="devices",
+        module=MODULE_VPN,
+        name_suffix="VPN clients",
+        icon="mdi:account-star",
+    ),
+    (MODULE_DHCP, "dhcp_ip_start"): CudyRouterSensorEntityDescription(
+        key="dhcp_ip_start",
+        module=MODULE_DHCP,
+        name_suffix="IP Start",
+        icon="mdi:ip",
+    ),
+    (MODULE_DHCP, "dhcp_ip_end"): CudyRouterSensorEntityDescription(
+        key="dhcp_ip_end",
+        module=MODULE_DHCP,
+        name_suffix="IP End",
+        icon="mdi:ip",
+    ),
+    (MODULE_DHCP, "dhcp_prefered_dns"): CudyRouterSensorEntityDescription(
+        key="dhcp_prefered_dns",
+        module=MODULE_DHCP,
+        name_suffix="Preferred DNS",
+        icon="mdi:dns",
+    ),
+    (MODULE_DHCP, "dhcp_default_gateway"): CudyRouterSensorEntityDescription(
+        key="dhcp_default_gateway",
+        module=MODULE_DHCP,
+        name_suffix="Default Gateway",
+        icon="mdi:router-network",
+    ),
+    (MODULE_DHCP, "dhcp_leasetime"): CudyRouterSensorEntityDescription(
+        key="dhcp_leasetime",
+        module=MODULE_DHCP,
+        name_suffix="Leasetime",
+        icon="mdi:timer",
     ),
 }
-
 
 DEVICE_MAC_SENSOR = CudyRouterSensorEntityDescription(
     key="mac",
@@ -462,20 +532,17 @@ MESH_DEVICE_NAME_SENSOR = CudyRouterSensorEntityDescription(
     name_suffix="Name",
 )
 
-
 MESH_DEVICE_MODEL_SENSOR = CudyRouterSensorEntityDescription(
     key="model",
     module="mesh",
     name_suffix="Model",
 )
 
-
 MESH_DEVICE_MAC_SENSOR = CudyRouterSensorEntityDescription(
     key="mac_address",
     module="mesh",
     name_suffix="MAC address",
 )
-
 
 MESH_DEVICE_FIRMWARE_SENSOR = CudyRouterSensorEntityDescription(
     key="firmware_version",
@@ -495,6 +562,7 @@ MESH_DEVICE_IP_SENSOR = CudyRouterSensorEntityDescription(
     key="ip_address",
     module="mesh",
     name_suffix="IP address",
+    icon="mdi:ip",
 )
 
 MESH_DEVICE_CONNECTED_SENSOR = CudyRouterSensorEntityDescription(
