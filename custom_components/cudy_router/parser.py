@@ -3,7 +3,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Tuple
 
 from bs4 import BeautifulSoup
 from dateutil.relativedelta import relativedelta
@@ -204,9 +204,7 @@ def get_band(raw_band_info: str):
         return None
 
     # Pattern 1: "BAND 3 / 20 MHz" or "BAND3 / 20MHz"
-    match = re.compile(
-        r".*BAND\s*(?P<band>\d+)\s*/\s*(?P<bandwidth>\d+)\s*MHz.*", re.IGNORECASE
-    ).match(raw_band_info)
+    match = re.compile(r".*BAND\s*(?P<band>\d+)\s*/\s*(?P<bandwidth>\d+)\s*MHz.*", re.IGNORECASE).match(raw_band_info)
     if match:
         return f"B{match.group('band')}"
 
@@ -216,9 +214,7 @@ def get_band(raw_band_info: str):
         return f"B{match.group(1)}"
 
     # Pattern 3: "LTE Band 3" or "NR Band 78"
-    match = re.compile(r"(?:LTE|NR|5G)?\s*Band\s*(\d+)", re.IGNORECASE).search(
-        raw_band_info
-    )
+    match = re.compile(r"(?:LTE|NR|5G)?\s*Band\s*(\d+)", re.IGNORECASE).search(raw_band_info)
     if match:
         return f"B{match.group(1)}"
 
@@ -240,9 +236,7 @@ def get_seconds_duration(raw_duration: str) -> int:
     for i, part in enumerate(duration_parts):
         if part.count(":") == 2:
             hours, minutes, seconds = part.split(":")
-            duration += relativedelta(
-                hours=as_int(hours), minutes=as_int(minutes), seconds=as_int(seconds)
-            )
+            duration += relativedelta(hours=as_int(hours), minutes=as_int(minutes), seconds=as_int(seconds))
         elif i == 0:
             continue
         elif part.startswith("year"):
@@ -262,14 +256,12 @@ def parse_devices(input_html: str, device_list_str: str) -> dict[str, Any]:
     """Parses devices page"""
 
     devices = get_all_devices(input_html)
-    data = {"device_count": {"value": len(devices)}}
+    data = {}
     if devices:
         top_download_device = max(devices, key=lambda item: item.get("down_speed"))
         data["top_downloader_speed"] = {"value": top_download_device.get("down_speed")}
         data["top_downloader_mac"] = {"value": top_download_device.get("mac")}
-        data["top_downloader_hostname"] = {
-            "value": top_download_device.get("hostname")
-        }
+        data["top_downloader_hostname"] = {"value": top_download_device.get("hostname")}
         top_upload_device = max(devices, key=lambda item: item.get("up_speed"))
         data["top_uploader_speed"] = {"value": top_upload_device.get("up_speed")}
         data["top_uploader_mac"] = {"value": top_upload_device.get("mac")}
@@ -283,12 +275,8 @@ def parse_devices(input_html: str, device_list_str: str) -> dict[str, Any]:
             if device.get("hostname") in device_list:
                 data[SECTION_DETAILED][device.get("hostname")] = device
 
-        data["total_down_speed"] = {
-            "value": sum(device.get("down_speed") or 0 for device in devices)
-        }
-        data["total_up_speed"] = {
-            "value": sum(device.get("up_speed") or 0 for device in devices)
-        }
+        data["total_down_speed"] = {"value": sum(device.get("down_speed") or 0 for device in devices)}
+        data["total_up_speed"] = {"value": sum(device.get("up_speed") or 0 for device in devices)}
     return data
 
 
@@ -300,16 +288,9 @@ def parse_modem_info(input_html: str) -> dict[str, Any]:
 
     # Try to get band info from various possible keys
     band_value = (
-        raw_data.get("Band")
-        or raw_data.get("Current Band")
-        or raw_data.get("LTE Band")
-        or raw_data.get("Active Band")
+        raw_data.get("Band") or raw_data.get("Current Band") or raw_data.get("LTE Band") or raw_data.get("Active Band")
     )
-    dl_bandwidth = (
-        raw_data.get("DL Bandwidth")
-        or raw_data.get("Bandwidth")
-        or raw_data.get("DL BW")
-    )
+    dl_bandwidth = raw_data.get("DL Bandwidth") or raw_data.get("Bandwidth") or raw_data.get("DL BW")
 
     pcc = raw_data.get("PCC") or (
         f"BAND {band_value} / {dl_bandwidth}"
@@ -321,25 +302,20 @@ def parse_modem_info(input_html: str) -> dict[str, Any]:
     scc3 = raw_data.get("SCC3")
     scc4 = raw_data.get("SCC4")
 
-    # Parse upload/download from "51.60 MB / 368.07 MB" format
-    upload_download = (
-        raw_data.get("Upload / Download") or raw_data.get("Upload/Download") or ""
-    )
     session_upload = None
     session_download = None
-    if " / " in upload_download:
-        parts = upload_download.split(" / ")
-        session_upload = parse_data_size(parts[0].strip())
-        session_download = parse_data_size(parts[1].strip())
+
+    # Parse upload/download from "51.60 MB / 368.07 MB" format
+    (session_upload, session_download) = get_upload_download_values(
+        raw_data.get("Upload / Download") or raw_data.get("Upload/Download") or ""
+    )
 
     data: dict[str, dict[str, Any]] = {
         "network": {
             "value": (raw_data.get("Network Type") or "").replace(" ...", ""),
             "attributes": {"mcc": raw_data.get("MCC"), "mnc": raw_data.get("MNC")},
         },
-        "connected_time": {
-            "value": get_seconds_duration(raw_data.get("Connected Time"))
-        },
+        "connected_time": {"value": get_seconds_duration(raw_data.get("Connected Time"))},
         "signal": {"value": get_signal_strength(as_int(raw_data.get("RSSI")))},
         "rssi": {"value": as_int(raw_data.get("RSSI"))},
         "rsrp": {"value": as_int(raw_data.get("RSRP"))},
@@ -383,6 +359,21 @@ def parse_modem_info(input_html: str) -> dict[str, Any]:
         "session_download": {"value": session_download},
     }
     return data
+
+
+def get_upload_download_values(upload_download: str) -> Tuple[float | None, float | None]:
+    """..."""
+
+    # Parse upload/download from "51.60 MB / 368.07 MB" format
+    session_upload = None
+    session_download = None
+
+    if " / " in upload_download:
+        parts = upload_download.split(" / ")
+        session_upload = parse_data_size(parts[0].strip())
+        session_download = parse_data_size(parts[1].strip())
+
+    return (session_upload, session_download)
 
 
 def parse_data_size(size_str: str) -> float:
@@ -475,12 +466,8 @@ def parse_data_usage(input_html: str) -> dict[str, Any]:
     raw_data = parse_tables(input_html)
 
     return {
-        "current_traffic": {
-            "value": parse_data_size(raw_data.get("Current Traffic:"))
-        },
-        "monthly_traffic": {
-            "value": parse_data_size(raw_data.get("Monthly Traffic:"))
-        },
+        "current_traffic": {"value": parse_data_size(raw_data.get("Current Traffic:"))},
+        "monthly_traffic": {"value": parse_data_size(raw_data.get("Monthly Traffic:"))},
         "total_traffic": {"value": parse_data_size(raw_data.get("Total Traffic:"))},
     }
 
@@ -538,7 +525,7 @@ def parse_vpn_status(input_html: str) -> dict[str, Any]:
 
     return {
         "protocol": {"value": raw_data.get("Protocol")},
-        "devices": {"value": raw_data.get("Devices")},
+        "vpn_clients": {"value": raw_data.get("Devices")},
     }
 
 
@@ -547,15 +534,9 @@ def parse_wan_status(input_html: str) -> dict[str, Any]:
     raw_data = parse_tables(input_html)
 
     # Parse upload/download from "51.60 MB / 368.07 MB" format
-    upload_download = (
+    (session_upload, session_download) = get_upload_download_values(
         raw_data.get("Upload / Download") or raw_data.get("Upload/Download") or ""
     )
-    session_upload = None
-    session_download = None
-    if " / " in upload_download:
-        parts = upload_download.split(" / ")
-        session_upload = parse_data_size(parts[0].strip())
-        session_download = parse_data_size(parts[1].strip())
 
     public_ip: str = str(raw_data.get("Public IP")).replace("*", "").strip()
     connected_time: str = get_seconds_duration(raw_data.get("Connected Time"))
@@ -800,9 +781,7 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
 
     # Pattern 3: Look for mesh topology/list divs
     if not mesh_devices:
-        for div in soup.find_all(
-            "div", id=re.compile(r"mesh|node|satellite", re.IGNORECASE)
-        ):
+        for div in soup.find_all("div", id=re.compile(r"mesh|node|satellite", re.IGNORECASE)):
             device_info = _extract_mesh_device_info(div)
             if device_info and device_info.get("mac_address"):
                 mesh_devices.append(device_info)
@@ -832,10 +811,7 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
     if unique_devices:
         data["mesh_count"] = {"value": len(unique_devices)}
 
-    data["mesh_devices"] = {
-        device.get("mac_address", f"mesh_{i}"): device
-        for i, device in enumerate(unique_devices)
-    }
+    data["mesh_devices"] = {device.get("mac_address", f"mesh_{i}"): device for i, device in enumerate(unique_devices)}
 
     if unique_devices:
         _LOGGER.debug(
@@ -847,9 +823,7 @@ def parse_mesh_devices(input_html: str) -> dict[str, Any]:
     return data
 
 
-def parse_mesh_client_status(
-    devstatus_html: str, devlist_html: str | None = None
-) -> dict[str, Any] | None:
+def parse_mesh_client_status(devstatus_html: str, devlist_html: str | None = None) -> dict[str, Any] | None:
     """Parse mesh client device status page to extract detailed info.
 
     Args:
@@ -1014,10 +988,7 @@ def _extract_cudy_mesh_device(element, index: int) -> dict[str, Any] | None:
     # Check if this is a short panel with just a device name (common for Cudy satellites)
     # Satellite devices may just show as "Mesh", "Satellite", "Node1", etc.
     short_device_names = ["mesh", "satellite", "node", "extender", "repeater"]
-    is_short_device_name = any(
-        text_lower == name or text_lower.startswith(name + " ")
-        for name in short_device_names
-    )
+    is_short_device_name = any(text_lower == name or text_lower.startswith(name + " ") for name in short_device_names)
 
     # Skip if this doesn't look like a device panel (too short or no useful content)
     # BUT allow short valid device names
@@ -1028,9 +999,7 @@ def _extract_cudy_mesh_device(element, index: int) -> dict[str, Any] | None:
     skip_patterns = ["logout", "menu", "settings", "wizard", "more details"]
     if any(skip in text_lower for skip in skip_patterns):
         # But check if it ALSO contains an actual device name like "Main Router"
-        if not re.search(
-            r"(Main\s*Router|Satellite|Node\s*\d+|^Mesh$)", text_content, re.IGNORECASE
-        ):
+        if not re.search(r"(Main\s*Router|Satellite|Node\s*\d+|^Mesh$)", text_content, re.IGNORECASE):
             return None
 
     # Skip if this is just a label panel without actual device data
@@ -1060,9 +1029,7 @@ def _extract_cudy_mesh_device(element, index: int) -> dict[str, Any] | None:
         _LOGGER.debug("Mesh: Found short device name panel: %s", device_info["name"])
     else:
         # Look for specific device type names first
-        specific_name_match = re.search(
-            r"(Main\s*Router|Satellite|Node\s*\d+|^Mesh$)", text_content, re.IGNORECASE
-        )
+        specific_name_match = re.search(r"(Main\s*Router|Satellite|Node\s*\d+|^Mesh$)", text_content, re.IGNORECASE)
         if specific_name_match:
             device_info["name"] = specific_name_match.group(1).strip()
         else:
@@ -1154,9 +1121,7 @@ def _extract_mesh_device_from_row(row) -> dict[str, Any] | None:
             break
 
     # Look for model patterns
-    model_match = re.search(
-        r"(Cudy\s*[A-Z0-9]+|M[0-9]{4})", text_content, re.IGNORECASE
-    )
+    model_match = re.search(r"(Cudy\s*[A-Z0-9]+|M[0-9]{4})", text_content, re.IGNORECASE)
     if model_match:
         device_info["model"] = model_match.group(1)
 
@@ -1192,26 +1157,18 @@ def _extract_mesh_from_script(html: str) -> list[dict[str, Any]]:
                 if isinstance(data, list):
                     for item in data:
                         if isinstance(item, dict):
-                            mac = (
-                                item.get("mac")
-                                or item.get("mac_address")
-                                or item.get("macAddress")
-                                or ""
-                            )
+                            mac = item.get("mac") or item.get("mac_address") or item.get("macAddress") or ""
                             if mac:
                                 devices.append(
                                     {
                                         "mac_address": mac.upper().replace("-", ":"),
-                                        "name": item.get("name")
-                                        or item.get("hostname"),
-                                        "model": item.get("model")
-                                        or item.get("device_model"),
+                                        "name": item.get("name") or item.get("hostname"),
+                                        "model": item.get("model") or item.get("device_model"),
                                         "firmware_version": item.get("firmware")
                                         or item.get("fw_version")
                                         or item.get("version"),
                                         "status": item.get("status", "online"),
-                                        "ip_address": item.get("ip")
-                                        or item.get("ip_address"),
+                                        "ip_address": item.get("ip") or item.get("ip_address"),
                                     }
                                 )
             except (json.JSONDecodeError, ValueError):
