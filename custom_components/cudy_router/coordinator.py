@@ -29,9 +29,7 @@ class CudyRouterDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     config_entry: ConfigEntry
 
-    def __init__(
-        self, hass: HomeAssistant, entry: ConfigEntry, api: CudyRouter
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, api: CudyRouter) -> None:
         """Initialize router data."""
         self.config_entry = entry
         self.host: str = entry.data[CONF_HOST]
@@ -56,4 +54,5 @@ class CudyRouterDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except TimeoutError as err:
             raise UpdateFailed(f"Timeout communicating with router: {err}") from err
         except Exception as err:
+            _LOGGER.error(err)
             raise UpdateFailed(f"Error communicating with router: {err}") from err
