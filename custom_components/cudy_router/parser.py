@@ -256,7 +256,7 @@ def parse_devices(input_html: str, device_list_str: str) -> dict[str, Any]:
     """Parses devices page"""
 
     devices = get_all_devices(input_html)
-    data = {}
+    data = {"device_count": {"value": len(devices)}}
     if devices:
         top_download_device = max(devices, key=lambda item: item.get("down_speed"))
         data["top_downloader_speed"] = {"value": top_download_device.get("down_speed")}
