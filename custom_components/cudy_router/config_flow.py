@@ -1,11 +1,11 @@
 """Config flow for Cudy Router integration."""
+
 from __future__ import annotations
 
 import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -14,6 +14,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import (
     CONF_HOST,
+    CONF_MODEL,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_USERNAME,
@@ -57,6 +58,12 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     router = CudyRouter(hass, host, data[CONF_USERNAME], data[CONF_PASSWORD])
 
     try:
+        device_model: str = await hass.async_add_executor_job(router.get_model)
+    except Exception as err:
+        _LOGGER.exception("Error connecting to router: %s", err)
+        raise CannotConnect from err
+
+    try:
         authenticated = await hass.async_add_executor_job(router.authenticate)
     except Exception as err:
         _LOGGER.exception("Error connecting to router: %s", err)
@@ -66,7 +73,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         raise InvalidAuth
 
     # Default title to "Cudy Router"
-    return {"title": "Cudy Router", "host": host}
+    return {"title": "Cudy Router", "host": host, "device_model": device_model}
 
 
 class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -106,6 +113,7 @@ class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
+                user_input[CONF_MODEL] = info["device_model"]
                 return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(

@@ -43,3 +43,4 @@ requirements_test.txt
 manifest.json
 
 .ssh-command
+config/*
