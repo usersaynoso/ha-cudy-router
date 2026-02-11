@@ -63,6 +63,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.exception("Error connecting to router: %s", err)
         raise CannotConnect from err
 
+    if not device_model:
+        device_model = "default"
+
     try:
         authenticated = await hass.async_add_executor_job(router.authenticate)
     except Exception as err:

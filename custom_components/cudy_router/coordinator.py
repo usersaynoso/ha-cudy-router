@@ -49,7 +49,7 @@ class CudyRouterDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return await self.api.get_data(
                     self.hass,
                     self.config_entry.options,
-                    self.config_entry.data[CONF_MODEL],
+                    self.config_entry.data.get(CONF_MODEL, "default"),
                 )
         except TimeoutError as err:
             raise UpdateFailed(f"Timeout communicating with router: {err}") from err

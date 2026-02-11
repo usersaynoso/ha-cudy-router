@@ -86,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CudyRouterConfigEntry) -
         data[CONF_HOST],
         data[CONF_USERNAME],
         data[CONF_PASSWORD],
-        data[CONF_MODEL],
+        data.get(CONF_MODEL, "default"),
     )
 
     # Verify we can authenticate
