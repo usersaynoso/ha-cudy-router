@@ -52,3 +52,22 @@ def test_feature_gating_still_excludes_expected_wr3000s_modules() -> None:
     assert features.existing_feature("WR3000S V1.0", "data_usage") is False
     assert features.existing_feature("WR3000S V1.0", "sms") is False
     assert features.existing_feature("WR3000S V1.0", "devices") is True
+    assert features.existing_feature("UNKNOWN MODEL", "wan") is True
+
+
+def test_parse_wan_status_handles_missing_values_safely() -> None:
+    parser_src = _read("custom_components/cudy_router/parser.py")
+    assert "raw_public_ip = raw_data.get(\"Public IP\")" in parser_src
+    assert "public_ip: str | None = None" in parser_src
+    assert "connected_time: float | None = (" in parser_src
+
+
+def test_mesh_json_state_maps_disconnected_to_offline() -> None:
+    router_src = _read("custom_components/cudy_router/router.py")
+    assert '"status": "online" if client_json.get("state") == "connected" else "offline"' in router_src
+
+
+def test_wan_module_uses_endpoint_probe_for_unknown_models() -> None:
+    router_src = _read("custom_components/cudy_router/router.py")
+    assert "wan_status_html = await hass.async_add_executor_job(" in router_src
+    assert "if wan_status_html and any(" in router_src

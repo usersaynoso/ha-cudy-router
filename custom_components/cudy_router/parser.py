@@ -538,8 +538,16 @@ def parse_wan_status(input_html: str) -> dict[str, Any]:
         raw_data.get("Upload / Download") or raw_data.get("Upload/Download") or ""
     )
 
-    public_ip: str = str(raw_data.get("Public IP")).replace("*", "").strip()
-    connected_time: str = get_seconds_duration(raw_data.get("Connected Time"))
+    raw_public_ip = raw_data.get("Public IP")
+    public_ip: str | None = None
+    if isinstance(raw_public_ip, str):
+        cleaned_public_ip = raw_public_ip.replace("*", "").strip()
+        public_ip = cleaned_public_ip or None
+
+    raw_connected_time = raw_data.get("Connected Time")
+    connected_time: float | None = (
+        get_seconds_duration(raw_connected_time) if raw_connected_time else None
+    )
 
     return {
         "protocol": {"value": raw_data.get("Protocol")},
