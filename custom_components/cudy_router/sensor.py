@@ -123,6 +123,12 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module="modem",
         name_suffix="Band",
     ),
+    ("devices", "device_count"): CudyRouterSensorEntityDescription(
+        key="device_count",
+        module="devices",
+        name_suffix="Device count",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
     ("devices", "top_downloader_speed"): CudyRouterSensorEntityDescription(
         key="top_downloader_speed",
         module="devices",
@@ -587,15 +593,12 @@ async def async_setup_entry(
         list(coordinator.data.keys()) if coordinator.data else "None",
     )
 
-    device_model: str = config_entry.data[CONF_MODEL]
+    device_model: str = config_entry.data.get(CONF_MODEL, "default")
 
     # Add sensors based on available data from coordinator
     if coordinator.data:
         for module, sensors in coordinator.data.items():
             if not isinstance(sensors, dict):
-                continue
-
-            if module in ["modem", "data_usage", "sms"]:
                 continue
 
             for sensor_label in sensors:

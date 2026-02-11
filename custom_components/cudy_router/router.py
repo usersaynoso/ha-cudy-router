@@ -250,7 +250,7 @@ class CudyRouter:
 
             if not (device_model):
                 _LOGGER.debug("Could not extract device model from login page")
-                return False
+                return "default"
 
             return device_model
 
@@ -260,7 +260,7 @@ class CudyRouter:
             _LOGGER.debug("Timeout during new auth: %s", e)
         except Exception as e:
             _LOGGER.warning("New auth error: %s", e, exc_info=True)
-        return False
+        return "default"
 
     def authenticate(self) -> bool:
         """Test if we can authenticate with the host. Tries new method first, then legacy."""
