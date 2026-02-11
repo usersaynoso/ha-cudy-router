@@ -234,11 +234,22 @@ class CudyRouter:
                 timeout=DEFAULT_POST_TIMEOUT,
                 headers=headers,
                 allow_redirects=False,
-                silent=True,
+                silent=False,
                 retries=1,
                 reauth_on_403=False,
                 data=body,
             )
+            if response is None:
+                # Keep legacy behavior available if shared request flow encounters
+                # transport-specific issues on older router TLS stacks.
+                session = self._get_session()
+                response = session.post(
+                    data_url,
+                    timeout=DEFAULT_POST_TIMEOUT,
+                    headers=headers,
+                    data=body,
+                    allow_redirects=False,
+                )
             if response and (response.ok or response.status_code == 302):
                 set_cookie = response.headers.get("set-cookie", "")
                 if set_cookie:
@@ -247,8 +258,14 @@ class CudyRouter:
                     if cookie.get("sysauth"):
                         self.auth_cookie = cookie.get("sysauth").value
                         return True
+            _LOGGER.debug(
+                "Legacy auth did not return sysauth cookie (status=%s)",
+                response.status_code if response else "no-response",
+            )
         except requests.exceptions.ConnectionError:
             _LOGGER.debug("Connection error during legacy auth")
+        except requests.exceptions.Timeout:
+            _LOGGER.debug("Timeout during legacy auth")
         except Exception as e:
             _LOGGER.debug("Legacy auth error: %s", e)
         return False
@@ -271,12 +288,14 @@ class CudyRouter:
                 timeout=DEFAULT_PAGE_TIMEOUT,
                 headers=headers,
                 allow_redirects=False,
-                silent=True,
+                silent=False,
                 retries=1,
                 reauth_on_403=False,
             )
             if not response:
-                return False
+                # Fallback to legacy direct call for router compatibility.
+                session = self._get_session()
+                response = session.get(login_url, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
             html = response.text
 
             csrf = _extract_hidden(html, "_csrf")
@@ -321,12 +340,19 @@ class CudyRouter:
                 headers=post_headers,
                 data=urllib.parse.urlencode(post_data),
                 allow_redirects=False,
-                silent=True,
+                silent=False,
                 retries=1,
                 reauth_on_403=False,
             )
             if not response:
-                return False
+                session = self._get_session()
+                response = session.post(
+                    login_url,
+                    timeout=DEFAULT_PAGE_TIMEOUT,
+                    headers=post_headers,
+                    data=urllib.parse.urlencode(post_data),
+                    allow_redirects=False,
+                )
 
             # Check for sysauth cookie
             for cookie in session.cookies:
@@ -365,12 +391,13 @@ class CudyRouter:
                 timeout=DEFAULT_PAGE_TIMEOUT,
                 headers=headers,
                 allow_redirects=False,
-                silent=True,
+                silent=False,
                 retries=1,
                 reauth_on_403=False,
             )
             if not response:
-                return "default"
+                session = self._get_session()
+                response = session.get(login_url, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
             html = response.text
 
             device_model = _extract_model(html)
