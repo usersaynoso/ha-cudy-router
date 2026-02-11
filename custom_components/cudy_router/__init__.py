@@ -1,13 +1,19 @@
 """The Cudy Router integration."""
+
 from __future__ import annotations
 
 import logging
 from typing import Final
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_MODEL,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    Platform,
+)
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
@@ -75,7 +81,13 @@ type CudyRouterConfigEntry = ConfigEntry[CudyRouterDataUpdateCoordinator]
 async def async_setup_entry(hass: HomeAssistant, entry: CudyRouterConfigEntry) -> bool:
     """Set up Cudy Router from a config entry."""
     data = entry.data
-    api = CudyRouter(hass, data[CONF_HOST], data[CONF_USERNAME], data[CONF_PASSWORD])
+    api = CudyRouter(
+        hass,
+        data[CONF_HOST],
+        data[CONF_USERNAME],
+        data[CONF_PASSWORD],
+        data[CONF_MODEL],
+    )
 
     # Verify we can authenticate
     try:
@@ -180,15 +192,25 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_REBOOT, handle_reboot, schema=SERVICE_REBOOT_SCHEMA
     )
+
     hass.services.async_register(
-        DOMAIN, SERVICE_RESTART_5G, handle_restart_5g, schema=SERVICE_RESTART_5G_SCHEMA
+        DOMAIN,
+        SERVICE_RESTART_5G,
+        handle_restart_5g,
+        schema=SERVICE_RESTART_5G_SCHEMA,
     )
+
     hass.services.async_register(
-        DOMAIN, SERVICE_SWITCH_BAND, handle_switch_band, schema=SERVICE_SWITCH_BAND_SCHEMA
+        DOMAIN,
+        SERVICE_SWITCH_BAND,
+        handle_switch_band,
+        schema=SERVICE_SWITCH_BAND_SCHEMA,
     )
+
     hass.services.async_register(
         DOMAIN, SERVICE_SEND_SMS, handle_send_sms, schema=SERVICE_SEND_SMS_SCHEMA
     )
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_SEND_AT_COMMAND,
