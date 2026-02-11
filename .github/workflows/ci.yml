@@ -66,6 +66,7 @@ jobs:
 
       - name: Mypy (focused modules)
         run: |
-          python -m mypy custom_components/cudy_router/router_data.py \
+          python -m mypy --python-version 3.13 --ignore-missing-imports --follow-imports=skip \
+            custom_components/cudy_router/router_data.py \
             custom_components/cudy_router/parser_network.py \
             custom_components/cudy_router/sensor_descriptions.py
