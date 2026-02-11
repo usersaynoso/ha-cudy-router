@@ -9,9 +9,8 @@ ruff = "0.14.14"
 build-backend = "poetry.core.masonry.api"
 requires = ["poetry-core"]
 
-[tool.lint.ruff]
+[tool.ruff.lint]
 ignore = [
-  "ANN101", # Self... explanatory
   "ANN401", # Opiniated warning on disallowing dynamically typed expressions
   "D203",   # Conflicts with other rules
   "D213",   # Conflicts with other rules
@@ -41,9 +40,8 @@ ignore = [
   "W191",
 ]
 select = ["ALL"]
-src = ["custom_components/cudy_router"]
 
-[tool.link.flake8-import-conventions.extend-aliases]
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
 "homeassistant.helpers.area_registry" = "ar"
 "homeassistant.helpers.config_validation" = "cv"
 "homeassistant.helpers.device_registry" = "dr"
@@ -51,7 +49,7 @@ src = ["custom_components/cudy_router"]
 "homeassistant.helpers.issue_registry" = "ir"
 voluptuous = "vol"
 
-[tool.lint.isort]
+[tool.ruff.lint.isort]
 force-sort-within-sections = true
 known-first-party = ["homeassistant"]
 combine-as-imports = true
@@ -106,3 +104,4 @@ max-complexity = 25
 target-version = "py313"
 line-length = 120
 indent-width = 4
+src = ["custom_components/cudy_router"]
