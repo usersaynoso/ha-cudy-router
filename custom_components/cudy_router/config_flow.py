@@ -84,6 +84,10 @@ class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 2
 
+    def __init__(self) -> None:
+        """Initialize config flow."""
+        self._reauth_entry: ConfigEntry | None = None
+
     @staticmethod
     @callback
     def async_get_options_flow(
@@ -122,6 +126,69 @@ class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        """Handle reauthentication flow."""
+        del entry_data
+        entry_id = self.context.get("entry_id")
+        if entry_id is None:
+            return self.async_abort(reason="unknown")
+
+        self._reauth_entry = self.hass.config_entries.async_get_entry(entry_id)
+        if self._reauth_entry is None:
+            return self.async_abort(reason="unknown")
+
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm and process updated credentials."""
+        if self._reauth_entry is None:
+            return self.async_abort(reason="unknown")
+
+        errors: dict[str, str] = {}
+        current_data = dict(self._reauth_entry.data)
+
+        if user_input is not None:
+            updated_data = dict(current_data)
+            updated_data[CONF_USERNAME] = user_input[CONF_USERNAME]
+            updated_data[CONF_PASSWORD] = user_input[CONF_PASSWORD]
+
+            try:
+                info = await validate_input(self.hass, updated_data)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except Exception:
+                _LOGGER.exception("Unexpected exception during reauth")
+                errors["base"] = "unknown"
+            else:
+                updated_data[CONF_HOST] = info["host"]
+                updated_data[CONF_MODEL] = info["device_model"]
+                self.hass.config_entries.async_update_entry(
+                    self._reauth_entry,
+                    data=updated_data,
+                )
+                await self.hass.config_entries.async_reload(
+                    self._reauth_entry.entry_id
+                )
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_USERNAME,
+                        default=current_data.get(CONF_USERNAME, "admin"),
+                    ): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
             errors=errors,
         )
 
