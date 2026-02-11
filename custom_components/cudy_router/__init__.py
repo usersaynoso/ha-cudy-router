@@ -75,7 +75,50 @@ SERVICE_SEND_AT_COMMAND_SCHEMA: Final = vol.Schema(
 )
 
 
-type CudyRouterConfigEntry = ConfigEntry[CudyRouterDataUpdateCoordinator]
+MIGRATION_VERSION: Final = 2
+
+
+def _normalize_host(host: str) -> str:
+    """Normalize a host to include scheme and no trailing slash."""
+    host = host.strip()
+    if not host.startswith(("http://", "https://")):
+        host = f"https://{host}"
+    return host.rstrip("/")
+
+
+CudyRouterConfigEntry = ConfigEntry[CudyRouterDataUpdateCoordinator]
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries to the latest schema."""
+    if entry.version > MIGRATION_VERSION:
+        _LOGGER.error(
+            "Config entry version %s is newer than supported version %s",
+            entry.version,
+            MIGRATION_VERSION,
+        )
+        return False
+
+    if entry.version == 1:
+        new_data = dict(entry.data)
+        host = new_data.get(CONF_HOST)
+        if isinstance(host, str):
+            new_data[CONF_HOST] = _normalize_host(host)
+        if not new_data.get(CONF_MODEL):
+            new_data[CONF_MODEL] = "default"
+
+        hass.config_entries.async_update_entry(
+            entry,
+            data=new_data,
+            version=MIGRATION_VERSION,
+        )
+        _LOGGER.info(
+            "Migrated %s config entry from version 1 to %s",
+            DOMAIN,
+            MIGRATION_VERSION,
+        )
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: CudyRouterConfigEntry) -> bool:

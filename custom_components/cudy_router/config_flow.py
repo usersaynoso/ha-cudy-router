@@ -82,7 +82,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Cudy Router."""
 
-    VERSION = 1
+    VERSION = 2
 
     @staticmethod
     @callback
