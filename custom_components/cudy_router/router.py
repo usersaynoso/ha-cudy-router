@@ -746,9 +746,19 @@ class CudyRouter:
 
         # WAN status
         if existing_feature(device_model, MODULE_WAN) is True:
-            data[MODULE_WAN] = parse_wan_status(
-                await hass.async_add_executor_job(self.get, "admin/network/wan/status?detail=1&iface=wan")
+            # Probe support first; some models expose a generic/empty page.
+            wan_status_html = await hass.async_add_executor_job(
+                self.get,
+                "admin/network/wan/status?detail=1&iface=wan",
+                True,
             )
+            if wan_status_html and any(
+                marker in wan_status_html.lower()
+                for marker in ("public ip", "ip address", "gateway", "subnet", "protocol")
+            ):
+                wan_data = parse_wan_status(wan_status_html)
+                if any(entry.get("value") not in (None, "") for entry in wan_data.values()):
+                    data[MODULE_WAN] = wan_data
 
         # DHCP status
         if existing_feature(device_model, MODULE_DHCP) is True:
@@ -843,7 +853,7 @@ class CudyRouter:
                     "ip_address": sysreport.get("ipaddr"),
                     "mac_address": formatted_mac,
                     "hardware": hardware,
-                    "status": "online" if client_json.get("state") == "connected" else "online",  # Default online
+                    "status": "online" if client_json.get("state") == "connected" else "offline",
                     "led_status": sysreport.get("ledstatus"),
                 }
                 _LOGGER.debug(

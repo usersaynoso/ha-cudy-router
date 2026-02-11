@@ -3,9 +3,9 @@
 from typing import Dict, List
 
 features_not_implemented: Dict[str, List[str]] = {
-    "default": [
-        "wan|",
-    ],
+    # Unknown models default to enabled modules; module-specific endpoint probing
+    # in router.py decides if data can actually be fetched.
+    "default": [],
     "WR3000S V1.0": [
         "modem|",
         "data_usage|",
