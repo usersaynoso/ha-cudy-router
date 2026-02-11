@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
-
-from homeassistant.core import HomeAssistant
+from typing import TYPE_CHECKING, Any
 
 from .const import (
     MODULE_DATA_USAGE,
@@ -38,6 +36,9 @@ from .parser import (
 from .parser_network import parse_dhcp_status, parse_vpn_status, parse_wan_status
 
 _LOGGER = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 
 async def collect_router_data(
@@ -309,7 +310,7 @@ async def collect_router_data(
                 client_info["name"] = f"Mesh Device {client_mac[-6:]}"
             client_info["mac_address"] = formatted_mac
 
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Final mesh device info for %s: name=%s, model=%s, firmware=%s, ip=%s, connected=%s",
                 formatted_mac,
                 client_info.get("name"),

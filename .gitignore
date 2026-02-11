@@ -35,7 +35,6 @@ pip-wheel-metadata/
 .mypy_cache/
 
 # Ignore test and CI artifacts kept locally
-tests/
 pytest.ini
 requirements_test.txt
 

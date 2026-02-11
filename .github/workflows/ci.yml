@@ -9,6 +9,46 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.11"
+            install-homeassistant: false
+            pytest-paths: "tests/unit"
+          - python-version: "3.13"
+            install-homeassistant: true
+            pytest-paths: "tests/unit tests/integration"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest ruff requests urllib3 beautifulsoup4 python-dateutil
+          if [ "${{ matrix.install-homeassistant }}" = "true" ]; then
+            python -m pip install -r requirements.txt
+          fi
+
+      - name: Ruff (errors/syntax)
+        run: ruff check . --select F,E9
+
+      - name: Compile check
+        run: python -m compileall custom_components/cudy_router
+
+      - name: Pytest
+        run: python -m pytest -q ${{ matrix.pytest-paths }}
+
+  typecheck:
+    runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,17 +59,13 @@ jobs:
           python-version: "3.13"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: Install typecheck dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pytest
+          python -m pip install mypy homeassistant==2026.2.1 requests urllib3 beautifulsoup4 python-dateutil
 
-      - name: Ruff (errors/syntax)
-        run: ruff check . --select F,E9
-
-      - name: Compile check
-        run: python -m compileall custom_components/cudy_router
-
-      - name: Pytest
-        run: python -m pytest -q
+      - name: Mypy (focused modules)
+        run: |
+          python -m mypy custom_components/cudy_router/router_data.py \
+            custom_components/cudy_router/parser_network.py \
+            custom_components/cudy_router/sensor_descriptions.py

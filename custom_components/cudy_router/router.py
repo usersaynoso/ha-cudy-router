@@ -8,15 +8,24 @@ import re
 import time
 import urllib.parse
 from http.cookies import SimpleCookie
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import requests
 import urllib3
-from homeassistant.core import HomeAssistant
 
 from .router_data import collect_router_data
 
 _LOGGER = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
+DEFAULT_GET_TIMEOUT = 30
+DEFAULT_PAGE_TIMEOUT = 15
+DEFAULT_POST_TIMEOUT = 30
+DEFAULT_RETRIES = 2
+RETRY_BACKOFF_SECONDS = 0.35
+RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504}
 
 
 def _sha256_hex(s: str) -> str:
@@ -84,6 +93,124 @@ class CudyRouter:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         return self._session
 
+    def _luci_url(self, path: str) -> str:
+        """Build a LuCI endpoint URL from a relative path."""
+        return f"{self.base_url}/cgi-bin/luci/{path.lstrip('/')}"
+
+    def _set_session_auth_cookie(self, session: requests.Session) -> None:
+        """Ensure session has the latest sysauth cookie if available."""
+        if self.auth_cookie:
+            session.cookies.set("sysauth", self.auth_cookie)
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        timeout: int,
+        headers: dict[str, str],
+        allow_redirects: bool = False,
+        silent: bool = False,
+        retries: int = DEFAULT_RETRIES,
+        reauth_on_403: bool = True,
+        data: Any = None,
+        files: Any = None,
+    ) -> requests.Response | None:
+        """Execute an HTTP request with shared retry/backoff/auth-refresh behavior."""
+        session = self._get_session()
+        last_error: Exception | None = None
+
+        for attempt in range(retries + 1):
+            self._set_session_auth_cookie(session)
+            try:
+                response = session.request(
+                    method=method,
+                    url=url,
+                    timeout=timeout,
+                    headers=headers,
+                    allow_redirects=allow_redirects,
+                    data=data,
+                    files=files,
+                )
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as err:
+                last_error = err
+                if attempt < retries:
+                    time.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+                    continue
+                if not silent:
+                    _LOGGER.debug("HTTP %s %s failed: %s", method, url, err)
+                return None
+            except requests.RequestException as err:
+                last_error = err
+                if not silent:
+                    _LOGGER.debug("HTTP %s %s request exception: %s", method, url, err)
+                return None
+
+            if response.status_code == 403 and reauth_on_403 and attempt < retries:
+                if self.authenticate():
+                    continue
+                if not silent:
+                    _LOGGER.error("Authentication refresh failed for %s", url)
+                return response
+
+            if response.status_code in RETRYABLE_STATUSES and attempt < retries:
+                time.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+                continue
+
+            return response
+
+        if not silent and last_error:
+            _LOGGER.debug("HTTP %s %s failed after retries: %s", method, url, last_error)
+        return None
+
+    def _luci_get(
+        self,
+        path: str,
+        *,
+        timeout: int = DEFAULT_PAGE_TIMEOUT,
+        headers: dict[str, str] | None = None,
+        silent: bool = False,
+    ) -> requests.Response | None:
+        """Issue a GET request to a LuCI path with standard behavior."""
+        return self._request(
+            "GET",
+            self._luci_url(path),
+            timeout=timeout,
+            headers=headers
+            or {
+                "User-Agent": "Mozilla/5.0",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin",
+            },
+            allow_redirects=False,
+            silent=silent,
+        )
+
+    def _luci_post(
+        self,
+        path: str,
+        *,
+        timeout: int = DEFAULT_POST_TIMEOUT,
+        headers: dict[str, str] | None = None,
+        silent: bool = False,
+        data: Any = None,
+        files: Any = None,
+    ) -> requests.Response | None:
+        """Issue a POST request to a LuCI path with standard behavior."""
+        return self._request(
+            "POST",
+            self._luci_url(path),
+            timeout=timeout,
+            headers=headers
+            or {
+                "User-Agent": "Mozilla/5.0",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin",
+            },
+            allow_redirects=False,
+            silent=silent,
+            data=data,
+            files=files,
+        )
+
     def get_cookie_header(self, force_auth: bool) -> str:
         """Returns a cookie header that should be used for authentication."""
 
@@ -101,9 +228,18 @@ class CudyRouter:
         body = f"luci_username={urllib.parse.quote(self.username)}&luci_password={urllib.parse.quote(self.password)}&luci_language=en"
 
         try:
-            session = self._get_session()
-            response = session.post(data_url, timeout=30, headers=headers, data=body, allow_redirects=False)
-            if response.ok or response.status_code == 302:
+            response = self._request(
+                "POST",
+                data_url,
+                timeout=DEFAULT_POST_TIMEOUT,
+                headers=headers,
+                allow_redirects=False,
+                silent=True,
+                retries=1,
+                reauth_on_403=False,
+                data=body,
+            )
+            if response and (response.ok or response.status_code == 302):
                 set_cookie = response.headers.get("set-cookie", "")
                 if set_cookie:
                     cookie = SimpleCookie()
@@ -129,7 +265,18 @@ class CudyRouter:
 
         try:
             # GET login page to extract salt and token (may return 403 but still has HTML)
-            response = session.get(login_url, timeout=15, headers=headers)
+            response = self._request(
+                "GET",
+                login_url,
+                timeout=DEFAULT_PAGE_TIMEOUT,
+                headers=headers,
+                allow_redirects=False,
+                silent=True,
+                retries=1,
+                reauth_on_403=False,
+            )
+            if not response:
+                return False
             html = response.text
 
             csrf = _extract_hidden(html, "_csrf")
@@ -167,13 +314,19 @@ class CudyRouter:
                 "Origin": self.base_url,
             }
 
-            response = session.post(
+            response = self._request(
+                "POST",
                 login_url,
-                timeout=15,
+                timeout=DEFAULT_PAGE_TIMEOUT,
                 headers=post_headers,
                 data=urllib.parse.urlencode(post_data),
                 allow_redirects=False,
+                silent=True,
+                retries=1,
+                reauth_on_403=False,
             )
+            if not response:
+                return False
 
             # Check for sysauth cookie
             for cookie in session.cookies:
@@ -196,7 +349,6 @@ class CudyRouter:
     def get_model(self) -> str:
         """Get the cudy router model displayed on login page."""
 
-        session = self._get_session()
         login_url = f"{self.base_url}/cgi-bin/luci/"
 
         headers = {
@@ -207,7 +359,18 @@ class CudyRouter:
 
         try:
             # GET login page to extract salt and token (may return 403 but still has HTML)
-            response = session.get(login_url, timeout=15, headers=headers)
+            response = self._request(
+                "GET",
+                login_url,
+                timeout=DEFAULT_PAGE_TIMEOUT,
+                headers=headers,
+                allow_redirects=False,
+                silent=True,
+                retries=1,
+                reauth_on_403=False,
+            )
+            if not response:
+                return "default"
             html = response.text
 
             device_model = _extract_model(html)
@@ -260,41 +423,20 @@ class CudyRouter:
             silent: If True, don't log errors for failed requests (for optional endpoints)
         """
 
-        retries = 2
-        while retries > 0:
-            retries -= 1
-
-            data_url = f"{self.base_url}/cgi-bin/luci/{url}"
-            session = self._get_session()
-
-            # Set the auth cookie in session if available
-            if self.auth_cookie:
-                session.cookies.set("sysauth", self.auth_cookie)
-
-            headers = {
+        response = self._luci_get(
+            url,
+            timeout=DEFAULT_GET_TIMEOUT,
+            headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Referer": f"{self.base_url}/cgi-bin/luci/admin",
-            }
-
-            try:
-                response = session.get(data_url, timeout=30, headers=headers, allow_redirects=False)
-                if response.status_code == 403:
-                    if self.authenticate():
-                        continue
-                    else:
-                        if not silent:
-                            _LOGGER.error("Error during authentication to %s", url)
-                        break
-                if response.ok:
-                    return response.text
-                else:
-                    break
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.debug("Exception during GET %s", url)
-                pass
-
+            },
+            silent=silent,
+        )
+        if response and response.ok:
+            return response.text
         if not silent:
-            _LOGGER.debug("Failed to retrieve data from %s", url)
+            status = response.status_code if response else "no-response"
+            _LOGGER.debug("Failed to retrieve data from %s (status=%s)", url, status)
         return ""
 
     def _post_action_on_page(
@@ -307,8 +449,6 @@ class CudyRouter:
 
         Returns (status_code, head_of_response).
         """
-        session = self._get_session()
-        page_url = f"{self.base_url}/cgi-bin/luci/{page}"
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": f"{self.base_url}/cgi-bin/luci/admin",
@@ -316,7 +456,9 @@ class CudyRouter:
 
         code = 0
         try:
-            resp = session.get(page_url, timeout=15, headers=headers)
+            resp = self._luci_get(page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
+            if not resp:
+                return 0, f"Failed to load page {page}"
             html = resp.text
             code = resp.status_code
 
@@ -361,17 +503,18 @@ class CudyRouter:
             if extra_fields:
                 post_fields.update(extra_fields)
 
-            r = session.post(
-                page_url,
-                timeout=30,
+            r = self._luci_post(
+                page,
+                timeout=DEFAULT_POST_TIMEOUT,
                 headers={
                     **headers,
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Origin": self.base_url,
                 },
                 data=urllib.parse.urlencode(post_fields),
-                allow_redirects=False,
             )
+            if not r:
+                return 0, f"Failed to post action on {page}"
             return r.status_code, r.text[:220]
         except Exception as e:
             _LOGGER.error("Action on %s failed: %s", page, e)
@@ -381,15 +524,16 @@ class CudyRouter:
         """Trigger router reboot via LuCI web UI."""
         # The Cudy router reboot page is at /admin/system/reboot/reboot
         # It has a simple form with token and a cbi.apply button
-        session = self._get_session()
-        page_url = f"{self.base_url}/cgi-bin/luci/admin/system/reboot/reboot"
+        page = "admin/system/reboot/reboot"
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": f"{self.base_url}/cgi-bin/luci/admin/panel",
         }
 
         try:
-            resp = session.get(page_url, timeout=15, headers=headers)
+            resp = self._luci_get(page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
+            if not resp:
+                return 0, "Failed to load reboot page"
             html = resp.text
             token = _extract_hidden(html, "token")
             if not token:
@@ -401,17 +545,18 @@ class CudyRouter:
                 "cbi.submit": "1",
                 "cbi.apply": "OK",
             }
-            r = session.post(
-                page_url,
-                timeout=30,
+            r = self._luci_post(
+                page,
+                timeout=DEFAULT_POST_TIMEOUT,
                 headers={
                     **headers,
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Origin": self.base_url,
                 },
                 data=urllib.parse.urlencode(post_fields),
-                allow_redirects=False,
             )
+            if not r:
+                return 0, "Failed to submit reboot request"
             return r.status_code, r.text[:220]
         except Exception as e:
             _LOGGER.error("Reboot failed: %s", e)
@@ -425,15 +570,16 @@ class CudyRouter:
         """
         # The reset page is at /admin/network/gcom/reset
         # Button name="cbid.reset.1.reset" value="Modem Reset"
-        session = self._get_session()
-        page_url = f"{self.base_url}/cgi-bin/luci/admin/network/gcom/reset"
+        page = "admin/network/gcom/reset"
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/gcom/status",
         }
 
         try:
-            resp = session.get(page_url, timeout=15, headers=headers)
+            resp = self._luci_get(page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
+            if not resp:
+                return 0, "Failed to load reset page"
             html = resp.text
             token = _extract_hidden(html, "token")
             if not token:
@@ -445,17 +591,18 @@ class CudyRouter:
                 "cbi.submit": "1",
                 "cbid.reset.1.reset": "Modem Reset",
             }
-            r = session.post(
-                page_url,
-                timeout=30,
+            r = self._luci_post(
+                page,
+                timeout=DEFAULT_POST_TIMEOUT,
                 headers={
                     **headers,
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Origin": self.base_url,
                 },
                 data=urllib.parse.urlencode(post_fields),
-                allow_redirects=False,
             )
+            if not r:
+                return 0, "Failed to submit modem reset request"
             return r.status_code, r.text[:220]
         except Exception as e:
             _LOGGER.error("Restart 5G failed: %s", e)
@@ -467,16 +614,16 @@ class CudyRouter:
         The method looks for a select whose name contains 'band' and submits
         the chosen value.
         """
-        session = self._get_session()
         page = "admin/network/gcom/setting"
-        page_url = f"{self.base_url}/cgi-bin/luci/{page}"
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": f"{self.base_url}/cgi-bin/luci/admin",
         }
 
         try:
-            resp = session.get(page_url, timeout=15, headers=headers)
+            resp = self._luci_get(page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
+            if not resp:
+                return 0, "Failed to load band settings page"
             html = resp.text
             token = _extract_hidden(html, "token")
             if not token:
@@ -494,17 +641,18 @@ class CudyRouter:
                 "cbi.submit": "1",
                 select_name: band_value,
             }
-            r = session.post(
-                page_url,
-                timeout=30,
+            r = self._luci_post(
+                page,
+                timeout=DEFAULT_POST_TIMEOUT,
                 headers={
                     **headers,
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Origin": self.base_url,
                 },
                 data=urllib.parse.urlencode(post_fields),
-                allow_redirects=False,
             )
+            if not r:
+                return 0, "Failed to submit band change request"
             return r.status_code, r.text[:220]
         except Exception as e:
             _LOGGER.error("Switch band failed: %s", e)
@@ -520,9 +668,8 @@ class CudyRouter:
         Returns:
             Tuple of (HTTP status code, response snippet or error message)
         """
-        session = self._get_session()
         page = "admin/network/gcom/sms/smsnew"
-        page_url = f"{self.base_url}/cgi-bin/luci/{page}?nomodal=&iface=4g"
+        page_with_query = f"{page}?nomodal=&iface=4g"
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/gcom/sms",
@@ -530,7 +677,9 @@ class CudyRouter:
 
         try:
             # GET the form page to obtain token
-            resp = session.get(page_url, timeout=15, headers=headers)
+            resp = self._luci_get(page_with_query, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
+            if not resp:
+                return 0, "Failed to load SMS page"
             html = resp.text
             token = _extract_hidden(html, "token")
             if not token:
@@ -550,17 +699,18 @@ class CudyRouter:
                 "cbid.smsnew.1.content": message,
                 "cbid.smsnew.1.send": "Send",
             }
-            r = session.post(
-                page_url,
-                timeout=30,
+            r = self._luci_post(
+                page_with_query,
+                timeout=DEFAULT_POST_TIMEOUT,
                 headers={
                     **headers,
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Origin": self.base_url,
                 },
                 data=urllib.parse.urlencode(post_fields),
-                allow_redirects=False,
             )
+            if not r:
+                return 0, "Failed to submit SMS request"
             _LOGGER.debug("SMS send response: %s", r.status_code)
             return r.status_code, r.text[:220]
         except Exception as e:
@@ -576,9 +726,8 @@ class CudyRouter:
         Returns:
             Tuple of (HTTP status code, response text or error message)
         """
-        session = self._get_session()
         page = "admin/network/gcom/atcmd"
-        page_url = f"{self.base_url}/cgi-bin/luci/{page}?embedded=&iface=4g"
+        page_with_query = f"{page}?embedded=&iface=4g"
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/gcom/config",
@@ -586,7 +735,9 @@ class CudyRouter:
 
         try:
             # GET the form page to obtain token
-            resp = session.get(page_url, timeout=15, headers=headers)
+            resp = self._luci_get(page_with_query, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
+            if not resp:
+                return 0, "Failed to load AT command page"
             html = resp.text
             token = _extract_hidden(html, "token")
             if not token:
@@ -601,17 +752,18 @@ class CudyRouter:
                 "cbid.atcmd.1.command": command,
                 "cbid.atcmd.1.refresh": "AT Command",
             }
-            r = session.post(
-                page_url,
-                timeout=30,
+            r = self._luci_post(
+                page_with_query,
+                timeout=DEFAULT_POST_TIMEOUT,
                 headers={
                     **headers,
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Origin": self.base_url,
                 },
                 data=urllib.parse.urlencode(post_fields),
-                allow_redirects=False,
             )
+            if not r:
+                return 0, "Failed to submit AT command request"
 
             # Extract the response from textarea
             response_html = r.text
@@ -644,15 +796,9 @@ class CudyRouter:
         """
         import json
 
-        session = self._get_session()
-        # Ensure we're authenticated
-        if self.auth_cookie:
-            session.cookies.set("sysauth", self.auth_cookie)
-        else:
-            if not self.authenticate():
-                _LOGGER.error("Failed to authenticate for mesh reboot")
-                return 0, "Authentication failed"
-            session.cookies.set("sysauth", self.auth_cookie)
+        if not self.auth_cookie and not self.authenticate():
+            _LOGGER.error("Failed to authenticate for mesh reboot")
+            return 0, "Authentication failed"
 
         # Strip colons from MAC for API call
         mac_no_colons = mac_address.replace(":", "").upper()
@@ -667,7 +813,7 @@ class CudyRouter:
         }
 
         try:
-            resp = session.get(mesh_page_url, timeout=15, headers=headers)
+            resp = self._luci_get("admin/network/mesh", timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
             token = _extract_hidden(resp.text, "token")
             _LOGGER.debug("Got token: %s", token[:10] if token else "None")
         except Exception as e:
@@ -682,9 +828,10 @@ class CudyRouter:
         ]
 
         for endpoint in json_endpoints:
-            page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
             try:
-                r = session.get(page_url, timeout=15, headers=headers)
+                r = self._luci_get(endpoint, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+                if not r:
+                    continue
                 _LOGGER.debug(
                     "Mesh reboot GET %s: status=%d, response=%s",
                     endpoint,
@@ -718,11 +865,9 @@ class CudyRouter:
         ]
 
         for endpoint in form_endpoints:
-            page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
-
             try:
-                resp = session.get(page_url, timeout=15, headers=headers)
-                if resp.status_code == 404:
+                resp = self._luci_get(endpoint, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+                if not resp or resp.status_code == 404:
                     continue
 
                 page_token = _extract_hidden(resp.text, "token") or token
@@ -750,17 +895,19 @@ class CudyRouter:
                 ]
 
                 for post_fields in post_patterns:
-                    r = session.post(
-                        page_url,
-                        timeout=30,
+                    r = self._luci_post(
+                        endpoint,
+                        timeout=DEFAULT_POST_TIMEOUT,
                         headers={
                             **headers,
                             "Content-Type": "application/x-www-form-urlencoded",
                             "Origin": self.base_url,
                         },
                         data=urllib.parse.urlencode(post_fields),
-                        allow_redirects=False,
+                        silent=True,
                     )
+                    if not r:
+                        continue
                     _LOGGER.debug(
                         "Mesh reboot POST to %s with %s: status=%d",
                         endpoint,
@@ -778,175 +925,42 @@ class CudyRouter:
         # Return success anyway - the device should reboot if the command worked
         return 200, f"Reboot command sent for {mac_address}"
 
-    def set_mesh_led(self, mac_address: str, enabled: bool) -> tuple[int, str]:
-        """Set LED state for a specific mesh device via /admin/network/mesh/ledctl endpoint.
+    def _set_led_state(self, device_id: str, enabled: bool, label: str) -> tuple[int, str]:
+        """Set LED state on mesh LED control endpoint."""
+        if not self.auth_cookie and not self.authenticate():
+            _LOGGER.error("Failed to authenticate for %s LED control", label)
+            return 0, "Authentication failed"
 
-        Args:
-            mac_address: The MAC address of the mesh device
-            enabled: True to turn LEDs on, False to turn off
-
-        Returns:
-            Tuple of (HTTP status code, response snippet or error message)
-        """
-        session = self._get_session()
-        # Ensure we're authenticated
-        if self.auth_cookie:
-            session.cookies.set("sysauth", self.auth_cookie)
-        else:
-            if not self.authenticate():
-                _LOGGER.error("Failed to authenticate for mesh LED control")
-                return 0, "Authentication failed"
-            session.cookies.set("sysauth", self.auth_cookie)
-
-        # Strip colons from MAC for API call
-        mac_no_colons = mac_address.replace(":", "").upper()
         led_value = "1" if enabled else "0"
         led_status = "on" if enabled else "off"
-
-        _LOGGER.info(
-            "Setting mesh LED for %s to %s via /admin/network/mesh/ledctl",
-            mac_address,
-            led_status,
-        )
-
-        # Use the ledctl endpoint with the device MAC
-        ledctl_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh/ledctl/{mac_no_colons}"
         panel_url = f"{self.base_url}/cgi-bin/luci/admin/panel"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": panel_url,
+            "X-Requested-With": "XMLHttpRequest",
+        }
 
         try:
-            # First get the batled page to get a valid token
-            batled_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh/batled"
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Referer": panel_url,
-                "X-Requested-With": "XMLHttpRequest",
-            }
-
-            resp = session.get(batled_url, timeout=15, headers=headers)
+            resp = self._luci_get("admin/network/mesh/batled", timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+            if not resp:
+                return 0, "Failed to load batled page"
             html = resp.text
-
             _LOGGER.debug("Batled page HTTP status: %d, length: %d", resp.status_code, len(html))
 
-            # Check if we got a login page instead
             if "luci_password" in html or "cbi-modal-auth" in html:
                 _LOGGER.warning("Batled page returned login form - re-authenticating")
                 if not self.authenticate():
                     return 0, "Re-authentication failed"
-                session.cookies.set("sysauth", self.auth_cookie)
-                resp = session.get(batled_url, timeout=15, headers=headers)
+                resp = self._luci_get("admin/network/mesh/batled", timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+                if not resp:
+                    return 0, "Failed to reload batled page after re-auth"
                 html = resp.text
 
             token = _extract_hidden(html, "token")
-
-            if not token:
-                _LOGGER.error("No token found on batled page for mesh LED control")
-                return 0, "No token on batled page"
-
-            _LOGGER.debug("Got token for mesh LED control: %s...", token[:10])
-
-            # Use multipart form data as the router expects
-            # Fields: token, cbi.submit, cbi.toggle, cbi.cbe.table.1.ledstatus, cbid.table.1.ledstatus
-            form_data = {
-                "token": (None, token),
-                "cbi.submit": (None, "1"),
-                "cbi.toggle": (None, "1"),
-                "cbi.cbe.table.1.ledstatus": (None, led_value),
-                "cbid.table.1.ledstatus": (None, led_value),
-            }
-
-            _LOGGER.debug("Posting to %s with ledstatus=%s", ledctl_url, led_value)
-
-            r = session.post(
-                ledctl_url,
-                timeout=30,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
-                    "Referer": panel_url,
-                    "Origin": self.base_url,
-                    "X-Requested-With": "XMLHttpRequest",
-                },
-                files=form_data,  # Use files= for multipart/form-data
-                allow_redirects=False,
-            )
-
-            _LOGGER.debug(
-                "Mesh LED control POST status: %d, response: %s",
-                r.status_code,
-                r.text[:200] if r.text else "empty",
-            )
-
-            if r.status_code == 200:
-                _LOGGER.info("Mesh LED set to %s for %s successfully", led_status, mac_address)
-                return r.status_code, f"LED {led_status} for {mac_address}"
-            else:
-                _LOGGER.warning("Mesh LED control returned status %d", r.status_code)
-                return r.status_code, f"LED control returned {r.status_code}"
-
-        except Exception as e:
-            _LOGGER.error("Mesh LED control failed: %s", e)
-            return 0, str(e)[:220]
-
-    def set_main_router_led(self, enabled: bool) -> tuple[int, str]:
-        """Set LED state for the main router via /admin/network/mesh/ledctl endpoint.
-
-        Args:
-            enabled: True to turn LEDs on, False to turn off
-
-        Returns:
-            Tuple of (HTTP status code, response snippet or error message)
-        """
-        session = self._get_session()
-        # Ensure we're authenticated
-        if self.auth_cookie:
-            session.cookies.set("sysauth", self.auth_cookie)
-        else:
-            if not self.authenticate():
-                _LOGGER.error("Failed to authenticate for main router LED control")
-                return 0, "Authentication failed"
-            session.cookies.set("sysauth", self.auth_cookie)
-
-        led_value = "1" if enabled else "0"
-        led_status = "on" if enabled else "off"
-
-        _LOGGER.info("Setting main router LED to %s via /admin/network/mesh/ledctl", led_status)
-
-        # Main router uses ID 000000000000 for LED control
-        ledctl_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh/ledctl/000000000000"
-        panel_url = f"{self.base_url}/cgi-bin/luci/admin/panel"
-
-        try:
-            # First get the batled page to get a valid token
-            batled_url = f"{self.base_url}/cgi-bin/luci/admin/network/mesh/batled"
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Referer": panel_url,
-                "X-Requested-With": "XMLHttpRequest",
-            }
-
-            resp = session.get(batled_url, timeout=15, headers=headers)
-            html = resp.text
-
-            _LOGGER.debug("Batled page HTTP status: %d, length: %d", resp.status_code, len(html))
-
-            # Check if we got a login page instead
-            if "luci_password" in html or "cbi-modal-auth" in html:
-                _LOGGER.warning("Batled page returned login form - re-authenticating")
-                if not self.authenticate():
-                    return 0, "Re-authentication failed"
-                session.cookies.set("sysauth", self.auth_cookie)
-                resp = session.get(batled_url, timeout=15, headers=headers)
-                html = resp.text
-
-            token = _extract_hidden(html, "token")
-
             if not token:
                 _LOGGER.error("No token found on batled page")
                 return 0, "No token on batled page"
 
-            _LOGGER.debug("Got token for LED control: %s...", token[:10])
-
-            # Use multipart form data as the router expects
-            # Fields: token, cbi.submit, cbi.toggle, cbi.cbe.table.1.ledstatus, cbid.table.1.ledstatus
             form_data = {
                 "token": (None, token),
                 "cbi.submit": (None, "1"),
@@ -955,37 +969,46 @@ class CudyRouter:
                 "cbid.table.1.ledstatus": (None, led_value),
             }
 
-            _LOGGER.debug("Posting to %s with ledstatus=%s", ledctl_url, led_value)
-
-            r = session.post(
-                ledctl_url,
-                timeout=30,
+            post_path = f"admin/network/mesh/ledctl/{device_id}"
+            r = self._luci_post(
+                post_path,
+                timeout=DEFAULT_POST_TIMEOUT,
                 headers={
                     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
                     "Referer": panel_url,
                     "Origin": self.base_url,
                     "X-Requested-With": "XMLHttpRequest",
                 },
-                files=form_data,  # Use files= for multipart/form-data
-                allow_redirects=False,
+                files=form_data,
+                silent=True,
             )
+            if not r:
+                return 0, "Failed to submit LED control request"
 
             _LOGGER.debug(
-                "LED control POST status: %d, response: %s",
+                "LED control POST status for %s: %d, response: %s",
+                label,
                 r.status_code,
                 r.text[:200] if r.text else "empty",
             )
 
             if r.status_code == 200:
-                _LOGGER.info("Main router LED set to %s successfully", led_status)
-                return r.status_code, f"LED {led_status} for main router"
-            else:
-                _LOGGER.warning("LED control returned status %d", r.status_code)
-                return r.status_code, f"LED control returned {r.status_code}"
+                _LOGGER.info("%s LED set to %s successfully", label, led_status)
+                return r.status_code, f"LED {led_status} for {label}"
+            _LOGGER.warning("LED control for %s returned status %d", label, r.status_code)
+            return r.status_code, f"LED control returned {r.status_code}"
+        except Exception as err:
+            _LOGGER.error("LED control failed for %s: %s", label, err)
+            return 0, str(err)[:220]
 
-        except Exception as e:
-            _LOGGER.error("LED control failed: %s", e)
-            return 0, str(e)[:220]
+    def set_mesh_led(self, mac_address: str, enabled: bool) -> tuple[int, str]:
+        """Set LED state for a specific mesh device."""
+        mac_no_colons = mac_address.replace(":", "").upper()
+        return self._set_led_state(mac_no_colons, enabled, mac_address)
+
+    def set_main_router_led(self, enabled: bool) -> tuple[int, str]:
+        """Set LED state for the main router."""
+        return self._set_led_state("000000000000", enabled, "main router")
 
     def get_mesh_led_state(self, mac_address: str) -> bool | None:
         """Get current LED state for a mesh device.
@@ -996,14 +1019,8 @@ class CudyRouter:
         Returns:
             True if LEDs are on, False if off, None if unknown
         """
-        session = self._get_session()
-        # Ensure we're authenticated
-        if self.auth_cookie:
-            session.cookies.set("sysauth", self.auth_cookie)
-        else:
-            if not self.authenticate():
-                return None
-            session.cookies.set("sysauth", self.auth_cookie)
+        if not self.auth_cookie and not self.authenticate():
+            return None
 
         endpoints = [
             "admin/network/mesh/led",
@@ -1012,15 +1029,14 @@ class CudyRouter:
         ]
 
         for endpoint in endpoints:
-            page_url = f"{self.base_url}/cgi-bin/luci/{endpoint}"
             headers = {
                 "User-Agent": "Mozilla/5.0",
                 "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/mesh",
             }
 
             try:
-                resp = session.get(page_url, timeout=15, headers=headers)
-                if resp.status_code == 404:
+                resp = self._luci_get(endpoint, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+                if not resp or resp.status_code == 404:
                     continue
 
                 html = resp.text

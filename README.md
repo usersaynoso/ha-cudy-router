@@ -198,6 +198,19 @@ For major changes, please open an issue first to discuss.
 
 Code formatting follows **Home Assistant Core** style guidelines.
 
+### Dev Quickstart
+
+1. Create a virtual environment and activate it.
+2. Install dependencies:
+   - `python -m pip install -r requirements.txt`
+   - `python -m pip install pytest mypy`
+3. Run formatter/fixes:
+   - `./scripts/format`
+4. Run tests:
+   - `./scripts/test`
+5. Optional focused typecheck:
+   - `python -m mypy custom_components/cudy_router/router_data.py custom_components/cudy_router/parser_network.py custom_components/cudy_router/sensor_descriptions.py`
+
 ---
 
 ## License
