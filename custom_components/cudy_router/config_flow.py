@@ -201,7 +201,9 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        # Home Assistant now exposes `config_entry` as read-only on options
+        # flows, so store our reference under a private attribute.
+        self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -214,7 +216,7 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
                 )
             return self.async_create_entry(title="", data=user_input)
 
-        options = self.config_entry.options
+        options = self._config_entry.options
 
         return self.async_show_form(
             step_id="init",
