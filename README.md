@@ -184,6 +184,7 @@ Send an AT command directly to the modem (advanced users).
 
 After setup, you can configure:
 - **Device List**: Comma-separated list of MAC addresses or hostnames to track individually
+- **Scan Interval**: How often to poll the router (default `60` seconds, minimum `15` seconds)
 
 ---
 

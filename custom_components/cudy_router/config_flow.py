@@ -23,14 +23,17 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 
-from .const import DOMAIN, OPTIONS_DEVICELIST
+from .const import (
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    MAX_SCAN_INTERVAL,
+    MIN_SCAN_INTERVAL,
+    OPTIONS_DEVICELIST,
+    normalize_scan_interval,
+)
 from .router import CudyRouter
 
 _LOGGER = logging.getLogger(__name__)
-
-DEFAULT_SCAN_INTERVAL = 15
-MIN_SCAN_INTERVAL = 5
-MAX_SCAN_INTERVAL = 3600
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -205,6 +208,10 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
+            if CONF_SCAN_INTERVAL in user_input:
+                user_input[CONF_SCAN_INTERVAL] = normalize_scan_interval(
+                    user_input[CONF_SCAN_INTERVAL]
+                )
             return self.async_create_entry(title="", data=user_input)
 
         options = self.config_entry.options
@@ -219,7 +226,9 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
                     ): str,
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
-                        default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                        default=normalize_scan_interval(
+                            options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+                        ),
                     ): selector.NumberSelector(
                         selector.NumberSelectorConfig(
                             mode=selector.NumberSelectorMode.BOX,
