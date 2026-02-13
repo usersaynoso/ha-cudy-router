@@ -2,6 +2,10 @@
 
 DOMAIN = "cudy_router"
 
+DEFAULT_SCAN_INTERVAL = 60
+MIN_SCAN_INTERVAL = 15
+MAX_SCAN_INTERVAL = 3600
+
 MODULE_MODEM = "modem"
 MODULE_DEVICES = "devices"
 MODULE_SYSTEM = "system"
@@ -27,3 +31,13 @@ ATTR_MESH_FIRMWARE = "firmware_version"
 ATTR_MESH_NAME = "name"
 ATTR_MESH_STATUS = "status"
 ATTR_MESH_IP = "ip_address"
+
+
+def normalize_scan_interval(value: object) -> int:
+    """Normalize scan interval to a safe range."""
+    try:
+        interval = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return DEFAULT_SCAN_INTERVAL
+
+    return max(MIN_SCAN_INTERVAL, min(MAX_SCAN_INTERVAL, interval))
