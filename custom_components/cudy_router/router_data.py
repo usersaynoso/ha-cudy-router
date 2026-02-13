@@ -131,8 +131,14 @@ async def collect_router_data(
             await hass.async_add_executor_job(router.get, "admin/network/vpn/openvpns/status?status=")
         )
 
+    # DHCP status
+    if existing_feature(device_model, MODULE_DHCP) is True:
+        data[MODULE_DHCP] = parse_dhcp_status(
+            await hass.async_add_executor_job(router.get, "admin/services/dhcp/status?detail=1")
+        )
+
     # WAN status
-    if existing_feature(device_model, MODULE_WAN) is True:
+    if existing_feature(device_model, MODULE_WAN) is True and MODULE_MODEM not in data:
         # Probe support first; some models expose a generic/empty page.
         wan_status_html = await hass.async_add_executor_job(
             router.get,
@@ -144,14 +150,34 @@ async def collect_router_data(
             for marker in ("public ip", "ip address", "gateway", "subnet", "protocol")
         ):
             wan_data = parse_wan_status(wan_status_html)
-            if any(entry.get("value") not in (None, "") for entry in wan_data.values()):
-                data[MODULE_WAN] = wan_data
 
-    # DHCP status
-    if existing_feature(device_model, MODULE_DHCP) is True:
-        data[MODULE_DHCP] = parse_dhcp_status(
-            await hass.async_add_executor_job(router.get, "admin/services/dhcp/status?detail=1")
-        )
+            # Some firmware only exposes DNS/Gateway on DHCP status.
+            dhcp_data = data.get(MODULE_DHCP, {})
+            dhcp_gateway = dhcp_data.get("dhcp_default_gateway", {}).get("value")
+            dhcp_dns = dhcp_data.get("dhcp_prefered_dns", {}).get("value")
+            if wan_data.get("gateway", {}).get("value") in (None, "") and dhcp_gateway not in (None, ""):
+                wan_data["gateway"] = {"value": dhcp_gateway}
+            if wan_data.get("dns", {}).get("value") in (None, "") and dhcp_dns not in (None, ""):
+                wan_data["dns"] = {"value": dhcp_dns}
+
+            # If modem metrics exist, avoid duplicate WAN entities for the same values.
+            if MODULE_MODEM in data:
+                for duplicated_key in (
+                    "connected_time",
+                    "public_ip",
+                    "session_upload",
+                    "session_download",
+                ):
+                    wan_data.pop(duplicated_key, None)
+
+            # Skip empty WAN sensors to avoid persistent Unknown entities.
+            wan_data = {
+                key: entry
+                for key, entry in wan_data.items()
+                if entry.get("value") not in (None, "")
+            }
+            if wan_data:
+                data[MODULE_WAN] = wan_data
 
     # Mesh devices - try multiple possible endpoints (silent since mesh is optional)
     if existing_feature(device_model, MODULE_MESH) is True:

@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_MODEL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -19,6 +20,7 @@ from .const import (
     MODULE_DEVICES,
     MODULE_MESH,
     MODULE_MODEM,
+    MODULE_WAN,
     OPTIONS_DEVICELIST,
     SECTION_DETAILED,
 )
@@ -44,6 +46,14 @@ from .sensor_descriptions import (
 
 _LOGGER = logging.getLogger(__name__)
 
+_WAN_DUPLICATE_MODEM_KEYS = {
+    "connected_time",
+    "public_ip",
+    "session_upload",
+    "session_download",
+}
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -66,6 +76,32 @@ async def async_setup_entry(
     )
 
     device_model: str = config_entry.data.get(CONF_MODEL, "default")
+    seen_unique_ids: set[str] = set()
+    entity_registry = async_get_entity_registry(hass)
+
+    def _remove_sensor_by_unique_id(unique_id: str) -> None:
+        """Remove stale entities from registry by unique ID."""
+        entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
+
+    def _append_entity(entity: SensorEntity) -> None:
+        """Append entity once per unique ID."""
+        unique_id = entity.unique_id
+        if unique_id and unique_id in seen_unique_ids:
+            return
+        if unique_id:
+            seen_unique_ids.add(unique_id)
+        entities.append(entity)
+
+    # Clean up stale WAN entities that are known duplicates or have no value.
+    wan_data = coordinator.data.get(MODULE_WAN, {}) if coordinator.data else {}
+    for sensor_key in _WAN_DUPLICATE_MODEM_KEYS:
+        if coordinator.data and MODULE_MODEM in coordinator.data:
+            _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
+    for sensor_key in ("subnet_mask", "gateway", "dns"):
+        if isinstance(wan_data, dict) and wan_data.get(sensor_key, {}).get("value") in (None, ""):
+            _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
 
     # Add sensors based on available data from coordinator
     if coordinator.data:
@@ -76,9 +112,20 @@ async def async_setup_entry(
             for sensor_label in sensors:
                 if existing_feature(device_model, module) is False:
                     continue
+
+                data_entry = sensors.get(sensor_label)
+                if (
+                    module == MODULE_WAN
+                    and sensor_label in _WAN_DUPLICATE_MODEM_KEYS
+                    and MODULE_MODEM in coordinator.data
+                ):
+                    continue
+                if isinstance(data_entry, dict) and data_entry.get("value") in (None, ""):
+                    continue
+
                 sensor_description = SENSOR_TYPES.get((module, sensor_label))
                 if sensor_description:
-                    entities.append(
+                    _append_entity(
                         CudyRouterSensor(
                             coordinator,
                             router_name,
@@ -89,10 +136,10 @@ async def async_setup_entry(
 
     # Always add signal and network sensors
     if existing_feature(device_model, "modem", "signal") is True:
-        entities.append(CudyRouterSignalSensor(coordinator, router_name, "signal", SIGNAL_SENSOR))
+        _append_entity(CudyRouterSignalSensor(coordinator, router_name, "signal", SIGNAL_SENSOR))
 
     if existing_feature(device_model, "modem", "network") is True:
-        entities.append(CudyRouterSignalSensor(coordinator, router_name, "network", NETWORK_SENSOR))
+        _append_entity(CudyRouterSignalSensor(coordinator, router_name, "network", NETWORK_SENSOR))
 
     # Add device-specific sensors based on options
     options = config_entry.options
@@ -100,14 +147,10 @@ async def async_setup_entry(
     device_list = [x.strip() for x in device_list_str.split(",") if x.strip()]
 
     for device_id in device_list:
-        entities.extend(
-            [
-                CudyRouterDeviceSensor(coordinator, router_name, device_id, DEVICE_MAC_SENSOR),
-                CudyRouterDeviceSensor(coordinator, router_name, device_id, DEVICE_HOSTNAME_SENSOR),
-                CudyRouterDeviceSensor(coordinator, router_name, device_id, DEVICE_UPLOAD_SENSOR),
-                CudyRouterDeviceSensor(coordinator, router_name, device_id, DEVICE_DOWNLOAD_SENSOR),
-            ]
-        )
+        _append_entity(CudyRouterDeviceSensor(coordinator, router_name, device_id, DEVICE_MAC_SENSOR))
+        _append_entity(CudyRouterDeviceSensor(coordinator, router_name, device_id, DEVICE_HOSTNAME_SENSOR))
+        _append_entity(CudyRouterDeviceSensor(coordinator, router_name, device_id, DEVICE_UPLOAD_SENSOR))
+        _append_entity(CudyRouterDeviceSensor(coordinator, router_name, device_id, DEVICE_DOWNLOAD_SENSOR))
 
     # Add mesh device sensors
     # NOTE: Satellite mesh devices often only have name and status available.
@@ -125,58 +168,68 @@ async def async_setup_entry(
             )
             # Create a friendly name for the mesh device
             mesh_name = mesh_device.get("name") or mesh_mac
-            entities.extend(
-                [
-                    CudyRouterMeshDeviceSensor(
-                        coordinator,
-                        router_name,
-                        mesh_mac,
-                        mesh_name,
-                        MESH_DEVICE_NAME_SENSOR,
-                    ),
-                    CudyRouterMeshDeviceSensor(
-                        coordinator,
-                        router_name,
-                        mesh_mac,
-                        mesh_name,
-                        MESH_DEVICE_MODEL_SENSOR,
-                    ),
-                    CudyRouterMeshDeviceSensor(
-                        coordinator,
-                        router_name,
-                        mesh_mac,
-                        mesh_name,
-                        MESH_DEVICE_MAC_SENSOR,
-                    ),
-                    CudyRouterMeshDeviceSensor(
-                        coordinator,
-                        router_name,
-                        mesh_mac,
-                        mesh_name,
-                        MESH_DEVICE_FIRMWARE_SENSOR,
-                    ),
-                    CudyRouterMeshDeviceSensor(
-                        coordinator,
-                        router_name,
-                        mesh_mac,
-                        mesh_name,
-                        MESH_DEVICE_STATUS_SENSOR,
-                    ),
-                    CudyRouterMeshDeviceSensor(
-                        coordinator,
-                        router_name,
-                        mesh_mac,
-                        mesh_name,
-                        MESH_DEVICE_IP_SENSOR,
-                    ),
-                    CudyRouterMeshDeviceSensor(
-                        coordinator,
-                        router_name,
-                        mesh_mac,
-                        mesh_name,
-                        MESH_DEVICE_CONNECTED_SENSOR,
-                    ),
-                ]
+            _append_entity(
+                CudyRouterMeshDeviceSensor(
+                    coordinator,
+                    router_name,
+                    mesh_mac,
+                    mesh_name,
+                    MESH_DEVICE_NAME_SENSOR,
+                )
+            )
+            _append_entity(
+                CudyRouterMeshDeviceSensor(
+                    coordinator,
+                    router_name,
+                    mesh_mac,
+                    mesh_name,
+                    MESH_DEVICE_MODEL_SENSOR,
+                )
+            )
+            _append_entity(
+                CudyRouterMeshDeviceSensor(
+                    coordinator,
+                    router_name,
+                    mesh_mac,
+                    mesh_name,
+                    MESH_DEVICE_MAC_SENSOR,
+                )
+            )
+            _append_entity(
+                CudyRouterMeshDeviceSensor(
+                    coordinator,
+                    router_name,
+                    mesh_mac,
+                    mesh_name,
+                    MESH_DEVICE_FIRMWARE_SENSOR,
+                )
+            )
+            _append_entity(
+                CudyRouterMeshDeviceSensor(
+                    coordinator,
+                    router_name,
+                    mesh_mac,
+                    mesh_name,
+                    MESH_DEVICE_STATUS_SENSOR,
+                )
+            )
+            _append_entity(
+                CudyRouterMeshDeviceSensor(
+                    coordinator,
+                    router_name,
+                    mesh_mac,
+                    mesh_name,
+                    MESH_DEVICE_IP_SENSOR,
+                )
+            )
+            _append_entity(
+                CudyRouterMeshDeviceSensor(
+                    coordinator,
+                    router_name,
+                    mesh_mac,
+                    mesh_name,
+                    MESH_DEVICE_CONNECTED_SENSOR,
+                )
             )
 
     async_add_entities(entities)
