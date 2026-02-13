@@ -9,5 +9,5 @@
   "quality_scale": "silver",
   "image": "logo.svg",
   "requirements": ["beautifulsoup4==4.12.3", "python-dateutil==2.9.0.post0"],
-  "version": "1.2.1"
+  "version": "1.2.2"
 }
