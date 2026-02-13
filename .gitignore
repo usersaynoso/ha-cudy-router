@@ -43,3 +43,12 @@ manifest.json
 
 .ssh-command
 config/*
+
+# Repository files not required for Home Assistant runtime deployment
+/.devcontainer/
+/.github/
+/.gitattributes
+/pyproject.toml
+/requirements.txt
+/scripts/
+/tests/
