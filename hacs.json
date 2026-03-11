@@ -6,6 +6,5 @@
   "repository": "ha-cudy-router",
   "filename": "custom_components/cudy_router/manifest.json",
   "issues": "https://github.com/usersaynoso/ha-cudy-router/issues",
-  "category": "integration",
   "zip_release": false
 }

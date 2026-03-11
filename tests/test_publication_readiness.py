@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "custom_components" / "cudy_router" / "manifest.json"
+HACS_JSON_PATH = ROOT / "hacs.json"
 STRINGS_PATH = ROOT / "custom_components" / "cudy_router" / "strings.json"
 TRANSLATIONS_PATH = ROOT / "custom_components" / "cudy_router" / "translations" / "en.json"
 BRAND_ICON_PATH = ROOT / "custom_components" / "cudy_router" / "brand" / "icon.png"
@@ -25,8 +26,18 @@ def test_manifest_has_required_hacs_fields() -> None:
     assert manifest["documentation"] == "https://github.com/usersaynoso/ha-cudy-router#readme"
     assert manifest["issue_tracker"] == "https://github.com/usersaynoso/ha-cudy-router/issues"
     assert manifest["integration_type"] == "hub"
-    assert manifest["version"] == "1.2.4"
+    assert manifest["version"] == "1.2.5"
     assert "image" not in manifest
+
+
+def test_hacs_json_matches_current_schema() -> None:
+    """hacs.json should not include deprecated keys rejected by HACS validation."""
+    hacs_json = json.loads(HACS_JSON_PATH.read_text(encoding="utf-8"))
+
+    assert hacs_json["name"] == "Cudy Router"
+    assert hacs_json["filename"] == "custom_components/cudy_router/manifest.json"
+    assert hacs_json["zip_release"] is False
+    assert "category" not in hacs_json
 
 
 def test_config_flow_strings_cover_reauth_flow() -> None:
