@@ -14,6 +14,14 @@
           "username": "Admin username for the router",
           "password": "Admin password for the router"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to Cudy Router",
+        "description": "Update the saved credentials for this router.",
+        "data": {
+          "username": "[%key:common::config_flow::data::username%]",
+          "password": "[%key:common::config_flow::data::password%]"
+        }
       }
     },
     "error": {
@@ -22,7 +30,8 @@
       "unknown": "[%key:common::config_flow::error::unknown%]"
     },
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "reauth_successful": "Reauthentication was successful."
     }
   },
   "options": {

@@ -1,27 +1,3 @@
-# Cudy Router — Home Assistant Integration
-
-This repository provides a Home Assistant integration for Cudy routers (including some 5G models).
-
-Installation (HACS)
-
-1. Open HACS in Home Assistant and choose "Integrations" → "Explore & Add Repositories".
-2. Add this repository: `https://github.com/usersaynoso/ha-cudy-router`.
-3. Install the integration and restart Home Assistant.
-
-Manual installation
-
-1. Copy the `custom_components/cudy_router` directory into your Home Assistant `config` directory.
-2. Restart Home Assistant.
-
-Configuration
-
-- Add the integration via Settings → Devices & Services → Add Integration → "Cudy Router".
-- Provide your router host (e.g. `https://192.168.10.1`), username and password.
-
-Notes
-
-- This integration requires access to the router's web interface (Remote Management or local LAN access).
-- For HACS listing metadata is provided in `hacs.json`.
 # Home Assistant Integration for Cudy Routers
 
 This repository contains a **community-built** Home Assistant integration for Cudy routers.
@@ -160,12 +136,23 @@ Send an AT command directly to the modem (advanced users).
 
 ## Installation
 
-1. Create a `cudy_router` folder in `config/custom_components/`
-2. Copy all files from this repository into that folder
-3. Restart Home Assistant
-4. Go to **Configuration → Integrations → Add Integration**
-5. Search for "Cudy Router"
-6. Enter your router's details:
+### HACS
+
+Once the repository is accepted into the default HACS store, install it from **HACS → Integrations**.
+
+Until then, add it as a custom repository:
+
+1. Open HACS and go to **Integrations**.
+2. Open the menu, choose **Custom repositories**, and add `https://github.com/usersaynoso/ha-cudy-router` as an **Integration** repository.
+3. Install **Cudy Router** and restart Home Assistant.
+
+### Manual installation
+
+1. Copy `custom_components/cudy_router` into your Home Assistant `config/custom_components/` directory.
+2. Restart Home Assistant.
+3. Go to **Settings → Devices & services → Add integration**.
+4. Search for "Cudy Router".
+5. Enter your router's details:
    - **Host**: Use the local LAN IP with https:// (e.g., `https://192.168.10.1`)
    - **Username**: Usually `admin`
    - **Password**: Your router admin password
@@ -203,14 +190,12 @@ Code formatting follows **Home Assistant Core** style guidelines.
 
 1. Create a virtual environment and activate it.
 2. Install dependencies:
-   - `python -m pip install -r requirements.txt`
-   - `python -m pip install pytest mypy`
-3. Run formatter/fixes:
-   - `./scripts/format`
-4. Run tests:
-   - `./scripts/test`
-5. Optional focused typecheck:
-   - `python -m mypy custom_components/cudy_router/router_data.py custom_components/cudy_router/parser_network.py custom_components/cudy_router/sensor_descriptions.py`
+   - `python3 -m pip install pytest`
+   - Install Home Assistant dev dependencies as needed for full integration testing in your own environment.
+3. Run the repository tests:
+   - `python3 -m pytest`
+4. Run a basic syntax check:
+   - `python3 -m compileall custom_components tests`
 
 ---
 

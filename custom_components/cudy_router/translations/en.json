@@ -1,7 +1,8 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Device is already configured"
+            "already_configured": "Device is already configured",
+            "reauth_successful": "Reauthentication was successful."
         },
         "error": {
             "cannot_connect": "Failed to connect",
@@ -20,44 +21,64 @@
                 },
                 "description": "Enter the connection details for your Cudy router.\n\n**Important:** Before adding, enable Remote Management in your router settings:\nSettings > Advanced Settings > Administration > Remote Management",
                 "title": "Add new router"
+            },
+            "reauth_confirm": {
+                "data": {
+                    "password": "Password",
+                    "username": "Username"
+                },
+                "description": "Update the saved credentials for this router.",
+                "title": "Reconnect to Cudy Router"
             }
         }
     },
     "options": {
-        "error": {
-            "cannot_connect": "Failed to connect",
-            "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
-        },
         "step": {
             "init": {
                 "data": {
-                    "device_list": "Comma separated list of devices (MAC or hostname) for detailed reports",
-                    "host": "Host",
-                    "password": "Password",
-                    "scan_interval": "Scan interval",
-                    "username": "Username"
+                    "device_list": "Devices to track",
+                    "scan_interval": "Update interval"
                 },
-                "title": "Configure router"
+                "data_description": {
+                    "device_list": "Comma-separated list of MAC addresses or hostnames to track individually",
+                    "scan_interval": "How often to poll the router for updates (in seconds)"
+                },
+                "title": "Configure Cudy Router"
             }
         }
     },
     "services": {
         "reboot_router": {
             "name": "Reboot router",
-            "description": "Reboots the Cudy router."
+            "description": "Reboots the Cudy router.",
+            "fields": {
+                "entry_id": {
+                    "name": "Config entry ID",
+                    "description": "The config entry ID of the router (optional if only one router is configured)."
+                }
+            }
         },
         "restart_5g_connection": {
             "name": "Restart 5G connection",
-            "description": "Restarts the 5G modem connection by triggering a modem reset."
+            "description": "Restarts the 5G modem connection by triggering a modem reset.",
+            "fields": {
+                "entry_id": {
+                    "name": "Config entry ID",
+                    "description": "The config entry ID of the router (optional if only one router is configured)."
+                }
+            }
         },
         "switch_5g_band": {
             "name": "Switch 5G band",
             "description": "Changes the 5G band setting on the router.",
             "fields": {
+                "entry_id": {
+                    "name": "Config entry ID",
+                    "description": "The config entry ID of the router (optional if only one router is configured)."
+                },
                 "band": {
                     "name": "Band",
-                    "description": "The 5G band value to switch to (e.g., 'auto', 'n78', 'n41')."
+                    "description": "The band value to switch to (e.g., 'auto', '5g-only', 'lte-only')."
                 }
             }
         },
@@ -65,13 +86,17 @@
             "name": "Send SMS",
             "description": "Sends an SMS message via the router's cellular modem.",
             "fields": {
+                "entry_id": {
+                    "name": "Config entry ID",
+                    "description": "The config entry ID of the router (optional if only one router is configured)."
+                },
                 "phone_number": {
                     "name": "Phone number",
-                    "description": "The destination phone number (e.g., +441234567890)."
+                    "description": "The destination phone number with country code (e.g., +441234567890)."
                 },
                 "message": {
                     "name": "Message",
-                    "description": "The SMS message content (max ~70 characters for single SMS)."
+                    "description": "The SMS text content."
                 }
             }
         },
@@ -79,6 +104,10 @@
             "name": "Send AT command",
             "description": "Sends a raw AT command to the router's cellular modem.",
             "fields": {
+                "entry_id": {
+                    "name": "Config entry ID",
+                    "description": "The config entry ID of the router (optional if only one router is configured)."
+                },
                 "command": {
                     "name": "Command",
                     "description": "The AT command to execute (e.g., 'AT+CSQ')."
