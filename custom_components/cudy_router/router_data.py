@@ -138,7 +138,7 @@ async def collect_router_data(
         )
 
     # WAN status
-    if existing_feature(device_model, MODULE_WAN) is True and MODULE_MODEM not in data:
+    if existing_feature(device_model, MODULE_WAN) is True:
         # Probe support first; some models expose a generic/empty page.
         wan_status_html = await hass.async_add_executor_job(
             router.get,
@@ -167,6 +167,7 @@ async def collect_router_data(
                     "public_ip",
                     "session_upload",
                     "session_download",
+                    "wan_ip",
                 ):
                     wan_data.pop(duplicated_key, None)
 

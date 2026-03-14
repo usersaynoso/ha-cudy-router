@@ -26,7 +26,7 @@ def test_manifest_has_required_hacs_fields() -> None:
     assert manifest["documentation"] == "https://github.com/usersaynoso/ha-cudy-router#readme"
     assert manifest["issue_tracker"] == "https://github.com/usersaynoso/ha-cudy-router/issues"
     assert manifest["integration_type"] == "hub"
-    assert manifest["version"] == "1.2.6"
+    assert manifest["version"] == "1.2.7"
     assert "image" not in manifest
 
 

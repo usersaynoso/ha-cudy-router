@@ -9,8 +9,16 @@ from .parser import get_seconds_duration, get_upload_download_values, parse_tabl
 
 def _pick_first_value(raw_data: dict[str, Any], *keys: str) -> Any:
     """Return the first non-empty value for the provided keys."""
+    normalized_lookup = {
+        raw_key.strip().lower(): value
+        for raw_key, value in raw_data.items()
+        if isinstance(raw_key, str) and value not in (None, "")
+    }
     for key in keys:
         value = raw_data.get(key)
+        if value not in (None, ""):
+            return value
+        value = normalized_lookup.get(key.strip().lower())
         if value not in (None, ""):
             return value
     return None
@@ -61,13 +69,15 @@ def parse_wan_status(input_html: str) -> dict[str, Any]:
         },
         "connected_time": {"value": connected_time},
         "mac_address": {
-            "value": _clean_text(_pick_first_value(raw_data, "MAC-Address", "MAC Address", "WAN MAC"))
+            "value": _clean_text(
+                _pick_first_value(raw_data, "MAC-Address", "MAC Address", "MAC", "WAN MAC", "WAN MAC Address")
+            )
         },
         "public_ip": {
             "value": _clean_text(_pick_first_value(raw_data, "Public IP", "Public IPv4", "WAN Public IP"))
         },
         "wan_ip": {
-            "value": _clean_text(_pick_first_value(raw_data, "IP Address", "WAN IP", "IP"))
+            "value": _clean_text(_pick_first_value(raw_data, "IP Address", "WAN IP", "IPv4 Address", "IP"))
         },
         "subnet_mask": {
             "value": _clean_text(_pick_first_value(raw_data, "Subnet Mask", "Subnet", "Netmask", "Mask"))

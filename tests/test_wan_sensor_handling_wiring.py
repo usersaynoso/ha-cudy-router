@@ -16,7 +16,7 @@ def test_sensor_setup_skips_duplicate_wan_modem_metrics() -> None:
     source = SENSOR_PATH.read_text(encoding="utf-8")
 
     assert "_WAN_DUPLICATE_MODEM_KEYS" in source
-    for key in ("connected_time", "public_ip", "session_upload", "session_download"):
+    for key in ("connected_time", "public_ip", "session_upload", "session_download", "wan_ip"):
         assert f'"{key}"' in source
 
     assert "module == MODULE_WAN" in source
@@ -35,9 +35,21 @@ def test_wan_parser_supports_fallback_key_names() -> None:
     """WAN parser should support alternate field labels used by Cudy pages."""
     source = PARSER_NETWORK_PATH.read_text(encoding="utf-8")
 
+    assert "normalized_lookup" in source
+    assert 'key.strip().lower()' in source
+    assert '"MAC-Address", "MAC Address", "MAC", "WAN MAC", "WAN MAC Address"' in source
+    assert '"IP Address", "WAN IP", "IPv4 Address", "IP"' in source
     assert '"Subnet Mask", "Subnet", "Netmask", "Mask"' in source
     assert '"Gateway", "Default Gateway"' in source
     assert '"DNS", "Preferred DNS", "Primary DNS"' in source
+
+
+def test_router_data_collects_wan_even_when_modem_exists() -> None:
+    """WAN polling should still run on modem routers so WAN-only fields populate."""
+    source = ROUTER_DATA_PATH.read_text(encoding="utf-8")
+
+    assert "if existing_feature(device_model, MODULE_WAN) is True:" in source
+    assert "if existing_feature(device_model, MODULE_WAN) is True and MODULE_MODEM not in data:" not in source
 
 
 def test_router_data_uses_dhcp_fallbacks_and_filters_empty_wan_values() -> None:
@@ -47,4 +59,5 @@ def test_router_data_uses_dhcp_fallbacks_and_filters_empty_wan_values() -> None:
     assert 'dhcp_data.get("dhcp_default_gateway", {}).get("value")' in source
     assert 'dhcp_data.get("dhcp_prefered_dns", {}).get("value")' in source
     assert 'wan_data.pop(duplicated_key, None)' in source
+    assert '"wan_ip"' in source
     assert 'if entry.get("value") not in (None, "")' in source

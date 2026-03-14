@@ -51,6 +51,7 @@ _WAN_DUPLICATE_MODEM_KEYS = {
     "public_ip",
     "session_upload",
     "session_download",
+    "wan_ip",
 }
 
 
