@@ -15,6 +15,7 @@ BRAND_ICON_PATH = ROOT / "custom_components" / "cudy_router" / "brand" / "icon.p
 BRAND_LOGO_PATH = ROOT / "custom_components" / "cudy_router" / "brand" / "logo.png"
 HACS_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "validate.yaml"
 HASSFEST_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "hassfest.yaml"
+RELEASE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "release.yaml"
 
 
 def test_manifest_has_required_hacs_fields() -> None:
@@ -59,6 +60,18 @@ def test_github_actions_exist_for_hacs_and_hassfest() -> None:
     assert "category: integration" in hacs_workflow
     assert 'uses: actions/checkout@v4' in hassfest_workflow
     assert 'uses: home-assistant/actions/hassfest@master' in hassfest_workflow
+
+
+def test_release_workflow_creates_github_releases_from_version_tags() -> None:
+    """Tag pushes should publish a GitHub release for the shipped version."""
+    release_workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "tags:" in release_workflow
+    assert '- "v*"' in release_workflow
+    assert "contents: write" in release_workflow
+    assert 'uses: actions/checkout@v4' in release_workflow
+    assert 'uses: softprops/action-gh-release@v2' in release_workflow
+    assert "generate_release_notes: true" in release_workflow
 
 
 def test_local_brand_assets_exist() -> None:
