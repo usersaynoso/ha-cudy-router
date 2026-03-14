@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SENSOR_PATH = ROOT / "custom_components" / "cudy_router" / "sensor.py"
 PARSER_NETWORK_PATH = ROOT / "custom_components" / "cudy_router" / "parser_network.py"
 ROUTER_DATA_PATH = ROOT / "custom_components" / "cudy_router" / "router_data.py"
+SENSOR_DESCRIPTIONS_PATH = ROOT / "custom_components" / "cudy_router" / "sensor_descriptions.py"
 
 
 def test_sensor_setup_skips_duplicate_wan_modem_metrics() -> None:
@@ -22,6 +23,18 @@ def test_sensor_setup_skips_duplicate_wan_modem_metrics() -> None:
     assert "module == MODULE_WAN" in source
     assert "sensor_label in _WAN_DUPLICATE_MODEM_KEYS" in source
     assert "MODULE_MODEM in coordinator.data" in source
+
+
+def test_sensor_setup_removes_stale_wan_mac_entity() -> None:
+    """Sensor setup should clean up the removed WAN MAC entity from the registry."""
+    source = SENSOR_PATH.read_text(encoding="utf-8")
+    descriptions_source = SENSOR_DESCRIPTIONS_PATH.read_text(encoding="utf-8")
+
+    assert "_WAN_REMOVED_SENSOR_KEYS" in source
+    assert '"mac_address"' in source
+    assert '_remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")' in source
+    assert '(MODULE_WAN, "mac_address")' not in descriptions_source
+    assert 'name_suffix="WAN MAC"' not in descriptions_source
 
 
 def test_sensor_setup_skips_empty_sensor_values() -> None:

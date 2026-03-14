@@ -229,12 +229,6 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    (MODULE_WAN, "mac_address"): CudyRouterSensorEntityDescription(
-        key="mac_address",
-        module=MODULE_WAN,
-        name_suffix="WAN MAC",
-        icon="mdi:wan",
-    ),
     (MODULE_WAN, "public_ip"): CudyRouterSensorEntityDescription(
         key="public_ip",
         module=MODULE_WAN,

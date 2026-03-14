@@ -54,6 +54,10 @@ _WAN_DUPLICATE_MODEM_KEYS = {
     "wan_ip",
 }
 
+_WAN_REMOVED_SENSOR_KEYS = {
+    "mac_address",
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -97,6 +101,8 @@ async def async_setup_entry(
 
     # Clean up stale WAN entities that are known duplicates or have no value.
     wan_data = coordinator.data.get(MODULE_WAN, {}) if coordinator.data else {}
+    for sensor_key in _WAN_REMOVED_SENSOR_KEYS:
+        _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
     for sensor_key in _WAN_DUPLICATE_MODEM_KEYS:
         if coordinator.data and MODULE_MODEM in coordinator.data:
             _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
