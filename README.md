@@ -28,10 +28,14 @@ The integration includes model normalization for several Cudy model strings and 
 
 ### HACS
 
-1. Open HACS in Home Assistant.
-2. Add this repository as a custom repository.
-3. Install **Cudy Router**.
-4. Restart Home Assistant.
+At the time of writing, install it through HACS as a **custom repository**:
+
+1. Open **HACS** in Home Assistant.
+2. Open the menu in the top-right corner.
+3. Choose **Custom repositories**.
+4. Add `https://github.com/usersaynoso/ha-cudy-router` as an **Integration** repository.
+5. Search for **Cudy Router** in HACS and install it.
+6. Restart Home Assistant.
 
 ### Manual
 
@@ -215,10 +219,12 @@ When client devices are enabled, each matched connected client can expose:
 
 ### Manual Client Diagnostic Sensors
 
-Entries listed in **Manually Add Connected Devices** also create router-level diagnostic sensors on the main router device for:
+The integration does **not** create router-level MAC or hostname sensors from **Manually Add Connected Devices**.
 
-- MAC
-- Hostname
+That option is only used to:
+
+- limit which connected clients become Home Assistant client devices when auto-add is off
+- create opt-in `device_tracker` entities for those matched clients
 
 ### Mesh Node Sensors
 
