@@ -1,216 +1,477 @@
-# Home Assistant Integration for Cudy Routers
+# Cudy Router for Home Assistant
 
-This repository contains a **community-built** Home Assistant integration for Cudy routers.
+`cudy_router` is a community-built Home Assistant integration for Cudy routers that expose a LuCI-based web interface.
 
-Community-built means it is **not endorsed, maintained, or supported by Cudy**.  
-If something breaks or behaves oddly, please report issues here rather than contacting Cudy support.
+It connects directly to the router over your local network, reads the same status and configuration pages you see in the browser, and turns them into Home Assistant entities, devices, and services.
 
----
+This project is not endorsed, maintained, or supported by Cudy.
 
-## Supported Routers
+## Highlights
 
-- **Cudy P5** (5G Router) - Fully tested
-- Other Cudy routers with LuCI web interface should work (feedback welcome)
+- Local polling integration with config flow support
+- Router-wide sensors for modem, WAN, LAN, DHCP, VPN, Wi-Fi, SMS, traffic, and system status
+- Writable router configuration entities exposed as Home Assistant `switch` and `select` entities
+- Main router reboot button and optional service calls for advanced actions
+- Mesh node support with separate Home Assistant devices
+- Connected client support with separate Home Assistant devices
+- Per-client control switches for internet access and DNS filter
+- Optional manual client tracking with `device_tracker` entities
+- Cleaner Home Assistant device registry layout with router, mesh, and client devices split apart
 
----
+## Current Status
 
-## Features
+Tested most heavily against the **Cudy P5**. Other Cudy routers with comparable LuCI pages may also work, but entity coverage depends on which pages and controls your router firmware exposes.
 
-The integration authenticates against the router's **web-based admin interface** and extracts data by parsing the rendered pages.
-
-It is optimized for Cudy routers with LuCI-based admin pages, with extra handling for newer 5G models and additional model-name normalization for alternate hardware strings such as `LT300 V3.0`, `WR1300E V2.0`, and `WR1300 V4.0`.
-
-### Sensors
-
-#### Modem / Cellular Connection
-| Sensor | Description |
-|--------|-------------|
-| Network Type | Current network (e.g., "EE 5G-SA", "LTE") |
-| Signal Strength | Signal quality (1-4 bars) |
-| RSRP | Reference Signal Received Power (dBm) |
-| RSRQ | Reference Signal Received Quality (dB) |
-| SINR | Signal to Interference & Noise Ratio (dB) |
-| RSSI | Received Signal Strength Indicator (dBm) |
-| Band | Current band(s) in use (e.g., "B78+B3") |
-| Cell ID | Cell tower ID with eNB/sector attributes |
-| SIM Slot | Active SIM slot (Sim 1 / Sim 2) |
-| Connected Time | Duration of current connection |
-| Public IP | Public IP address (carrier-assigned) |
-| WAN IP | WAN IP address (may be CGNAT address) |
-| IMEI | Device IMEI number |
-| IMSI | SIM IMSI number |
-| ICCID | SIM card ICCID |
-| Mode | Connection mode (TDD/FDD) |
-| Bandwidth | Download bandwidth (e.g., "40MHz") |
-| Session Upload | Data uploaded this session (MB) |
-| Session Download | Data downloaded this session (MB) |
-
-#### Data Usage
-| Sensor | Description |
-|--------|-------------|
-| Current Session Traffic | Traffic for current connection (MB) |
-| Monthly Traffic | Traffic this month (MB) |
-| Total Traffic | Total traffic since counter reset (MB) |
-
-#### System
-| Sensor | Description |
-|--------|-------------|
-| Uptime | Router uptime (seconds) |
-| Local Time | Router's local time |
-| Firmware Version | Installed firmware version |
-
-#### SMS
-| Sensor | Description |
-|--------|-------------|
-| SMS Inbox | Number of messages in inbox |
-| SMS Outbox | Number of sent messages |
-| SMS Unread | Number of unread messages |
-
-#### WiFi 2.4G & 5G
-| Sensor | Description |
-|--------|-------------|
-| SSID | WiFi network name |
-| Channel | WiFi channel |
-
-#### LAN
-| Sensor | Description |
-|--------|-------------|
-| LAN IP | Router's LAN IP address |
-| LAN MAC | Router's MAC address |
-
-#### Connected Devices
-| Sensor | Description |
-|--------|-------------|
-| Device Count | Total connected devices |
-| WiFi 2.4G Clients | Devices on 2.4G band |
-| WiFi 5G Clients | Devices on 5G band |
-| Total Clients | Total client count |
-| Top Downloader Speed / MAC / Hostname | Device currently downloading the most |
-| Top Uploader Speed / MAC / Hostname | Device currently uploading the most |
-| Total Download/Upload Speed | Aggregate bandwidth usage |
-
-#### Mesh Network (v1.1.0+)
-| Sensor | Description |
-|--------|-------------|
-| Mesh Devices Connected | Number of mesh nodes connected to the main router's mesh |
-| Mesh Device Name | Name of each mesh node |
-| Mesh Device Model | Model of each mesh node |
-| Mesh Device MAC | MAC address of each mesh node |
-| Mesh Device Firmware | Firmware version of each mesh node |
-| Mesh Device Status | Online/offline status of each node |
-| Mesh Device IP | IP address of each mesh node |
-
-### Switches
-
-#### LED Control (v1.1.0+)
-- Main router LED switch
-- Per-mesh-node LED switches
-
-### Device Trackers
-
-#### Opt-in Client Presence Tracking
-Devices listed in the integration's **Device List** option get `device_tracker` entities backed by the router's connected-device page.
-
-Supported identifiers:
-- MAC address
-- Hostname
-
-### Buttons
-
-#### Router Reboot (v1.1.0+)
-A button entity to reboot the main router.
-
-#### Mesh Device Reboot (v1.1.0+)
-Each mesh device gets a reboot button to restart that specific node.
-
-### Services
-
-#### `cudy_router.reboot_router`
-Reboot the router.
-
-#### `cudy_router.restart_5g_connection`
-Restart the 5G/LTE modem connection (modem reset). Useful for reconnecting to get a new IP or fix connectivity issues.
-
-#### `cudy_router.switch_5g_band`
-Switch the modem band preference.
-- **band** (required): Band value (e.g., "auto", "5g-only", "lte-only")
-
-#### `cudy_router.send_sms`
-Send an SMS via the router's modem.
-- **phone_number** (required): Destination number with country code (e.g., "+441234567890")
-- **message** (required): SMS text content
-
-#### `cudy_router.send_at_command`
-Send an AT command directly to the modem (advanced users).
-- **command** (required): AT command to execute (e.g., "AT+CSQ")
-
----
+The integration includes model normalization for several Cudy model strings and only creates entities for features detected on the current router.
 
 ## Installation
 
 ### HACS
 
-Once the repository is accepted into the default HACS store, install it from **HACS → Integrations**.
+1. Open HACS in Home Assistant.
+2. Add this repository as a custom repository.
+3. Install **Cudy Router**.
+4. Restart Home Assistant.
 
-Until then, add it as a custom repository:
+### Manual
 
-1. Open HACS and go to **Integrations**.
-2. Open the menu, choose **Custom repositories**, and add `https://github.com/usersaynoso/ha-cudy-router` as an **Integration** repository.
-3. Install **Cudy Router** and restart Home Assistant.
-
-### Manual installation
-
-1. Copy `custom_components/cudy_router` into your Home Assistant `config/custom_components/` directory.
+1. Copy `custom_components/cudy_router` into your Home Assistant `custom_components` directory.
 2. Restart Home Assistant.
-3. Go to **Settings → Devices & services → Add integration**.
-4. Search for "Cudy Router".
-5. Enter your router's details:
-   - **Host**: Use the local LAN IP with https:// (e.g., `https://192.168.10.1`)
-   - **Username**: Usually `admin`
-   - **Password**: Your router admin password
 
-⚠️ The directory name **must** be exactly `cudy_router` or Home Assistant will fail to load the integration.
+## Setup
 
-### Important Notes
+1. Go to **Settings > Devices & Services**.
+2. Add the **Cudy Router** integration.
+3. Enter the router IP address, username, and password.
 
-- **Always use HTTPS** - The router requires HTTPS connections
-- **Use Local LAN IP** - Don't use a remote/WAN IP as it may change (CGNAT)
-- The integration will accept self-signed certificates
+The integration normalizes the host automatically. If you enter `192.168.10.1`, it will be stored as `https://192.168.10.1`.
 
----
+## Home Assistant Device Model
 
-## Configuration Options
+The integration is structured around three device classes.
 
-After setup, you can configure:
-- **Device List**: Comma-separated list of MAC addresses or hostnames to expose as individual per-device sensors and `device_tracker` entities
-- **Scan Interval**: How often to poll the router (default `60` seconds, minimum `15` seconds)
+### Main Router
 
----
+The main router device is the parent device for the integration. Router-wide sensors, configuration entities, reboot actions, and router-level diagnostics live here.
 
-## Development & Contributions
+Examples:
 
-Testing has been performed against:
-- Cudy P5 (5G router)
+- modem and WAN status
+- traffic and SMS counters
+- DHCP and VPN sensors
+- Wi-Fi status sensors
+- writable router settings
+- main router LED control
+- reboot button
 
-Compatibility with other models is not guaranteed. Contributions, bug reports, and feedback are welcome.
+### Mesh Nodes
 
-For major changes, please open an issue first to discuss.
+Each detected mesh satellite is exposed as its own Home Assistant device under the main router.
 
-Code formatting follows **Home Assistant Core** style guidelines.
+Mesh node devices can expose:
 
-### Dev Quickstart
+- node name, model, MAC, IP, firmware, hardware, status, and backhaul
+- connected-device count when reported by the router
+- per-node LED switch
+- per-node reboot button
 
-1. Create a virtual environment and activate it.
-2. Install dependencies:
-   - `python3 -m pip install pytest`
-   - Install Home Assistant dev dependencies as needed for full integration testing in your own environment.
-3. Run the repository tests:
-   - `python3 -m pytest`
-4. Run a basic syntax check:
-   - `python3 -m compileall custom_components tests`
+### Connected Client Devices
 
----
+Connected clients can also be exposed as separate Home Assistant devices under the main router.
 
-## License
+Client devices can expose:
 
-Released under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
+- IP address
+- connection type
+- signal
+- online time
+- internet access switch
+- DNS filter switch
+
+## Entity Categories in Home Assistant
+
+The integration uses Home Assistant entity categories intentionally:
+
+- writable router settings live under **Configuration**
+- technical read-only values live under **Diagnostic**
+- operational controls like reboot buttons or per-client access switches remain normal control entities
+
+## Platforms
+
+The integration currently creates entities on these Home Assistant platforms:
+
+- `sensor`
+- `switch`
+- `select`
+- `button`
+- `device_tracker`
+
+## Sensors
+
+Entity availability depends on the router model and firmware. Not every router exposes every page or field.
+
+### Modem / Cellular
+
+- Network
+- Signal strength
+- SIM slot
+- Connected time
+- Cell information
+- RSRP
+- RSRQ
+- SINR
+- RSSI
+- Band
+- Public IP
+- WAN IP
+- IMEI
+- IMSI
+- ICCID
+- Mode
+- Bandwidth
+- Session upload
+- Session download
+
+### WAN
+
+- Protocol
+- Connected time
+- Public IP
+- WAN IP
+- Subnet mask
+- Gateway
+- DNS
+- Session upload
+- Session download
+
+### Data Usage
+
+- Current session traffic
+- Monthly traffic
+- Total traffic
+
+### System
+
+- Uptime
+- Local time
+- Firmware version
+
+### SMS
+
+- SMS inbox
+- SMS outbox
+- SMS unread
+
+### Wi-Fi
+
+- WiFi 2.4G SSID
+- WiFi 2.4G channel
+- WiFi 5G SSID
+- WiFi 5G channel
+
+### LAN
+
+- LAN IP
+- LAN MAC
+
+### DHCP
+
+- IP Start
+- IP End
+- Preferred DNS
+- Default Gateway
+- Leasetime
+
+### VPN
+
+- VPN protocol
+- VPN clients
+
+### Connected Device Summary
+
+- Device count
+- WiFi 2.4G clients
+- WiFi 5G clients
+- Wired clients
+- Total clients
+- Top downloader speed
+- Top downloader MAC
+- Top downloader hostname
+- Top uploader speed
+- Top uploader MAC
+- Top uploader hostname
+- Total download speed
+- Total upload speed
+- Mesh devices connected
+
+### Connected Client Detail Sensors
+
+When client devices are enabled, each matched connected client can expose:
+
+- IP address
+- Connection type
+- Signal
+- Online time
+
+### Manual Client Diagnostic Sensors
+
+Entries listed in **Manually Add Connected Devices** also create router-level diagnostic sensors on the main router device for:
+
+- MAC
+- Hostname
+
+### Mesh Node Sensors
+
+Each mesh node can expose:
+
+- Name
+- Model
+- MAC address
+- Firmware
+- Status
+- IP address
+- Connected devices
+- Hardware
+- Backhaul
+
+## Switches
+
+### Router Configuration Switches
+
+Writable router switches currently include:
+
+- Cellular enabled
+- Data roaming
+- Smart Connect
+- WiFi 2.4G enabled
+- WiFi 5G enabled
+- WiFi 2.4G hidden network
+- WiFi 5G hidden network
+- WiFi 2.4G separate clients
+- WiFi 5G separate clients
+- VPN enabled
+- Auto update
+- LED
+
+### Mesh Switches
+
+- LED
+
+### Per-Client Switches
+
+Matched client devices can expose:
+
+- Internet access switch
+- DNS filter switch
+
+## Selects
+
+Writable router selects currently include:
+
+- SIM slot
+- Network mode
+- PDP type
+- WiFi 2.4G mode
+- WiFi 2.4G channel width
+- WiFi 2.4G channel
+- WiFi 2.4G transmit power
+- WiFi 5G mode
+- WiFi 5G channel width
+- WiFi 5G channel
+- WiFi 5G transmit power
+- VPN protocol
+- VPN default rule
+- VPN client access
+- VPN policy
+- Auto update time
+
+That means settings such as the main router SIM slot can be changed directly from Home Assistant, for example switching between `Sim 1` and `Sim 2`.
+
+## Buttons
+
+### Main Router
+
+- Reboot
+
+### Mesh Nodes
+
+- Reboot
+
+## Device Trackers
+
+The integration supports `device_tracker` entities for manually selected clients.
+
+Important behavior:
+
+- `device_tracker` entities are opt-in
+- they are created from **Manually Add Connected Devices**
+- they are only created when **Automatically Add Connected Devices** is turned off
+- manual matching supports MAC addresses and hostnames
+
+## Integration Options
+
+### Automatically Add Connected Devices
+
+When enabled, the integration creates client devices and live per-client entities for every currently connected device reported by the router.
+
+Use this if you want Home Assistant to mirror the router's live client list automatically.
+
+### Manually Add Connected Devices
+
+This is a comma-separated list of MAC addresses or hostnames.
+
+Use this when you only care about a small number of specific clients and do not want every connected device added to Home Assistant.
+
+When **Automatically Add Connected Devices** is turned off:
+
+- client entities are only created for matching devices in this list
+- `device_tracker` entities are created for matching devices in this list
+- stale auto-added client entities are removed
+
+### Update Interval
+
+Controls how often the router is polled for new data.
+
+## Services
+
+The integration also registers Home Assistant services.
+
+### `cudy_router.reboot_router`
+
+Reboots the router.
+
+Optional fields:
+
+- `entry_id`
+
+### `cudy_router.restart_5g_connection`
+
+Restarts the router's cellular connection.
+
+Optional fields:
+
+- `entry_id`
+
+### `cudy_router.switch_5g_band`
+
+Changes the modem band preference.
+
+Fields:
+
+- `band`
+- `entry_id` optional
+
+### `cudy_router.send_sms`
+
+Sends an SMS through the router's modem.
+
+Fields:
+
+- `phone_number`
+- `message`
+- `entry_id` optional
+
+### `cudy_router.send_at_command`
+
+Sends a raw AT command to the modem and logs the result.
+
+Fields:
+
+- `command`
+- `entry_id` optional
+
+## Example Service Calls
+
+```yaml
+service: cudy_router.reboot_router
+data: {}
+```
+
+```yaml
+service: cudy_router.send_sms
+data:
+  phone_number: "+441234567890"
+  message: "Hello from Home Assistant"
+```
+
+```yaml
+service: cudy_router.send_at_command
+data:
+  command: "AT+CSQ"
+```
+
+## What the Integration Reads
+
+Depending on the detected router model and available pages, the integration reads and parses data from areas such as:
+
+- modem / cellular status
+- connected device lists
+- system status
+- data-usage pages
+- SMS status
+- Wi-Fi status
+- LAN status
+- VPN status
+- DHCP status
+- WAN status
+- cellular configuration
+- wireless configuration
+- VPN configuration
+- auto-update configuration
+- mesh status
+
+## Current Behavior Around Client Devices
+
+Client device creation is intentionally separate from router-level summary sensors.
+
+- summary sensors such as total clients and top uploader/downloader remain on the main router device
+- per-client IP, signal, online time, internet access, and DNS filter entities live on client devices
+- mesh node entities live on mesh devices
+- router settings stay on the main router device
+
+This keeps the Home Assistant device pages cleaner and reduces mixing router controls with client entities.
+
+## Limitations and Notes
+
+- Feature coverage varies by router model and firmware.
+- Some mesh values may be unavailable or reported as unknown if the router firmware does not expose them.
+- Service calls such as band switching and raw AT commands are advanced operations and should be used carefully.
+- The integration polls the router web UI. If the router is busy, rebooting, unreachable, or returns a different page layout, entities may be temporarily unavailable.
+- If the router password changes, reauthentication is handled through the config entry.
+
+## Troubleshooting
+
+### Entities Missing
+
+Check:
+
+- the router model actually exposes the relevant page or control
+- the integration options for automatic or manual client creation
+- that Home Assistant has been restarted after updating the custom component
+
+### Too Many Client Devices
+
+Turn off **Automatically Add Connected Devices** and use **Manually Add Connected Devices** instead.
+
+### Client Device Did Not Match
+
+The manual list accepts:
+
+- MAC addresses
+- hostnames
+
+Use the same value style the router reports in its connected-device table.
+
+### Router Cannot Connect
+
+Check:
+
+- router IP address
+- username and password
+- that Home Assistant can reach the router over the local network
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+When changing behavior, update the tests and keep the README in sync with the actual entity surface, options flow, and service list.
