@@ -375,6 +375,7 @@ async def collect_router_data(
                 mesh_data["mesh_devices"][formatted_mac] = client_info
                 _LOGGER.debug("Added new mesh device: %s", formatted_mac)
 
+        mesh_data["mesh_count"] = {"value": len(mesh_data.get("mesh_devices", {}))}
         data[MODULE_MESH] = mesh_data
 
     return data

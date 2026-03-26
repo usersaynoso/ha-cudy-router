@@ -18,6 +18,8 @@ If something breaks or behaves oddly, please report issues here rather than cont
 
 The integration authenticates against the router's **web-based admin interface** and extracts data by parsing the rendered pages.
 
+It is optimized for Cudy routers with LuCI-based admin pages, with extra handling for newer 5G models and additional model-name normalization for alternate hardware strings such as `LT300 V3.0`, `WR1300E V2.0`, and `WR1300 V4.0`.
+
 ### Sensors
 
 #### Modem / Cellular Connection
@@ -83,14 +85,14 @@ The integration authenticates against the router's **web-based admin interface**
 | WiFi 2.4G Clients | Devices on 2.4G band |
 | WiFi 5G Clients | Devices on 5G band |
 | Total Clients | Total client count |
-| Top Downloader | Device with highest download speed |
-| Top Uploader | Device with highest upload speed |
+| Top Downloader Speed / MAC / Hostname | Device currently downloading the most |
+| Top Uploader Speed / MAC / Hostname | Device currently uploading the most |
 | Total Download/Upload Speed | Aggregate bandwidth usage |
 
 #### Mesh Network (v1.1.0+)
 | Sensor | Description |
 |--------|-------------|
-| Mesh Devices | Number of mesh nodes connected |
+| Mesh Devices Connected | Number of mesh nodes connected to the main router's mesh |
 | Mesh Device Name | Name of each mesh node |
 | Mesh Device Model | Model of each mesh node |
 | Mesh Device MAC | MAC address of each mesh node |
@@ -100,8 +102,18 @@ The integration authenticates against the router's **web-based admin interface**
 
 ### Switches
 
-#### Mesh LED Control (v1.1.0+)
-Each mesh device gets a LED switch entity to turn the device LEDs on or off.
+#### LED Control (v1.1.0+)
+- Main router LED switch
+- Per-mesh-node LED switches
+
+### Device Trackers
+
+#### Opt-in Client Presence Tracking
+Devices listed in the integration's **Device List** option get `device_tracker` entities backed by the router's connected-device page.
+
+Supported identifiers:
+- MAC address
+- Hostname
 
 ### Buttons
 
@@ -170,7 +182,7 @@ Until then, add it as a custom repository:
 ## Configuration Options
 
 After setup, you can configure:
-- **Device List**: Comma-separated list of MAC addresses or hostnames to track individually
+- **Device List**: Comma-separated list of MAC addresses or hostnames to expose as individual per-device sensors and `device_tracker` entities
 - **Scan Interval**: How often to poll the router (default `60` seconds, minimum `15` seconds)
 
 ---

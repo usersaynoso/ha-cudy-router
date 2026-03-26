@@ -20,6 +20,7 @@ MODULE_WAN = "wan"
 MODULE_DHCP = "dhcp"
 
 SECTION_DETAILED = "detailed"
+SECTION_DEVICE_LIST = "device_list"
 SECTION_MESH_DEVICES = "mesh_devices"
 
 OPTIONS_DEVICELIST = "device_list"

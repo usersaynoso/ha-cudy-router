@@ -20,11 +20,17 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
 from .coordinator import CudyRouterDataUpdateCoordinator
+from .model_names import resolve_model_name
 from .router import CudyRouter
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: Final[list[Platform]] = [Platform.SENSOR, Platform.SWITCH, Platform.BUTTON]
+PLATFORMS: Final[list[Platform]] = [
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.BUTTON,
+    Platform.DEVICE_TRACKER,
+]
 
 # Service constants
 SERVICE_REBOOT: Final = "reboot_router"
@@ -75,7 +81,7 @@ SERVICE_SEND_AT_COMMAND_SCHEMA: Final = vol.Schema(
 )
 
 
-MIGRATION_VERSION: Final = 2
+MIGRATION_VERSION: Final = 3
 
 
 def _normalize_host(host: str) -> str:
@@ -99,13 +105,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         return False
 
-    if entry.version == 1:
+    if entry.version in (1, 2):
         new_data = dict(entry.data)
         host = new_data.get(CONF_HOST)
         if isinstance(host, str):
             new_data[CONF_HOST] = _normalize_host(host)
-        if not new_data.get(CONF_MODEL):
-            new_data[CONF_MODEL] = "default"
+        new_data[CONF_MODEL] = resolve_model_name(new_data.get(CONF_MODEL))
 
         hass.config_entries.async_update_entry(
             entry,
@@ -113,8 +118,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             version=MIGRATION_VERSION,
         )
         _LOGGER.info(
-            "Migrated %s config entry from version 1 to %s",
+            "Migrated %s config entry from version %s to %s",
             DOMAIN,
+            entry.version,
             MIGRATION_VERSION,
         )
 

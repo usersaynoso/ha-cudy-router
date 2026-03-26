@@ -31,6 +31,7 @@ from .const import (
     OPTIONS_DEVICELIST,
     normalize_scan_interval,
 )
+from .model_names import resolve_model_name
 from .router import CudyRouter
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,8 +67,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.exception("Error connecting to router: %s", err)
         raise CannotConnect from err
 
-    if not device_model:
-        device_model = "default"
+    device_model = resolve_model_name(device_model)
 
     try:
         authenticated = await hass.async_add_executor_job(router.authenticate)
@@ -85,7 +85,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Cudy Router."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         """Initialize config flow."""

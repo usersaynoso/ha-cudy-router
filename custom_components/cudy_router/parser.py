@@ -11,9 +11,75 @@ from bs4 import BeautifulSoup
 from dateutil.relativedelta import relativedelta
 from homeassistant.const import STATE_UNAVAILABLE
 
-from .const import SECTION_DETAILED
+from .const import SECTION_DETAILED, SECTION_DEVICE_LIST
 
 _LOGGER = logging.getLogger(__name__)
+
+_UP_RE = re.compile(r"up[:\s]+([\d.]+)\s*([kmg]?bps)", re.IGNORECASE)
+_DOWN_RE = re.compile(r"down[:\s]+([\d.]+)\s*([kmg]?bps)", re.IGNORECASE)
+_MAC_RE = re.compile(r"(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}", re.IGNORECASE)
+_IP_RE = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
+
+
+def _clean_cell_strings(element: Any) -> list[str]:
+    """Extract normalized text chunks from a table cell."""
+    return [text.strip() for text in element.stripped_strings if text and text.strip()]
+
+
+def _parse_device_speed_pair(cell_text: str) -> tuple[float | None, float | None]:
+    """Parse upload/download speeds from mixed text."""
+    upload = None
+    download = None
+
+    upload_match = _UP_RE.search(cell_text)
+    if upload_match:
+        upload = parse_speed(f"{upload_match.group(1)} {upload_match.group(2)}")
+
+    download_match = _DOWN_RE.search(cell_text)
+    if download_match:
+        download = parse_speed(f"{download_match.group(1)} {download_match.group(2)}")
+
+    return upload, download
+
+
+def _device_row_from_modern_columns(columns: list[Any]) -> dict[str, Any] | None:
+    """Parse a newer Cudy connected-device table layout."""
+    if len(columns) < 6:
+        return None
+
+    host_parts = _clean_cell_strings(columns[1])
+    ip_mac_parts = _clean_cell_strings(columns[4])
+    speed_text = " ".join(_clean_cell_strings(columns[5]))
+
+    hostname = host_parts[0] if host_parts else None
+    connection_type = host_parts[1] if len(host_parts) > 1 else None
+    ip_address = next((part for part in ip_mac_parts if _IP_RE.fullmatch(part)), None)
+    mac_address = next((part for part in ip_mac_parts if _MAC_RE.fullmatch(part)), None)
+    upload_speed, download_speed = _parse_device_speed_pair(speed_text)
+    signal = " ".join(_clean_cell_strings(columns[6])) if len(columns) > 6 else None
+    online_time = " ".join(_clean_cell_strings(columns[7])) if len(columns) > 7 else None
+
+    if not (hostname or ip_address or mac_address):
+        return None
+
+    return {
+        "hostname": hostname,
+        "ip": ip_address,
+        "mac": mac_address,
+        "up_speed": upload_speed,
+        "down_speed": download_speed,
+        "connection_type": connection_type,
+        "signal": signal,
+        "online_time": online_time,
+    }
+
+
+def _normalize_device_lookup(value: str | None) -> str:
+    """Normalize user/device identifiers for matching."""
+    normalized = (value or "").strip().lower()
+    if _MAC_RE.fullmatch(normalized.replace("-", ":")):
+        return normalized.replace(":", "").replace("-", "")
+    return normalized
 
 
 def add_unique(data: dict[str, Any], key: str, value: Any):
@@ -127,6 +193,8 @@ def get_all_devices(input_html: str) -> dict[str, Any]:
                         up_speed, down_speed = [x.strip() for x in content.split("\n")]
                     if div_id.endswith("hostname"):
                         hostname = content.split("\n")[0].strip()
+                elif div_id.endswith("hostname"):
+                    hostname = content
             if mac or ip:
                 devices.append(
                     {
@@ -137,6 +205,27 @@ def get_all_devices(input_html: str) -> dict[str, Any]:
                         "down_speed": parse_speed(down_speed),
                     }
                 )
+
+    seen_devices = {
+        ((device.get("mac") or "").lower(), (device.get("ip") or "").lower())
+        for device in devices
+    }
+
+    for row in soup.select("tbody tr[id^='cbi-table-']"):
+        columns = row.find_all("td")
+        device = _device_row_from_modern_columns(columns)
+        if not device:
+            continue
+
+        device_key = (
+            (device.get("mac") or "").lower(),
+            (device.get("ip") or "").lower(),
+        )
+        if device_key in seen_devices:
+            continue
+
+        seen_devices.add(device_key)
+        devices.append(device)
 
     return devices
 
@@ -258,7 +347,10 @@ def parse_devices(input_html: str, device_list_str: str) -> dict[str, Any]:
     """Parses devices page"""
 
     devices = get_all_devices(input_html)
-    data = {"device_count": {"value": len(devices)}}
+    data = {
+        "device_count": {"value": len(devices)},
+        SECTION_DEVICE_LIST: devices,
+    }
     if devices:
         top_download_device = max(devices, key=lambda item: item.get("down_speed"))
         data["top_downloader_speed"] = {"value": top_download_device.get("down_speed")}
@@ -270,12 +362,14 @@ def parse_devices(input_html: str, device_list_str: str) -> dict[str, Any]:
         data["top_uploader_hostname"] = {"value": top_upload_device.get("hostname")}
 
         data[SECTION_DETAILED] = {}
-        device_list = [x.strip() for x in (device_list_str or "").split(",")]
+        device_list = [x.strip() for x in (device_list_str or "").split(",") if x.strip()]
         for device in devices:
-            if device.get("mac") in device_list:
-                data[SECTION_DETAILED][device.get("mac")] = device
-            if device.get("hostname") in device_list:
-                data[SECTION_DETAILED][device.get("hostname")] = device
+            normalized_mac = _normalize_device_lookup(device.get("mac"))
+            normalized_hostname = _normalize_device_lookup(device.get("hostname"))
+            for device_id in device_list:
+                normalized_device_id = _normalize_device_lookup(device_id)
+                if normalized_device_id in (normalized_mac, normalized_hostname):
+                    data[SECTION_DETAILED][device_id] = device
 
         data["total_down_speed"] = {"value": sum(device.get("down_speed") or 0 for device in devices)}
         data["total_up_speed"] = {"value": sum(device.get("up_speed") or 0 for device in devices)}

@@ -31,7 +31,7 @@ def test_manifest_has_required_hacs_fields() -> None:
         "beautifulsoup4==4.13.3",
         "python-dateutil==2.9.0.post0",
     ]
-    assert manifest["version"] == "1.2.9"
+    assert manifest["version"] == "1.3.0"
     assert "image" not in manifest
 
 

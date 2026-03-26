@@ -414,7 +414,7 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
     ("mesh", "mesh_count"): CudyRouterSensorEntityDescription(
         key="mesh_count",
         module="mesh",
-        name_suffix="Mesh devices",
+        name_suffix="Mesh devices connected",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:table-network",
     ),
