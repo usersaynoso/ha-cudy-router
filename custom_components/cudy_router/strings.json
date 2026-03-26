@@ -39,11 +39,13 @@
       "init": {
         "title": "Configure Cudy Router",
         "data": {
-          "device_list": "Devices to track",
+          "auto_add_connected_devices": "Automatically add connected devices",
+          "device_list": "Manually add connected devices",
           "scan_interval": "Update interval"
         },
         "data_description": {
-          "device_list": "Comma-separated list of MAC addresses or hostnames to track individually",
+          "auto_add_connected_devices": "Create client devices and live client entities for every currently connected device. Turn this off to only create them for devices listed below.",
+          "device_list": "Comma-separated list of MAC addresses or hostnames to match when automatic connected-device discovery is turned off.",
           "scan_interval": "How often to poll the router for updates (in seconds)"
         }
       }

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 import urllib3
+from bs4 import BeautifulSoup
 
 from .router_data import collect_router_data
 
@@ -466,6 +467,143 @@ class CudyRouter:
             _LOGGER.debug("Failed to retrieve data from %s (status=%s)", url, status)
         return ""
 
+    def _resolve_luci_form_action(self, action: str | None, fallback_path: str) -> str:
+        """Resolve a form action to a LuCI-relative path."""
+        if not action or action == "#":
+            return fallback_path
+
+        if action.startswith(self.base_url):
+            action = action[len(self.base_url) :]
+
+        if action.startswith("/cgi-bin/luci/"):
+            return action.removeprefix("/cgi-bin/luci/")
+
+        if action.startswith("/"):
+            return action.lstrip("/")
+
+        return action
+
+    def _extract_form_payload(
+        self,
+        html: str,
+        fallback_path: str,
+        *,
+        submit_hint: str = "save",
+    ) -> tuple[str, dict[str, Any]]:
+        """Extract the active form action and current field payload from a page."""
+        soup = BeautifulSoup(html, "html.parser")
+        form = soup.find("form")
+        if form is None:
+            raise RuntimeError(f"No form found on {fallback_path}")
+
+        action_path = self._resolve_luci_form_action(form.get("action"), fallback_path)
+        payload: dict[str, Any] = {}
+
+        for field in form.find_all("input"):
+            name = field.get("name")
+            if not name:
+                continue
+
+            field_type = (field.get("type") or "text").lower()
+            if field_type in {"submit", "button", "image", "file"}:
+                continue
+
+            value = field.get("value", "")
+            if field_type in {"checkbox", "radio"}:
+                if field.has_attr("checked"):
+                    payload.setdefault(name, []).append(value)
+                continue
+
+            payload[name] = value
+
+        for field in form.find_all("select"):
+            name = field.get("name")
+            if not name:
+                continue
+
+            selected_values = [
+                option.get("value", "")
+                for option in field.find_all("option")
+                if option.has_attr("selected")
+            ]
+            if not selected_values:
+                first_option = field.find("option")
+                selected_values = [first_option.get("value", "")] if first_option else [""]
+
+            payload[name] = selected_values if field.has_attr("multiple") else selected_values[0]
+
+        for field in form.find_all("textarea"):
+            name = field.get("name")
+            if not name:
+                continue
+            payload[name] = field.text or ""
+
+        submit_field_name = None
+        submit_field_value = None
+        hint = submit_hint.lower()
+
+        for field in form.find_all(["button", "input"]):
+            field_type = (field.get("type") or "").lower()
+            if field_type and field_type not in {"submit", "button"}:
+                continue
+
+            text_value = " ".join(field.stripped_strings) or field.get("value", "")
+            name = field.get("name")
+            value = field.get("value", "")
+            if not name:
+                continue
+
+            lowered = (text_value or value or name).lower()
+            if name == "cbi.apply" or hint in lowered:
+                submit_field_name = name
+                submit_field_value = value
+                break
+
+        if submit_field_name:
+            payload[submit_field_name] = submit_field_value
+
+        return action_path, payload
+
+    def _submit_form(
+        self,
+        fetch_path: str,
+        overrides: dict[str, Any],
+        *,
+        submit_hint: str = "save",
+        referer: str | None = None,
+    ) -> tuple[int, str]:
+        """Submit a router form using its current values plus targeted overrides."""
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": referer or f"{self.base_url}/cgi-bin/luci/admin",
+        }
+
+        resp = self._luci_get(fetch_path, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
+        if not resp:
+            return 0, f"Failed to load page {fetch_path}"
+
+        action_path, payload = self._extract_form_payload(
+            resp.text,
+            fetch_path,
+            submit_hint=submit_hint,
+        )
+        payload.update(overrides)
+
+        post_resp = self._luci_post(
+            action_path,
+            timeout=DEFAULT_POST_TIMEOUT,
+            headers={
+                **headers,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Origin": self.base_url,
+            },
+            data=urllib.parse.urlencode(payload, doseq=True),
+        )
+        if not post_resp:
+            return 0, f"Failed to submit form on {action_path}"
+
+        return post_resp.status_code, post_resp.text[:220]
+
     def _post_action_on_page(
         self,
         page: str,
@@ -636,54 +774,245 @@ class CudyRouter:
             return 0, str(e)[:220]
 
     def switch_5g_band(self, band_value: str) -> tuple[int, str]:
-        """Attempt to set the 5G band by finding a select element on the settings page.
+        """Map the legacy service to the firmware's network-mode selector."""
+        mapping = {
+            "auto": "all",
+            "5g-only": "5g",
+            "lte-only": "lte",
+            "5g-nsa": "5gnsa_lte",
+            "5gnsa": "5gnsa_lte",
+        }
+        return self.set_cellular_setting("network_mode", mapping.get(band_value, band_value))
 
-        The method looks for a select whose name contains 'band' and submits
-        the chosen value.
-        """
-        page = "admin/network/gcom/setting"
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Referer": f"{self.base_url}/cgi-bin/luci/admin",
+    def set_cellular_setting(self, key: str, value: str | bool) -> tuple[int, str]:
+        """Set a cellular/APN configuration value."""
+        field_map: dict[str, tuple[str, Any]] = {
+            "enabled": ("cbid.network.4g.disabled", lambda enabled: "0" if enabled else "1"),
+            "data_roaming": ("cbid.network.4g.roaming", lambda enabled: "1" if enabled else "0"),
+            "sim_slot": ("cbid.network.4g.simslot", str),
+            "network_mode": ("cbid.network.4g.service", str),
+            "network_search": ("cbid.network.4g.search", str),
+            "pdp_type": ("cbid.network.4g.pdptype", str),
+            "apn_profile": ("cbid.network.4g.isp", str),
+        }
+        if key not in field_map:
+            return 0, f"Unsupported cellular setting: {key}"
+
+        field_name, serializer = field_map[key]
+        return self._submit_form(
+            "admin/network/gcom/config/apn",
+            {field_name: serializer(value)},
+            referer=f"{self.base_url}/cgi-bin/luci/admin/network/gcom/config",
+        )
+
+    def set_vpn_setting(self, key: str, value: str | bool) -> tuple[int, str]:
+        """Set a VPN configuration value."""
+        field_map: dict[str, tuple[str, Any]] = {
+            "enabled": ("cbid.vpn.config.enabled", lambda enabled: "1" if enabled else "0"),
+            "protocol": ("cbid.vpn.config._proto", str),
+            "default_rule": ("cbid.vpn.config.filter", str),
+            "client_access": ("cbid.vpn.config.access", str),
+            "site_to_site": ("cbid.vpn.config.s2s", lambda enabled: "1" if enabled else "0"),
+            "vpn_policy": ("cbid.vpn.config.policy", str),
+        }
+        if key not in field_map:
+            return 0, f"Unsupported VPN setting: {key}"
+
+        field_name, serializer = field_map[key]
+        return self._submit_form(
+            "admin/network/vpn/config",
+            {field_name: serializer(value)},
+            referer=f"{self.base_url}/cgi-bin/luci/admin/network/vpn/config",
+        )
+
+    def set_auto_update_setting(self, key: str, value: str | bool) -> tuple[int, str]:
+        """Set an auto-update configuration value."""
+        field_map: dict[str, tuple[str, Any]] = {
+            "auto_update": ("cbid.upgrade.1.auto_upgrade", lambda enabled: "1" if enabled else "0"),
+            "update_time": ("cbid.upgrade.1.upgrade_time", str),
+        }
+        if key not in field_map:
+            return 0, f"Unsupported auto-update setting: {key}"
+
+        field_name, serializer = field_map[key]
+        return self._submit_form(
+            "admin/system/autoupgrade",
+            {field_name: serializer(value)},
+            referer=f"{self.base_url}/cgi-bin/luci/admin/system/autoupgrade",
+        )
+
+    def _wireless_setting_context(self) -> tuple[bool, str]:
+        """Return the active smart-connect state and writable form path."""
+        combo_html = self.get("admin/network/wireless/config/combo", True)
+        smart_connect = _extract_hidden(combo_html, "cbid.wireless.smart.connect") == "1"
+        page = "admin/network/wireless/config/combine" if smart_connect else "admin/network/wireless/config/uncombine"
+        return smart_connect, page
+
+    def set_smart_connect(self, enabled: bool) -> tuple[int, str]:
+        """Enable or disable smart connect."""
+        fetch_path = "admin/network/wireless/config/combine" if enabled else "admin/network/wireless/config/uncombine"
+        return self._submit_form(
+            fetch_path,
+            {"cbid.wireless.smart.connect": "1" if enabled else "0"},
+            referer=f"{self.base_url}/cgi-bin/luci/admin/network/wireless/config",
+        )
+
+    def set_wireless_setting(self, key: str, value: str | bool) -> tuple[int, str]:
+        """Set a wireless configuration value."""
+        smart_connect, fetch_path = self._wireless_setting_context()
+
+        if smart_connect:
+            prefix_2g = "cbid.wireless.wlan.wlan00"
+            prefix_5g = "cbid.wireless.wlan.wlan10"
+            shared_prefix = "cbid.wireless.wlan"
+        else:
+            prefix_2g = "cbid.wireless.wlan00"
+            prefix_5g = "cbid.wireless.wlan10"
+            shared_prefix = None
+
+        bool_to_disabled = lambda enabled: "0" if enabled else "1"
+        bool_to_flag = lambda enabled: "1" if enabled else "0"
+
+        mapping: dict[str, dict[str, Any]] = {
+            "wifi_2g_enabled": {
+                "fields": [f"{shared_prefix}.disabled"] if shared_prefix else [f"{prefix_2g}.disabled"],
+                "serializer": bool_to_disabled,
+            },
+            "wifi_5g_enabled": {
+                "fields": [f"{shared_prefix}.disabled"] if shared_prefix else [f"{prefix_5g}.disabled"],
+                "serializer": bool_to_disabled,
+            },
+            "wifi_2g_hidden": {
+                "fields": [f"{shared_prefix}.hidden"] if shared_prefix else [f"{prefix_2g}.hidden"],
+                "serializer": bool_to_flag,
+            },
+            "wifi_5g_hidden": {
+                "fields": [f"{shared_prefix}.hidden"] if shared_prefix else [f"{prefix_5g}.hidden"],
+                "serializer": bool_to_flag,
+            },
+            "wifi_2g_isolate": {
+                "fields": [f"{shared_prefix}.isolate"] if shared_prefix else [f"{prefix_2g}.isolate"],
+                "serializer": bool_to_flag,
+            },
+            "wifi_5g_isolate": {
+                "fields": [f"{shared_prefix}.isolate"] if shared_prefix else [f"{prefix_5g}.isolate"],
+                "serializer": bool_to_flag,
+            },
+            "wifi_2g_mode": {"fields": [f"{prefix_2g}.hwmode"], "serializer": str},
+            "wifi_2g_channel_width": {"fields": [f"{prefix_2g}.htbw"], "serializer": str},
+            "wifi_2g_channel": {"fields": [f"{prefix_2g}.channel"], "serializer": str},
+            "wifi_2g_tx_power": {"fields": [f"{prefix_2g}.txpower"], "serializer": str},
+            "wifi_5g_mode": {"fields": [f"{prefix_5g}.hwmode"], "serializer": str},
+            "wifi_5g_channel_width": {
+                "fields": [
+                    f"{prefix_5g}.htbw1",
+                    f"{prefix_5g}.htbw2",
+                    f"{prefix_5g}.htbw3",
+                ],
+                "serializer": str,
+            },
+            "wifi_5g_channel": {
+                "fields": [
+                    f"{prefix_5g}.channel",
+                    f"{prefix_5g}.channel2",
+                    f"{prefix_5g}.channel3",
+                    f"{prefix_5g}.channel4",
+                ],
+                "serializer": str,
+            },
+            "wifi_5g_tx_power": {"fields": [f"{prefix_5g}.txpower"], "serializer": str},
         }
 
-        try:
-            resp = self._luci_get(page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
-            if not resp:
-                return 0, "Failed to load band settings page"
-            html = resp.text
-            token = _extract_hidden(html, "token")
-            if not token:
-                return 0, "No token on page"
+        if key not in mapping:
+            return 0, f"Unsupported wireless setting: {key}"
 
-            # Find select name attribute containing 'band'
-            m = re.search(r'<select[^>]*name="([^"]*band[^"]*)"', html, flags=re.IGNORECASE)
-            if not m:
-                return 0, "No band select found"
+        serializer = mapping[key]["serializer"]
+        serialized = serializer(value)
+        overrides = {
+            field_name: serialized
+            for field_name in mapping[key]["fields"]
+            if field_name is not None
+        }
+        return self._submit_form(
+            fetch_path,
+            overrides,
+            referer=f"{self.base_url}/cgi-bin/luci/admin/network/wireless/config",
+        )
 
-            select_name = m.group(1)
-            post_fields = {
-                "token": token,
-                "timeclock": "0",
+    def set_device_access(self, device: dict[str, Any], feature: str, enabled: bool) -> tuple[int, str]:
+        """Toggle per-device internet or DNS filter access."""
+        if feature not in {"internet", "dnsfilter"}:
+            return 0, f"Unsupported device feature: {feature}"
+
+        mac_address = device.get("mac")
+        if not mac_address:
+            return 0, "Device MAC address is required"
+
+        page_path = "admin/network/devices/devlist?detail=1"
+        page_html = self.get(page_path, True)
+        if not page_html:
+            return 0, "Unable to load device list"
+
+        soup = BeautifulSoup(page_html, "html.parser")
+        token_input = soup.find("input", attrs={"name": "token"})
+        if token_input is None:
+            return 0, "Missing device-list token"
+
+        matching_row = None
+        normalized_mac = mac_address.lower().replace("-", ":")
+        for row in soup.select("tbody tr[id^='cbi-table-']"):
+            row_text = row.get_text(" ", strip=True).lower()
+            if normalized_mac in row_text:
+                matching_row = row
+                break
+
+        if matching_row is None:
+            return 0, f"Device row not found for {mac_address}"
+
+        field_input = matching_row.find(
+            "input",
+            attrs={"name": re.compile(rf"^cbid\.table\.\d+\.{feature}$")},
+        )
+        toggle_flag = matching_row.find(
+            "input",
+            attrs={"name": re.compile(rf"^cbi\.cbe\.table\.\d+\.{feature}$")},
+        )
+        toggle_button = matching_row.find(
+            attrs={"onclick": re.compile(rf"/network/devices/{feature}\?")},
+        )
+
+        if field_input is None or toggle_flag is None or toggle_button is None:
+            return 0, f"Toggle metadata not found for {feature}"
+
+        current_value = field_input.get("value")
+        desired_value = "1" if enabled else "0"
+        if current_value == desired_value:
+            return 200, "No change required"
+
+        onclick = toggle_button.get("onclick", "")
+        match = re.search(r"'(/cgi-bin/luci/[^']+)'", onclick)
+        if match is None:
+            return 0, f"Toggle URL not found for {feature}"
+
+        request_path = match.group(1).split("/cgi-bin/luci/", 1)[-1]
+        resp = self._luci_post(
+            request_path,
+            timeout=DEFAULT_POST_TIMEOUT,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/devices/devlist",
+            },
+            data={
+                "token": token_input.get("value", ""),
                 "cbi.submit": "1",
-                select_name: band_value,
-            }
-            r = self._luci_post(
-                page,
-                timeout=DEFAULT_POST_TIMEOUT,
-                headers={
-                    **headers,
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Origin": self.base_url,
-                },
-                data=urllib.parse.urlencode(post_fields),
-            )
-            if not r:
-                return 0, "Failed to submit band change request"
-            return r.status_code, r.text[:220]
-        except Exception as e:
-            _LOGGER.error("Switch band failed: %s", e)
-            return 0, str(e)[:220]
+                "cbi.toggle": "1",
+                toggle_flag.get("name", ""): "1",
+                field_input.get("name", ""): desired_value,
+            },
+        )
+        if not resp:
+            return 0, f"Failed to toggle device {feature}"
+        return resp.status_code, resp.text[:220]
 
     def send_sms(self, phone_number: str, message: str) -> tuple[int, str]:
         """Send an SMS via the router's LuCI web interface.

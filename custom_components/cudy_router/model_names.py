@@ -23,6 +23,15 @@ def normalize_model_name(model_name: str | None) -> str:
     return normalized
 
 
+def base_model_name(model_name: str | None) -> str:
+    """Return a stable model family name without the trailing hardware version."""
+    normalized = normalize_model_name(model_name)
+    if not normalized:
+        return ""
+
+    return re.sub(r"\s+V\d+(?:\.\d+)?$", "", normalized, flags=re.IGNORECASE)
+
+
 def resolve_model_name(model_name: str | None, default: str = "default") -> str:
     """Map model aliases to a stable value while remaining permissive."""
     normalized = normalize_model_name(model_name)
@@ -39,17 +48,25 @@ def iter_model_name_candidates(model_name: str | None) -> tuple[str, ...]:
         return ("default",)
 
     candidates: list[str] = [normalized]
+    base_name = base_model_name(normalized)
+    if base_name and base_name not in candidates:
+        candidates.append(base_name)
 
     alias = _MODEL_ALIASES.get(normalized)
     if alias and alias not in candidates:
         candidates.append(alias)
 
-    compact = normalized.replace(" ", "")
-    if compact not in candidates:
-        candidates.append(compact)
+    base_alias = _MODEL_ALIASES.get(base_name)
+    if base_alias and base_alias not in candidates:
+        candidates.append(base_alias)
 
-    compact_without_dash = compact.replace("-", "")
-    if compact_without_dash not in candidates:
-        candidates.append(compact_without_dash)
+    for variant in tuple(candidates):
+        compact = variant.replace(" ", "")
+        if compact not in candidates:
+            candidates.append(compact)
+
+        compact_without_dash = compact.replace("-", "")
+        if compact_without_dash not in candidates:
+            candidates.append(compact_without_dash)
 
     return tuple(candidates)

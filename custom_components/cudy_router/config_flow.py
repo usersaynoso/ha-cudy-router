@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MAX_SCAN_INTERVAL,
+    OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
     MIN_SCAN_INTERVAL,
     OPTIONS_DEVICELIST,
     normalize_scan_interval,
@@ -209,38 +210,55 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Manage the options."""
-        if user_input is not None:
-            if CONF_SCAN_INTERVAL in user_input:
-                user_input[CONF_SCAN_INTERVAL] = normalize_scan_interval(
-                    user_input[CONF_SCAN_INTERVAL]
-                )
-            return self.async_create_entry(title="", data=user_input)
-
         options = self._config_entry.options
+
+        if user_input is not None:
+            updated_options = dict(user_input)
+            updated_options[OPTIONS_AUTO_ADD_CONNECTED_DEVICES] = updated_options.get(
+                OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
+                options.get(OPTIONS_AUTO_ADD_CONNECTED_DEVICES, True),
+            )
+            updated_options[OPTIONS_DEVICELIST] = (
+                updated_options.get(OPTIONS_DEVICELIST) or ""
+            ).strip()
+            updated_options[CONF_SCAN_INTERVAL] = normalize_scan_interval(
+                updated_options.get(
+                    CONF_SCAN_INTERVAL,
+                    options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                )
+            )
+            return self.async_create_entry(title="", data=updated_options)
+
+        schema = vol.Schema(
+            {
+                vol.Optional(OPTIONS_AUTO_ADD_CONNECTED_DEVICES): selector.BooleanSelector(),
+                vol.Optional(OPTIONS_DEVICELIST): str,
+                vol.Optional(CONF_SCAN_INTERVAL): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="seconds",
+                        min=MIN_SCAN_INTERVAL,
+                        max=MAX_SCAN_INTERVAL,
+                        step=5,
+                    ),
+                ),
+            }
+        )
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
+            data_schema=self.add_suggested_values_to_schema(
+                schema,
                 {
-                    vol.Optional(
-                        OPTIONS_DEVICELIST,
-                        default=options.get(OPTIONS_DEVICELIST, ""),
-                    ): str,
-                    vol.Optional(
-                        CONF_SCAN_INTERVAL,
-                        default=normalize_scan_interval(
-                            options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-                        ),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            mode=selector.NumberSelectorMode.BOX,
-                            unit_of_measurement="seconds",
-                            min=MIN_SCAN_INTERVAL,
-                            max=MAX_SCAN_INTERVAL,
-                            step=5,
-                        ),
+                    OPTIONS_AUTO_ADD_CONNECTED_DEVICES: options.get(
+                        OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
+                        True,
                     ),
-                }
+                    OPTIONS_DEVICELIST: options.get(OPTIONS_DEVICELIST, ""),
+                    CONF_SCAN_INTERVAL: normalize_scan_interval(
+                        options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+                    ),
+                },
             ),
         )
 

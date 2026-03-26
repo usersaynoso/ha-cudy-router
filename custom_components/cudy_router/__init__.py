@@ -28,6 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: Final[list[Platform]] = [
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.SELECT,
     Platform.BUTTON,
     Platform.DEVICE_TRACKER,
 ]

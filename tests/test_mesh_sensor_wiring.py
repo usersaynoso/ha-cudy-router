@@ -30,4 +30,4 @@ def test_readme_documents_mesh_devices_connected_sensor() -> None:
     """README should describe the main-router mesh count sensor accurately."""
     source = README_PATH.read_text(encoding="utf-8")
 
-    assert "| Mesh Devices Connected |" in source
+    assert "Mesh devices connected" in source

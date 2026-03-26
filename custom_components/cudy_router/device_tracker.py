@@ -8,12 +8,18 @@ from homeassistant.components.device_tracker import SourceType
 from homeassistant.components.device_tracker.config_entry import TrackerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MODULE_DEVICES, OPTIONS_DEVICELIST, SECTION_DEVICE_LIST
+from .const import (
+    DOMAIN,
+    MODULE_DEVICES,
+    OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
+    OPTIONS_DEVICELIST,
+    SECTION_DEVICE_LIST,
+)
 from .coordinator import CudyRouterDataUpdateCoordinator
+from .device_info import async_cleanup_stale_client_entities, build_client_device_info
 from .device_tracking import configured_device_ids, is_selected_device, normalize_mac
 
 
@@ -34,16 +40,29 @@ async def async_setup_entry(
     """Set up tracked devices for the configured router entry."""
     coordinator: CudyRouterDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     selected_ids = configured_device_ids(config_entry.options.get(OPTIONS_DEVICELIST))
-    if not selected_ids:
+    auto_add_connected_devices = config_entry.options.get(
+        OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
+        True,
+    )
+    matched_devices = [
+        device
+        for device in _get_connected_devices(coordinator)
+        if is_selected_device(device, selected_ids)
+    ]
+    if not auto_add_connected_devices:
+        async_cleanup_stale_client_entities(
+            hass,
+            config_entry,
+            "device_tracker",
+            {device.get("mac") for device in matched_devices},
+        )
+    if auto_add_connected_devices or not selected_ids:
         return
 
     entities: list[CudyRouterDeviceTracker] = []
     seen_macs: set[str] = set()
 
-    for device in _get_connected_devices(coordinator):
-        if not is_selected_device(device, selected_ids):
-            continue
-
+    for device in matched_devices:
         normalized_mac = normalize_mac(device.get("mac"))
         if not normalized_mac or normalized_mac in seen_macs:
             continue
@@ -77,12 +96,7 @@ class CudyRouterDeviceTracker(
 
         self._attr_name = self._hostname or self._mac or "Tracked device"
         self._attr_unique_id = f"{config_entry.entry_id}-device-{self._normalized_mac}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{config_entry.entry_id}-device-{self._normalized_mac}")},
-            manufacturer="Cudy",
-            name=self._hostname or self._mac or "Tracked device",
-            via_device=(DOMAIN, config_entry.entry_id),
-        )
+        self._attr_device_info = build_client_device_info(config_entry, device)
 
     def _find_current_device(self) -> dict[str, Any] | None:
         """Return the current device payload for this tracker."""

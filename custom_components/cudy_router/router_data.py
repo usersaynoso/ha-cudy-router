@@ -6,6 +6,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from .const import (
+    MODULE_AUTO_UPDATE_SETTINGS,
+    MODULE_CELLULAR_SETTINGS,
     MODULE_DATA_USAGE,
     MODULE_DEVICES,
     MODULE_DHCP,
@@ -15,7 +17,9 @@ from .const import (
     MODULE_SMS,
     MODULE_SYSTEM,
     MODULE_VPN,
+    MODULE_VPN_SETTINGS,
     MODULE_WAN,
+    MODULE_WIRELESS_SETTINGS,
     MODULE_WIFI_2G,
     MODULE_WIFI_5G,
     OPTIONS_DEVICELIST,
@@ -34,6 +38,12 @@ from .parser import (
     parse_wifi_status,
 )
 from .parser_network import parse_dhcp_status, parse_vpn_status, parse_wan_status
+from .parser_settings import (
+    parse_auto_update_settings,
+    parse_cellular_settings,
+    parse_vpn_settings,
+    parse_wireless_settings,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +66,15 @@ async def collect_router_data(
         data[MODULE_MODEM] = parse_modem_info(
             f"{await hass.async_add_executor_job(router.get, 'admin/network/gcom/status')}{await hass.async_add_executor_job(router.get, 'admin/network/gcom/status?detail=1&iface=4g')}"
         )
+        cellular_settings_html = await hass.async_add_executor_job(
+            router.get,
+            "admin/network/gcom/config/apn",
+            True,
+        )
+        if cellular_settings_html:
+            cellular_settings = parse_cellular_settings(cellular_settings_html)
+            if cellular_settings:
+                data[MODULE_CELLULAR_SETTINGS] = cellular_settings
 
     # Connected devices
     if existing_feature(device_model, MODULE_DEVICES) is True:
@@ -130,6 +149,15 @@ async def collect_router_data(
         data[MODULE_VPN] = parse_vpn_status(
             await hass.async_add_executor_job(router.get, "admin/network/vpn/openvpns/status?status=")
         )
+        vpn_settings_html = await hass.async_add_executor_job(
+            router.get,
+            "admin/network/vpn/config",
+            True,
+        )
+        if vpn_settings_html:
+            vpn_settings = parse_vpn_settings(vpn_settings_html)
+            if vpn_settings:
+                data[MODULE_VPN_SETTINGS] = vpn_settings
 
     # DHCP status
     if existing_feature(device_model, MODULE_DHCP) is True:
@@ -179,6 +207,42 @@ async def collect_router_data(
             }
             if wan_data:
                 data[MODULE_WAN] = wan_data
+
+    if existing_feature(device_model, MODULE_WIRELESS_SETTINGS) is True:
+        wireless_combo_html = await hass.async_add_executor_job(
+            router.get,
+            "admin/network/wireless/config/combo",
+            True,
+        )
+        if wireless_combo_html:
+            wireless_combine_html = await hass.async_add_executor_job(
+                router.get,
+                "admin/network/wireless/config/combine",
+                True,
+            )
+            wireless_uncombine_html = await hass.async_add_executor_job(
+                router.get,
+                "admin/network/wireless/config/uncombine",
+                True,
+            )
+            wireless_settings = parse_wireless_settings(
+                wireless_combo_html,
+                wireless_combine_html,
+                wireless_uncombine_html,
+            )
+            if wireless_settings:
+                data[MODULE_WIRELESS_SETTINGS] = wireless_settings
+
+    if existing_feature(device_model, MODULE_AUTO_UPDATE_SETTINGS) is True:
+        auto_update_html = await hass.async_add_executor_job(
+            router.get,
+            "admin/system/autoupgrade",
+            True,
+        )
+        if auto_update_html:
+            auto_update_settings = parse_auto_update_settings(auto_update_html)
+            if auto_update_settings:
+                data[MODULE_AUTO_UPDATE_SETTINGS] = auto_update_settings
 
     # Mesh devices - try multiple possible endpoints (silent since mesh is optional)
     if existing_feature(device_model, MODULE_MESH) is True:
@@ -269,6 +333,7 @@ async def collect_router_data(
                 "hardware": hardware,
                 "status": "online" if client_json.get("state") == "connected" else "offline",
                 "led_status": sysreport.get("ledstatus"),
+                "backhaul": sysreport.get("backhaul"),
             }
             _LOGGER.debug(
                 "Parsed mesh client from JSON: %s -> %s",

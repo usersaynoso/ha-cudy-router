@@ -21,10 +21,18 @@ def test_resolve_model_name_applies_known_aliases() -> None:
     assert model_names.resolve_model_name(None) == "default"
 
 
+def test_base_model_name_strips_hardware_revision_suffix() -> None:
+    """Capability matching should be able to use the family model name."""
+    assert model_names.base_model_name("WR11000 V1.0") == "WR11000"
+    assert model_names.base_model_name("LT700-Outdoor V1.0") == "LT700-Outdoor"
+    assert model_names.base_model_name("LT300V3") == "LT300V3"
+
+
 def test_iter_model_name_candidates_includes_alias_and_compact_forms() -> None:
     """Feature matching should be able to try normalized model variants."""
     candidates = model_names.iter_model_name_candidates("WR1300E V2.0")
 
+    assert "WR1300E" in candidates
     assert "WR1300E V2.0" in candidates
     assert "WR1300EV2" in candidates
     assert "WR1300EV2.0" in candidates

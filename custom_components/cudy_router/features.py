@@ -1,34 +1,138 @@
-"""Page containing the feature not implemented for each device"""
+"""Model capability mapping for the Cudy router integration."""
 
-from typing import Dict, List
+from __future__ import annotations
 
+from typing import Final
+
+from .const import (
+    MODULE_AUTO_UPDATE_SETTINGS,
+    MODULE_CELLULAR_SETTINGS,
+    MODULE_DATA_USAGE,
+    MODULE_DEVICES,
+    MODULE_DHCP,
+    MODULE_LAN,
+    MODULE_MESH,
+    MODULE_MODEM,
+    MODULE_SMS,
+    MODULE_SYSTEM,
+    MODULE_VPN,
+    MODULE_VPN_SETTINGS,
+    MODULE_WAN,
+    MODULE_WIRELESS_SETTINGS,
+    MODULE_WIFI_2G,
+    MODULE_WIFI_5G,
+)
 from .model_names import iter_model_name_candidates
 
-features_not_implemented: Dict[str, List[str]] = {
-    # Unknown models default to enabled modules; module-specific endpoint probing
-    # in router.py decides if data can actually be fetched.
-    "default": [],
-    "WR3000S V1.0": [
-        "modem|",
-        "data_usage|",
-        "sms|",
-    ],
+FeatureSet = frozenset[str]
+
+
+ROUTER_BASE_FEATURES: Final[FeatureSet] = frozenset(
+    {
+        MODULE_DEVICES,
+        MODULE_SYSTEM,
+        MODULE_WIFI_2G,
+        MODULE_WIFI_5G,
+        MODULE_LAN,
+        MODULE_VPN,
+        MODULE_VPN_SETTINGS,
+        MODULE_WAN,
+        MODULE_DHCP,
+        MODULE_WIRELESS_SETTINGS,
+    }
+)
+ROUTER_AUTO_UPDATE_FEATURES: Final[FeatureSet] = (
+    ROUTER_BASE_FEATURES | frozenset({MODULE_AUTO_UPDATE_SETTINGS})
+)
+ROUTER_MESH_FEATURES: Final[FeatureSet] = (
+    ROUTER_AUTO_UPDATE_FEATURES | frozenset({MODULE_MESH})
+)
+ROUTER_LEGACY_MESH_FEATURES: Final[FeatureSet] = (
+    ROUTER_BASE_FEATURES | frozenset({MODULE_MESH})
+)
+
+CELLULAR_LEGACY_FEATURES: Final[FeatureSet] = (
+    ROUTER_BASE_FEATURES
+    | frozenset(
+        {
+            MODULE_MODEM,
+            MODULE_DATA_USAGE,
+            MODULE_CELLULAR_SETTINGS,
+        }
+    )
+)
+CELLULAR_LEGACY_AUTO_UPDATE_FEATURES: Final[FeatureSet] = (
+    CELLULAR_LEGACY_FEATURES | frozenset({MODULE_AUTO_UPDATE_SETTINGS})
+)
+CELLULAR_MESH_FEATURES: Final[FeatureSet] = (
+    CELLULAR_LEGACY_AUTO_UPDATE_FEATURES | frozenset({MODULE_MESH})
+)
+CELLULAR_SMS_MESH_FEATURES: Final[FeatureSet] = (
+    CELLULAR_MESH_FEATURES | frozenset({MODULE_SMS})
+)
+
+EXTENDER_BASE_FEATURES: Final[FeatureSet] = frozenset(
+    {
+        MODULE_DEVICES,
+        MODULE_SYSTEM,
+        MODULE_WIFI_2G,
+        MODULE_WIFI_5G,
+        MODULE_LAN,
+        MODULE_WIRELESS_SETTINGS,
+    }
+)
+EXTENDER_AUTO_UPDATE_FEATURES: Final[FeatureSet] = (
+    EXTENDER_BASE_FEATURES | frozenset({MODULE_AUTO_UPDATE_SETTINGS})
+)
+
+# The emulator-backed device list provided for this integration maps cleanly onto
+# a small set of firmware capability profiles. Unknown models still fall back to
+# a permissive profile so existing user setups do not lose entities.
+MODEL_FEATURES: Final[dict[str, FeatureSet]] = {
+    "default": CELLULAR_SMS_MESH_FEATURES,
+    "P5": CELLULAR_SMS_MESH_FEATURES,
+    "P2": CELLULAR_MESH_FEATURES,
+    "WR11000": ROUTER_MESH_FEATURES,
+    "WR6500": ROUTER_AUTO_UPDATE_FEATURES,
+    "WR3600H": ROUTER_AUTO_UPDATE_FEATURES,
+    "TR3000": ROUTER_MESH_FEATURES,
+    "WR3000E": ROUTER_MESH_FEATURES,
+    "WR3000": ROUTER_MESH_FEATURES,
+    "WR1500": ROUTER_MESH_FEATURES,
+    "WR1300V4.0": ROUTER_MESH_FEATURES,
+    "WR1300E": ROUTER_BASE_FEATURES,
+    "WR1300EV2": ROUTER_BASE_FEATURES,
+    "TR1200": ROUTER_MESH_FEATURES,
+    "WR1200": ROUTER_BASE_FEATURES,
+    "WR300S": ROUTER_LEGACY_MESH_FEATURES,
+    "LT15E": CELLULAR_MESH_FEATURES,
+    "LT700E": CELLULAR_MESH_FEATURES,
+    "LT500": CELLULAR_SMS_MESH_FEATURES,
+    "LT400E": CELLULAR_LEGACY_FEATURES,
+    "LT300V3": CELLULAR_LEGACY_AUTO_UPDATE_FEATURES,
+    "LT700-Outdoor": CELLULAR_MESH_FEATURES,
+    "LT400-Outdoor": CELLULAR_LEGACY_FEATURES,
+    "IR02": CELLULAR_MESH_FEATURES,
+    "M11000": ROUTER_MESH_FEATURES,
+    "M3000": ROUTER_MESH_FEATURES,
+    "M1500": ROUTER_MESH_FEATURES,
+    "M1200": ROUTER_MESH_FEATURES,
+    "RE3600": EXTENDER_AUTO_UPDATE_FEATURES,
+    "RE1500": EXTENDER_AUTO_UPDATE_FEATURES,
+    "RE1200": EXTENDER_AUTO_UPDATE_FEATURES,
+    "RE1200-Outdoor": EXTENDER_BASE_FEATURES,
 }
 
 
+def model_feature_set(device_model: str | None) -> FeatureSet:
+    """Return the supported feature set for a model."""
+    for candidate in iter_model_name_candidates(device_model):
+        if candidate in MODEL_FEATURES:
+            return MODEL_FEATURES[candidate]
+    return MODEL_FEATURES["default"]
+
+
 def existing_feature(device_model: str, key_entity: str, model_entity: str = "") -> bool:
-    """Check if a feature is implemented or not for a specific device."""
-
-    matched_model = next(
-        (
-            candidate
-            for candidate in iter_model_name_candidates(device_model)
-            if candidate in features_not_implemented
-        ),
-        "default",
-    )
-
-    return not any(
-        f"{key_entity}|{model_entity}".startswith(feature)
-        for feature in features_not_implemented[matched_model]
-    )
+    """Check if a feature is supported for a specific device model."""
+    del model_entity
+    return key_entity in model_feature_set(device_model)

@@ -20,7 +20,7 @@ from .router import CudyRouter
 
 _LOGGER = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT = 30
+REQUEST_TIMEOUT = 90
 
 
 class CudyRouterDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):

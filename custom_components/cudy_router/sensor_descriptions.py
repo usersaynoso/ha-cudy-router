@@ -16,6 +16,7 @@ from homeassistant.const import (
     UnitOfInformation,
     UnitOfTime,
 )
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import MODULE_DHCP, MODULE_VPN, MODULE_WAN
 
@@ -289,12 +290,14 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module="system",
         name_suffix="Local time",
         icon="mdi:clock",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     ("system", "firmware_version"): CudyRouterSensorEntityDescription(
         key="firmware_version",
         module="system",
         name_suffix="Firmware version",
         icon="mdi:label",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     # Data usage sensors
     ("data_usage", "current_traffic"): CudyRouterSensorEntityDescription(
@@ -374,12 +377,14 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module="lan",
         name_suffix="LAN IP",
         icon="mdi:ip",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     ("lan", "mac_address"): CudyRouterSensorEntityDescription(
         key="mac_address",
         module="lan",
         name_suffix="LAN MAC",
         icon="mdi:lan",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     # Devices status sensors (client counts)
     ("devices", "wifi_2g_clients"): CudyRouterSensorEntityDescription(
@@ -466,12 +471,46 @@ DEVICE_MAC_SENSOR = CudyRouterSensorEntityDescription(
     key="mac",
     module="devices",
     name_suffix="MAC",
+    entity_category=EntityCategory.DIAGNOSTIC,
 )
 
 DEVICE_HOSTNAME_SENSOR = CudyRouterSensorEntityDescription(
     key="hostname",
     module="devices",
     name_suffix="Hostname",
+    entity_category=EntityCategory.DIAGNOSTIC,
+)
+
+DEVICE_IP_SENSOR = CudyRouterSensorEntityDescription(
+    key="ip",
+    module="devices",
+    name_suffix="IP address",
+    icon="mdi:ip",
+    entity_category=EntityCategory.DIAGNOSTIC,
+)
+
+DEVICE_CONNECTION_TYPE_SENSOR = CudyRouterSensorEntityDescription(
+    key="connection_type",
+    module="devices",
+    name_suffix="Connection type",
+    icon="mdi:lan-connect",
+    entity_category=EntityCategory.DIAGNOSTIC,
+)
+
+DEVICE_SIGNAL_DETAILS_SENSOR = CudyRouterSensorEntityDescription(
+    key="signal",
+    module="devices",
+    name_suffix="Signal",
+    icon="mdi:wifi-strength-2",
+    entity_category=EntityCategory.DIAGNOSTIC,
+)
+
+DEVICE_ONLINE_TIME_SENSOR = CudyRouterSensorEntityDescription(
+    key="online_time",
+    module="devices",
+    name_suffix="Online time",
+    icon="mdi:clock-outline",
+    entity_category=EntityCategory.DIAGNOSTIC,
 )
 
 DEVICE_UPLOAD_SENSOR = CudyRouterSensorEntityDescription(
@@ -498,24 +537,28 @@ MESH_DEVICE_NAME_SENSOR = CudyRouterSensorEntityDescription(
     key="name",
     module="mesh",
     name_suffix="Name",
+    entity_category=EntityCategory.DIAGNOSTIC,
 )
 
 MESH_DEVICE_MODEL_SENSOR = CudyRouterSensorEntityDescription(
     key="model",
     module="mesh",
     name_suffix="Model",
+    entity_category=EntityCategory.DIAGNOSTIC,
 )
 
 MESH_DEVICE_MAC_SENSOR = CudyRouterSensorEntityDescription(
     key="mac_address",
     module="mesh",
     name_suffix="MAC address",
+    entity_category=EntityCategory.DIAGNOSTIC,
 )
 
 MESH_DEVICE_FIRMWARE_SENSOR = CudyRouterSensorEntityDescription(
     key="firmware_version",
     module="mesh",
     name_suffix="Firmware",
+    entity_category=EntityCategory.DIAGNOSTIC,
 )
 
 MESH_DEVICE_STATUS_SENSOR = CudyRouterSensorEntityDescription(
@@ -524,6 +567,7 @@ MESH_DEVICE_STATUS_SENSOR = CudyRouterSensorEntityDescription(
     name_suffix="Status",
     device_class=SensorDeviceClass.ENUM,
     options=["online", "offline"],
+    entity_category=EntityCategory.DIAGNOSTIC,
 )
 
 MESH_DEVICE_IP_SENSOR = CudyRouterSensorEntityDescription(
@@ -531,6 +575,7 @@ MESH_DEVICE_IP_SENSOR = CudyRouterSensorEntityDescription(
     module="mesh",
     name_suffix="IP address",
     icon="mdi:ip",
+    entity_category=EntityCategory.DIAGNOSTIC,
 )
 
 MESH_DEVICE_CONNECTED_SENSOR = CudyRouterSensorEntityDescription(
@@ -538,4 +583,21 @@ MESH_DEVICE_CONNECTED_SENSOR = CudyRouterSensorEntityDescription(
     module="mesh",
     name_suffix="Connected devices",
     state_class=SensorStateClass.MEASUREMENT,
+    entity_category=EntityCategory.DIAGNOSTIC,
+)
+
+MESH_DEVICE_HARDWARE_SENSOR = CudyRouterSensorEntityDescription(
+    key="hardware",
+    module="mesh",
+    name_suffix="Hardware",
+    icon="mdi:chip",
+    entity_category=EntityCategory.DIAGNOSTIC,
+)
+
+MESH_DEVICE_BACKHAUL_SENSOR = CudyRouterSensorEntityDescription(
+    key="backhaul",
+    module="mesh",
+    name_suffix="Backhaul",
+    icon="mdi:lan-connect",
+    entity_category=EntityCategory.DIAGNOSTIC,
 )

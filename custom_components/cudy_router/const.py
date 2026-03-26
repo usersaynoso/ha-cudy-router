@@ -18,12 +18,17 @@ MODULE_MESH = "mesh"
 MODULE_VPN = "vpn"
 MODULE_WAN = "wan"
 MODULE_DHCP = "dhcp"
+MODULE_CELLULAR_SETTINGS = "cellular_settings"
+MODULE_WIRELESS_SETTINGS = "wireless_settings"
+MODULE_VPN_SETTINGS = "vpn_settings"
+MODULE_AUTO_UPDATE_SETTINGS = "auto_update_settings"
 
 SECTION_DETAILED = "detailed"
 SECTION_DEVICE_LIST = "device_list"
 SECTION_MESH_DEVICES = "mesh_devices"
 
 OPTIONS_DEVICELIST = "device_list"
+OPTIONS_AUTO_ADD_CONNECTED_DEVICES = "auto_add_connected_devices"
 
 # Mesh device attributes
 ATTR_MESH_MAC = "mac_address"

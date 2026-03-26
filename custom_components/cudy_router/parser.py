@@ -23,7 +23,27 @@ _IP_RE = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
 
 def _clean_cell_strings(element: Any) -> list[str]:
     """Extract normalized text chunks from a table cell."""
-    return [text.strip() for text in element.stripped_strings if text and text.strip()]
+    parts: list[str] = []
+    for text in element.stripped_strings:
+        normalized = text.strip()
+        if not normalized or normalized in parts:
+            continue
+        parts.append(normalized)
+    return parts
+
+
+def _hidden_input_value(element: Any, name_suffix: str) -> str | None:
+    """Extract a hidden input value by trailing field name."""
+    hidden = element.find(
+        "input",
+        attrs={
+            "type": "hidden",
+            "name": re.compile(rf"{re.escape(name_suffix)}$"),
+        },
+    )
+    if hidden is None:
+        return None
+    return hidden.get("value")
 
 
 def _parse_device_speed_pair(cell_text: str) -> tuple[float | None, float | None]:
@@ -58,6 +78,8 @@ def _device_row_from_modern_columns(columns: list[Any]) -> dict[str, Any] | None
     upload_speed, download_speed = _parse_device_speed_pair(speed_text)
     signal = " ".join(_clean_cell_strings(columns[6])) if len(columns) > 6 else None
     online_time = " ".join(_clean_cell_strings(columns[7])) if len(columns) > 7 else None
+    internet = _hidden_input_value(columns[8], "internet") if len(columns) > 8 else None
+    dnsfilter = _hidden_input_value(columns[9], "dnsfilter") if len(columns) > 9 else None
 
     if not (hostname or ip_address or mac_address):
         return None
@@ -71,6 +93,8 @@ def _device_row_from_modern_columns(columns: list[Any]) -> dict[str, Any] | None
         "connection_type": connection_type,
         "signal": signal,
         "online_time": online_time,
+        "internet": internet == "1" if internet is not None else None,
+        "dnsfilter": dnsfilter == "1" if dnsfilter is not None else None,
     }
 
 
@@ -171,7 +195,8 @@ def parse_speed(input_string: str) -> float:
 
 def get_all_devices(input_html: str) -> dict[str, Any]:
     """Parses an HTML table extracting key-value pairs"""
-    devices = []
+    devices: list[dict[str, Any]] = []
+    device_index: dict[tuple[str, str], int] = {}
     soup = BeautifulSoup(input_html, "html.parser")
     for br_element in soup.find_all("br"):
         br_element.replace_with("\n" + br_element.text)
@@ -196,20 +221,26 @@ def get_all_devices(input_html: str) -> dict[str, Any]:
                 elif div_id.endswith("hostname"):
                     hostname = content
             if mac or ip:
-                devices.append(
-                    {
-                        "hostname": hostname,
-                        "ip": ip,
-                        "mac": mac,
-                        "up_speed": parse_speed(up_speed),
-                        "down_speed": parse_speed(down_speed),
-                    }
+                device = {
+                    "hostname": hostname,
+                    "ip": ip,
+                    "mac": mac,
+                    "up_speed": parse_speed(up_speed),
+                    "down_speed": parse_speed(down_speed),
+                }
+                device_key = (
+                    (device.get("mac") or "").lower(),
+                    (device.get("ip") or "").lower(),
                 )
+                if device_key in device_index:
+                    existing = devices[device_index[device_key]]
+                    for key, value in device.items():
+                        if existing.get(key) in (None, "") and value not in (None, ""):
+                            existing[key] = value
+                    continue
 
-    seen_devices = {
-        ((device.get("mac") or "").lower(), (device.get("ip") or "").lower())
-        for device in devices
-    }
+                device_index[device_key] = len(devices)
+                devices.append(device)
 
     for row in soup.select("tbody tr[id^='cbi-table-']"):
         columns = row.find_all("td")
@@ -221,10 +252,14 @@ def get_all_devices(input_html: str) -> dict[str, Any]:
             (device.get("mac") or "").lower(),
             (device.get("ip") or "").lower(),
         )
-        if device_key in seen_devices:
+        if device_key in device_index:
+            existing = devices[device_index[device_key]]
+            for key, value in device.items():
+                if existing.get(key) in (None, "") and value not in (None, ""):
+                    existing[key] = value
             continue
 
-        seen_devices.add(device_key)
+        device_index[device_key] = len(devices)
         devices.append(device)
 
     return devices

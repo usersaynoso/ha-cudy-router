@@ -20,9 +20,18 @@ This project is not endorsed, maintained, or supported by Cudy.
 
 ## Current Status
 
-Tested most heavily against the **Cudy P5**. Other Cudy routers with comparable LuCI pages may also work, but entity coverage depends on which pages and controls your router firmware exposes.
+Only the **Cudy P5** has been tested on real hardware so far.
 
-The integration includes model normalization for several Cudy model strings and only creates entities for features detected on the current router.
+The integration now also includes an explicit model capability map for the emulator-backed devices below, so unsupported module families stay hidden instead of showing dead or non-functional entities.
+
+These devices should be compatible but have **not** been tested on real hardware yet:
+
+- Routers: `WR11000`, `WR6500`, `WR3600H`, `TR3000`, `WR3000E`, `WR3000`, `WR1500`, `WR1300V4.0`, `WR1300E`, `TR1200`, `WR1200`, `WR300S`
+- 4G/5G routers: `P2`, `LT15E`, `LT700E`, `LT500`, `LT400E`, `LT300V3`, `LT700-Outdoor`, `LT400-Outdoor`, `IR02`
+- Mesh Wi-Fi: `M11000`, `M3000`, `M1500`, `M1200`
+- Extenders: `RE3600`, `RE1500`, `RE1200`, `RE1200-Outdoor`
+
+Unknown Cudy models still fall back to best-effort dynamic detection, but the curated mapping above is what the integration uses to decide which entity families are expected on the listed devices.
 
 ## Installation
 
@@ -256,8 +265,9 @@ Writable router switches currently include:
 - WiFi 2.4G separate clients
 - WiFi 5G separate clients
 - VPN enabled
+- VPN site-to-site
 - Auto update
-- LED
+- LED on mesh-capable firmware
 
 ### Mesh Switches
 
@@ -276,6 +286,8 @@ Writable router selects currently include:
 
 - SIM slot
 - Network mode
+- Network search
+- APN profile
 - PDP type
 - WiFi 2.4G mode
 - WiFi 2.4G channel width
