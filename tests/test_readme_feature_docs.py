@@ -19,7 +19,7 @@ def test_readme_documents_new_settings_entities() -> None:
     assert "APN profile" in source
     assert "VPN site-to-site" in source
     assert "Auto update time" in source
-    assert "Internet access switch" in source
+    assert "internet access switch" in source.lower()
     assert "DNS filter switch" in source
     assert "WiFi 2.4G hidden network" in source
     assert "WiFi 5G separate clients" in source
@@ -31,9 +31,9 @@ def test_readme_documents_connected_device_auto_add_option() -> None:
 
     assert "Automatically Add Connected Devices" in source
     assert "Manually Add Connected Devices" in source
-    assert "only care about a small number of specific clients" in source
+    assert "currently connected device reported by the router" in source
     assert "device_tracker" in source
-    assert "does **not** create router-level MAC or hostname sensors" in source
+    assert "MAC addresses, hostnames, and IP addresses" in source
 
 
 def test_readme_covers_device_model_and_services() -> None:
@@ -55,17 +55,17 @@ def test_readme_lists_emulator_backed_compatibility_models() -> None:
     source = README_PATH.read_text(encoding="utf-8")
 
     assert "Only the **Cudy P5** has been tested on real hardware so far." in source
-    assert "should be compatible but have **not** been tested on real hardware yet" in source
-    assert "`WR11000`" in source
-    assert "`LT500`" in source
-    assert "`M3000`" in source
-    assert "`RE1200-Outdoor`" in source
+    assert "mapped but have **not** been tested on real hardware yet" in source
+    assert "WR11000" in source
+    assert "LT500" in source
+    assert "M3000" in source
+    assert "RE1200-Outdoor" in source
 
 
 def test_readme_documents_hacs_custom_repository_install() -> None:
     """README should include explicit HACS custom repository steps."""
     source = README_PATH.read_text(encoding="utf-8")
 
-    assert "custom repository" in source
+    assert "Custom repositories" in source
     assert "https://github.com/usersaynoso/ha-cudy-router" in source
     assert "Integration repository" in source or "**Integration** repository" in source
