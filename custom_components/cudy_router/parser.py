@@ -7,10 +7,9 @@ import re
 from datetime import datetime
 from typing import Any, Tuple
 
-from bs4 import BeautifulSoup
 from dateutil.relativedelta import relativedelta
-from homeassistant.const import STATE_UNAVAILABLE
 
+from .bs4_compat import BeautifulSoup
 from .const import SECTION_DETAILED, SECTION_DEVICE_LIST
 
 _LOGGER = logging.getLogger(__name__)
@@ -280,13 +279,13 @@ def get_sim_value(input_html: str) -> str:
             return "Sim 1"
         if "sim2" in classname:
             return "Sim 2"
-    return STATE_UNAVAILABLE
+    return None
 
 
-def get_signal_strength(rssi: int) -> int:
+def get_signal_strength(rssi: int | None) -> int | None:
     """Gets the signal strength from the RSSI value"""
 
-    if rssi:
+    if rssi is not None:
         if rssi > 20:
             return 4
         if rssi > 15:
@@ -296,7 +295,7 @@ def get_signal_strength(rssi: int) -> int:
         if rssi > 5:
             return 1
         return 0
-    return STATE_UNAVAILABLE
+    return None
 
 
 def as_int(string: str | None):

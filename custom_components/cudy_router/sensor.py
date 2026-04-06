@@ -478,7 +478,9 @@ class CudyRouterSignalSensor(CudyRouterSensor):
             modem_data = data.get(MODULE_MODEM, {})
             signal_data = modem_data.get("signal", {})
             value = signal_data.get("value") if signal_data else None
-            if not value:
+            if not isinstance(value, (int, float)):
+                self._attr_icon = "mdi:network-strength-off-outline"
+            elif value <= 0:
                 self._attr_icon = "mdi:network-strength-off-outline"
             elif value == 1:
                 self._attr_icon = "mdi:network-strength-1"

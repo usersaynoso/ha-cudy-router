@@ -70,3 +70,13 @@ def test_parse_wan_status_supports_alternate_labels() -> None:
     assert parsed["dns"]["value"] == "1.1.1.1"
     assert parsed["session_upload"]["value"] == 51.6
     assert parsed["session_download"]["value"] == 368.07
+
+
+def test_get_sim_value_returns_none_when_status_icon_is_missing() -> None:
+    """Missing SIM markup should not emit an invalid enum sensor state."""
+    assert parser.get_sim_value("<html><body><p>No SIM icon</p></body></html>") is None
+
+
+def test_get_signal_strength_returns_none_when_rssi_is_missing() -> None:
+    """Missing RSSI should not emit a string sentinel into numeric signal handling."""
+    assert parser.get_signal_strength(None) is None

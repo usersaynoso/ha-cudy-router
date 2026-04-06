@@ -28,10 +28,10 @@ def test_manifest_has_required_hacs_fields() -> None:
     assert manifest["issue_tracker"] == "https://github.com/usersaynoso/ha-cudy-router/issues"
     assert manifest["integration_type"] == "hub"
     assert manifest["requirements"] == [
-        "beautifulsoup4==4.13.3",
+        "beautifulsoup4==4.14.3",
         "python-dateutil==2.9.0.post0",
     ]
-    assert manifest["version"] == "1.3.1"
+    assert manifest["version"] == "1.3.2"
     assert "image" not in manifest
 
 

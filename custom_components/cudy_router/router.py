@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 import urllib3
-from bs4 import BeautifulSoup
 
+from .bs4_compat import BeautifulSoup
 from .router_data import collect_router_data
 
 _LOGGER = logging.getLogger(__name__)
@@ -564,6 +564,70 @@ class CudyRouter:
 
         return action_path, payload
 
+    def _extract_apply_workflow(self, html: str) -> tuple[str, str, str] | None:
+        """Extract follow-up apply endpoints from a LuCI AJAX response."""
+        restart_match = re.search(
+            r"""\$\.post\(\s*['"]([^'"]*servicectl/restart/[^'"]+)['"]\s*,\s*\{\s*token:\s*['"]([^'"]+)['"]\s*\}""",
+            html,
+        )
+        if restart_match is None:
+            return None
+
+        status_match = re.search(
+            r"""\$\.get\(\s*['"]([^'"]*servicectl/status[^'"]*)['"]""",
+            html,
+        )
+        restart_path = self._resolve_luci_form_action(restart_match.group(1), restart_match.group(1))
+        status_path = self._resolve_luci_form_action(
+            status_match.group(1) if status_match else "admin/servicectl/status",
+            "admin/servicectl/status",
+        )
+        return restart_path, restart_match.group(2), status_path
+
+    def _run_apply_workflow(
+        self,
+        html: str,
+        *,
+        headers: dict[str, str],
+    ) -> tuple[bool, str]:
+        """Execute any follow-up apply workflow embedded in the response HTML."""
+        workflow = self._extract_apply_workflow(html)
+        if workflow is None:
+            return True, html[:220]
+
+        restart_path, token, status_path = workflow
+        restart_resp = self._luci_post(
+            restart_path,
+            timeout=DEFAULT_POST_TIMEOUT,
+            headers={
+                **headers,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Origin": self.base_url,
+            },
+            data=urllib.parse.urlencode({"token": token}),
+            silent=True,
+        )
+        if not restart_resp:
+            return False, f"Failed to trigger apply action on {restart_path}"
+
+        deadline = time.monotonic() + DEFAULT_POST_TIMEOUT
+        last_status = restart_resp.text.strip()
+        while time.monotonic() < deadline:
+            status_resp = self._luci_get(
+                status_path,
+                timeout=DEFAULT_PAGE_TIMEOUT,
+                headers=headers,
+                silent=True,
+            )
+            if status_resp:
+                last_status = status_resp.text.strip()
+                if last_status == "finish":
+                    return True, "Configuration applied."
+            time.sleep(1)
+
+        status_display = last_status or "pending"
+        return False, f"Timed out waiting for apply completion on {status_path} ({status_display})"
+
     def _submit_form(
         self,
         fetch_path: str,
@@ -587,6 +651,8 @@ class CudyRouter:
             fetch_path,
             submit_hint=submit_hint,
         )
+        if "timeclock" in payload:
+            payload["timeclock"] = str(int(time.time()))
         payload.update(overrides)
 
         post_resp = self._luci_post(
@@ -602,7 +668,11 @@ class CudyRouter:
         if not post_resp:
             return 0, f"Failed to submit form on {action_path}"
 
-        return post_resp.status_code, post_resp.text[:220]
+        apply_ok, message = self._run_apply_workflow(post_resp.text, headers=headers)
+        if not apply_ok:
+            return 0, message[:220]
+
+        return post_resp.status_code, message[:220]
 
     def _post_action_on_page(
         self,

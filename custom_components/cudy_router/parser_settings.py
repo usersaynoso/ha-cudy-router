@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from bs4 import BeautifulSoup
+from .bs4_compat import BeautifulSoup
 
 
 def _soup(html: str) -> BeautifulSoup:
