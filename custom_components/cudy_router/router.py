@@ -29,6 +29,7 @@ DEFAULT_POST_TIMEOUT = 30
 DEFAULT_RETRIES = 2
 RETRY_BACKOFF_SECONDS = 0.35
 RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504}
+AUTH_COOKIE_NAMES = ("sysauth", "sysauth_http", "sysauth_https")
 
 
 @dataclass(slots=True)
@@ -85,6 +86,7 @@ class CudyRouter:
         """Initialize the router."""
         self.host = host
         self.auth_cookie: str | None = None
+        self.auth_cookie_name = "sysauth"
         self.hass = hass
         self.username = username
         self.password = password
@@ -116,7 +118,19 @@ class CudyRouter:
     def _set_session_auth_cookie(self, session: requests.Session) -> None:
         """Ensure session has the latest sysauth cookie if available."""
         if self.auth_cookie:
-            session.cookies.set("sysauth", self.auth_cookie)
+            session.cookies.set(self.auth_cookie_name, self.auth_cookie)
+
+    def _candidate_base_urls(self) -> list[str]:
+        """Return base URLs to try when discovering the login form."""
+        candidates = [self.base_url]
+        parsed = urllib.parse.urlsplit(self.base_url)
+        if parsed.scheme == "https":
+            http_base = urllib.parse.urlunsplit(
+                ("http", parsed.netloc, parsed.path, parsed.query, parsed.fragment)
+            ).rstrip("/")
+            if http_base and http_base not in candidates:
+                candidates.append(http_base)
+        return candidates
 
     def _request(
         self,
@@ -231,9 +245,9 @@ class CudyRouter:
         """Returns a cookie header that should be used for authentication."""
 
         if not force_auth and self.auth_cookie:
-            return f"sysauth={self.auth_cookie}"
-        if self.authenticate():
-            return f"sysauth={self.auth_cookie}"
+            return f"{self.auth_cookie_name}={self.auth_cookie}"
+        if self.authenticate() and self.auth_cookie:
+            return f"{self.auth_cookie_name}={self.auth_cookie}"
         else:
             return ""
 
@@ -336,51 +350,60 @@ class CudyRouter:
     def _discover_login_form(self) -> _LoginFormInfo | None:
         """Discover the active login form, following redirects when necessary."""
         headers = self._browser_headers()
-        candidates = [
-            f"{self.base_url}/",
-            urllib.parse.urljoin(f"{self.base_url}/", "cgi-bin/luci/"),
-        ]
+        for base_url in self._candidate_base_urls():
+            candidates = [
+                f"{base_url}/",
+                urllib.parse.urljoin(f"{base_url}/", "cgi-bin/luci/"),
+            ]
 
-        for url in candidates:
-            response = self._absolute_request(
-                "GET",
-                url,
-                timeout=DEFAULT_PAGE_TIMEOUT,
-                headers=headers,
-                allow_redirects=True,
-                silent=False,
-            )
-            if response is None:
-                continue
+            for url in candidates:
+                response = self._absolute_request(
+                    "GET",
+                    url,
+                    timeout=DEFAULT_PAGE_TIMEOUT,
+                    headers=headers,
+                    allow_redirects=True,
+                    silent=False,
+                )
+                if response is None:
+                    continue
 
-            form = self._find_login_form(response.text)
-            if form is None:
-                continue
+                form = self._find_login_form(response.text)
+                if form is None:
+                    continue
 
-            page_url = getattr(response, "url", url)
-            action = form.get("action") or ""
-            action_url = urllib.parse.urljoin(page_url, action or page_url)
+                page_url = getattr(response, "url", url)
+                action = form.get("action") or ""
+                action_url = urllib.parse.urljoin(page_url, action or page_url)
 
-            info = _LoginFormInfo(
-                page_url=page_url,
-                action_url=action_url,
-                html=response.text,
-                csrf=self._extract_form_field_value(form, "_csrf"),
-                token=self._extract_form_field_value(form, "token"),
-                salt=self._extract_form_field_value(form, "salt"),
-                language=self._extract_default_language(form),
-            )
+                info = _LoginFormInfo(
+                    page_url=page_url,
+                    action_url=action_url,
+                    html=response.text,
+                    csrf=self._extract_form_field_value(form, "_csrf"),
+                    token=self._extract_form_field_value(form, "token"),
+                    salt=self._extract_form_field_value(form, "salt"),
+                    language=self._extract_default_language(form),
+                )
 
-            _LOGGER.debug(
-                "Discovered login form at %s -> %s (csrf=%s token=%s salt=%s language=%s)",
-                page_url,
-                action_url,
-                bool(info.csrf),
-                bool(info.token),
-                bool(info.salt),
-                info.language,
-            )
-            return info
+                if self.base_url != base_url:
+                    _LOGGER.debug(
+                        "Switching router base URL from %s to %s for login flow",
+                        self.base_url,
+                        base_url,
+                    )
+                    self.base_url = base_url
+
+                _LOGGER.debug(
+                    "Discovered login form at %s -> %s (csrf=%s token=%s salt=%s language=%s)",
+                    page_url,
+                    action_url,
+                    bool(info.csrf),
+                    bool(info.token),
+                    bool(info.salt),
+                    info.language,
+                )
+                return info
 
         _LOGGER.debug("Could not discover login form")
         return None
@@ -389,7 +412,8 @@ class CudyRouter:
         """Store the session auth cookie if present."""
         session = self._get_session()
         for cookie in session.cookies:
-            if cookie.name == "sysauth" and cookie.value:
+            if cookie.name in AUTH_COOKIE_NAMES and cookie.value:
+                self.auth_cookie_name = cookie.name
                 self.auth_cookie = cookie.value
                 return True
 
@@ -402,9 +426,11 @@ class CudyRouter:
 
         cookie = SimpleCookie()
         cookie.load(set_cookie)
-        if cookie.get("sysauth"):
-            self.auth_cookie = cookie.get("sysauth").value
-            return True
+        for cookie_name in AUTH_COOKIE_NAMES:
+            if cookie.get(cookie_name):
+                self.auth_cookie_name = cookie_name
+                self.auth_cookie = cookie.get(cookie_name).value
+                return True
         return False
 
     def _local_zonename(self) -> str:
@@ -481,13 +507,8 @@ class CudyRouter:
                     allow_redirects=False,
                 )
             if response and (response.ok or response.status_code == 302):
-                set_cookie = response.headers.get("set-cookie", "")
-                if set_cookie:
-                    cookie = SimpleCookie()
-                    cookie.load(set_cookie)
-                    if cookie.get("sysauth"):
-                        self.auth_cookie = cookie.get("sysauth").value
-                        return True
+                if self._extract_session_auth_cookie(response):
+                    return True
             _LOGGER.debug(
                 "Legacy auth did not return sysauth cookie (status=%s)",
                 response.status_code if response else "no-response",

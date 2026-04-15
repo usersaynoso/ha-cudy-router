@@ -192,3 +192,76 @@ def test_authenticate_new_accepts_authenticated_panel_without_cookie(monkeypatch
         ("POST", "http://192.168.10.1/cgi-bin/luci/"),
         ("GET", "http://192.168.10.1/cgi-bin/luci/admin/panel"),
     ]
+
+
+def test_authenticate_new_falls_back_from_https_to_http_and_accepts_http_cookie(
+    monkeypatch,
+) -> None:
+    """Routers stored as https should still authenticate when the login form only works over http."""
+    router = router_module.CudyRouter(None, "192.168.10.1", "admin", "demo")
+    session = SimpleNamespace(cookies=_requests_cookie_jar())
+    monkeypatch.setattr(router, "_get_session", lambda: session)
+    monkeypatch.setattr(router_module.time, "time", lambda: 1_700_000_000)
+
+    login_html = """
+    <html>
+      <body>
+        <form method="post" action="/cgi-bin/luci/">
+          <input type="hidden" name="token" value="page-token" />
+          <input type="hidden" name="salt" value="page-salt" />
+          <input type="hidden" name="luci_password" value="" />
+          <select name="luci_language">
+            <option value="en" selected="selected">English</option>
+          </select>
+          <input type="password" id="luci_password2" />
+        </form>
+      </body>
+    </html>
+    """
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_absolute_request(method: str, url: str, **kwargs):
+        calls.append((method, url))
+        if method == "GET" and url in {
+            "https://192.168.10.1/",
+            "https://192.168.10.1/cgi-bin/luci/",
+        }:
+            return None
+        if method == "GET" and url == "http://192.168.10.1/":
+            return _response(login_html, url=url)
+        if method == "POST" and url == "http://192.168.10.1/cgi-bin/luci/":
+            session.cookies.set("sysauth_http", "cookie-value")
+            return _response("ok", url="http://192.168.10.1/cgi-bin/luci/admin/panel")
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(router, "_absolute_request", fake_absolute_request)
+
+    assert router._authenticate_new() is True
+    assert router.base_url == "http://192.168.10.1"
+    assert router.auth_cookie_name == "sysauth_http"
+    assert router.auth_cookie == "cookie-value"
+    assert calls == [
+        ("GET", "https://192.168.10.1/"),
+        ("GET", "https://192.168.10.1/cgi-bin/luci/"),
+        ("GET", "http://192.168.10.1/"),
+        ("POST", "http://192.168.10.1/cgi-bin/luci/"),
+    ]
+
+
+def test_extract_session_auth_cookie_accepts_sysauth_http_header() -> None:
+    """Legacy/new auth should accept LuCI's newer scheme-specific cookie names."""
+    router = router_module.CudyRouter(None, "http://192.168.10.1", "admin", "demo")
+    session = SimpleNamespace(cookies=_requests_cookie_jar())
+    response = _response(
+        "",
+        headers={"set-cookie": "sysauth_http=http-cookie; path=/cgi-bin/luci/; HttpOnly"},
+        url="http://192.168.10.1/cgi-bin/luci/",
+    )
+
+    # Use the helper against an empty session so the response header parsing path is exercised.
+    router._session = session
+
+    assert router._extract_session_auth_cookie(response) is True
+    assert router.auth_cookie_name == "sysauth_http"
+    assert router.auth_cookie == "http-cookie"

@@ -1,7 +1,7 @@
 # Cudy Router for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-blue.svg)](https://github.com/usersaynoso/ha-cudy-router)
-[![Version](https://img.shields.io/badge/version-1.3.3-blue.svg)](https://github.com/usersaynoso/ha-cudy-router/releases)
+[![Version](https://img.shields.io/badge/version-1.3.4-blue.svg)](https://github.com/usersaynoso/ha-cudy-router/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE.md)
 
 `cudy_router` is a community-built Home Assistant integration for Cudy routers that expose a LuCI-based web interface.
@@ -62,7 +62,7 @@ The following devices are mapped but have **not** been tested on real hardware y
 2. Add the **Cudy Router** integration.
 3. Enter the router IP address, username, and password.
 
-The integration normalizes the host automatically. If you enter `192.168.10.1`, it will be stored as `https://192.168.10.1`. Both `http://` and `https://` schemes are accepted.
+The integration normalizes the host automatically. If you enter `192.168.10.1`, it will probe the router and store the working scheme as either `http://192.168.10.1` or `https://192.168.10.1`.
 
 
 ## Home Assistant Device Model

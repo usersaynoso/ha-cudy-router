@@ -80,7 +80,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         raise InvalidAuth
 
     # Default title to "Cudy Router"
-    return {"title": "Cudy Router", "host": host, "device_model": device_model}
+    return {"title": "Cudy Router", "host": router.base_url, "device_model": device_model}
 
 
 class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -107,13 +107,6 @@ class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Normalize the host URL
-            user_input[CONF_HOST] = _normalize_host(user_input[CONF_HOST])
-
-            # Set unique ID based on host to prevent duplicates
-            await self.async_set_unique_id(user_input[CONF_HOST])
-            self._abort_if_unique_id_configured()
-
             try:
                 info = await validate_input(self.hass, user_input)
             except CannotConnect:
@@ -124,6 +117,9 @@ class CudyRouterConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
+                user_input[CONF_HOST] = info["host"]
+                await self.async_set_unique_id(info["host"])
+                self._abort_if_unique_id_configured()
                 user_input[CONF_MODEL] = info["device_model"]
                 return self.async_create_entry(title=info["title"], data=user_input)
 
