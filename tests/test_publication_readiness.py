@@ -74,8 +74,11 @@ def test_release_workflow_creates_github_releases_from_version_tags() -> None:
     assert '- "v*"' in release_workflow
     assert "contents: write" in release_workflow
     assert 'uses: actions/checkout@v4' in release_workflow
-    assert 'uses: softprops/action-gh-release@v2' in release_workflow
-    assert "generate_release_notes: true" in release_workflow
+    assert 'name: Publish GitHub release' in release_workflow
+    assert 'gh release view "$RELEASE_TAG"' in release_workflow
+    assert 'gh release create "$RELEASE_TAG"' in release_workflow
+    assert "--generate-notes" in release_workflow
+    assert "--verify-tag" in release_workflow
 
 
 def test_local_brand_assets_exist() -> None:
