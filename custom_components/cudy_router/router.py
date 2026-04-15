@@ -7,6 +7,8 @@ import logging
 import re
 import time
 import urllib.parse
+from dataclasses import dataclass
+from datetime import datetime
 from http.cookies import SimpleCookie
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +29,19 @@ DEFAULT_POST_TIMEOUT = 30
 DEFAULT_RETRIES = 2
 RETRY_BACKOFF_SECONDS = 0.35
 RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504}
+
+
+@dataclass(slots=True)
+class _LoginFormInfo:
+    """Resolved login form metadata for browser-style authentication."""
+
+    page_url: str
+    action_url: str
+    html: str
+    csrf: str
+    token: str
+    salt: str
+    language: str
 
 
 def _sha256_hex(s: str) -> str:
@@ -222,6 +237,220 @@ class CudyRouter:
         else:
             return ""
 
+    def _browser_headers(self) -> dict[str, str]:
+        """Headers that match browser navigation of the login page."""
+        return {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": f"{self.base_url}/",
+        }
+
+    def _absolute_request(
+        self,
+        method: str,
+        url: str,
+        *,
+        timeout: int,
+        headers: dict[str, str],
+        allow_redirects: bool = False,
+        data: Any = None,
+        silent: bool = False,
+    ) -> requests.Response | None:
+        """Issue an absolute-URL request with the shared transport behavior."""
+        response = self._request(
+            method,
+            url,
+            timeout=timeout,
+            headers=headers,
+            allow_redirects=allow_redirects,
+            silent=silent,
+            retries=1,
+            reauth_on_403=False,
+            data=data,
+        )
+        if response is not None:
+            return response
+
+        session = self._get_session()
+        try:
+            return session.request(
+                method=method,
+                url=url,
+                timeout=timeout,
+                headers=headers,
+                data=data,
+                allow_redirects=allow_redirects,
+            )
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as err:
+            if not silent:
+                _LOGGER.debug("Fallback HTTP %s %s failed: %s", method, url, err)
+        except requests.RequestException as err:
+            if not silent:
+                _LOGGER.debug("Fallback HTTP %s %s request exception: %s", method, url, err)
+        return None
+
+    def _find_login_form(self, html: str):
+        """Return the login form if present in the HTML."""
+        soup = BeautifulSoup(html or "", "html.parser")
+        for form in soup.find_all("form"):
+            has_luci_password = form.find("input", attrs={"name": "luci_password"}) is not None
+            has_prompt = (
+                form.find("input", attrs={"id": "luci_password2"}) is not None
+                or form.find("input", attrs={"type": "password"}) is not None
+            )
+            has_auth_fields = (
+                form.find("input", attrs={"name": "token"}) is not None
+                or form.find("input", attrs={"name": "salt"}) is not None
+            )
+            if has_luci_password and (has_prompt or has_auth_fields):
+                return form
+        return None
+
+    def _looks_like_login_page(self, html: str) -> bool:
+        """Return whether the page appears to be the login form."""
+        return self._find_login_form(html) is not None
+
+    def _extract_form_field_value(self, form: Any, name: str) -> str:
+        """Extract an input value from a form."""
+        field = form.find("input", attrs={"name": name})
+        if field is None:
+            return ""
+        return field.get("value", "")
+
+    def _extract_default_language(self, form: Any) -> str:
+        """Extract the selected/default LuCI language value from the login form."""
+        field = form.find("select", attrs={"name": "luci_language"})
+        if field is None:
+            return "en"
+
+        selected = field.find("option", selected=True)
+        if selected is not None:
+            return selected.get("value", "") or "en"
+
+        first = field.find("option")
+        if first is not None:
+            return first.get("value", "") or "en"
+
+        return field.get("value", "") or "en"
+
+    def _discover_login_form(self) -> _LoginFormInfo | None:
+        """Discover the active login form, following redirects when necessary."""
+        headers = self._browser_headers()
+        candidates = [
+            f"{self.base_url}/",
+            urllib.parse.urljoin(f"{self.base_url}/", "cgi-bin/luci/"),
+        ]
+
+        for url in candidates:
+            response = self._absolute_request(
+                "GET",
+                url,
+                timeout=DEFAULT_PAGE_TIMEOUT,
+                headers=headers,
+                allow_redirects=True,
+                silent=False,
+            )
+            if response is None:
+                continue
+
+            form = self._find_login_form(response.text)
+            if form is None:
+                continue
+
+            page_url = getattr(response, "url", url)
+            action = form.get("action") or ""
+            action_url = urllib.parse.urljoin(page_url, action or page_url)
+
+            info = _LoginFormInfo(
+                page_url=page_url,
+                action_url=action_url,
+                html=response.text,
+                csrf=self._extract_form_field_value(form, "_csrf"),
+                token=self._extract_form_field_value(form, "token"),
+                salt=self._extract_form_field_value(form, "salt"),
+                language=self._extract_default_language(form),
+            )
+
+            _LOGGER.debug(
+                "Discovered login form at %s -> %s (csrf=%s token=%s salt=%s language=%s)",
+                page_url,
+                action_url,
+                bool(info.csrf),
+                bool(info.token),
+                bool(info.salt),
+                info.language,
+            )
+            return info
+
+        _LOGGER.debug("Could not discover login form")
+        return None
+
+    def _extract_session_auth_cookie(self, response: requests.Response | None = None) -> bool:
+        """Store the session auth cookie if present."""
+        session = self._get_session()
+        for cookie in session.cookies:
+            if cookie.name == "sysauth" and cookie.value:
+                self.auth_cookie = cookie.value
+                return True
+
+        if response is None:
+            return False
+
+        set_cookie = response.headers.get("set-cookie", "")
+        if not set_cookie:
+            return False
+
+        cookie = SimpleCookie()
+        cookie.load(set_cookie)
+        if cookie.get("sysauth"):
+            self.auth_cookie = cookie.get("sysauth").value
+            return True
+        return False
+
+    def _local_zonename(self) -> str:
+        """Best-effort system timezone name for browser-style login submissions."""
+        tzinfo = datetime.now().astimezone().tzinfo
+        if tzinfo is None:
+            return "UTC"
+
+        zone_key = getattr(tzinfo, "key", None) or getattr(tzinfo, "zone", None)
+        if isinstance(zone_key, str) and zone_key:
+            return zone_key
+
+        zone_name = str(tzinfo)
+        return zone_name or "UTC"
+
+    def _origin_for_url(self, url: str) -> str:
+        """Return the scheme://host origin for a URL."""
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+        return self.base_url
+
+    def _login_confirmed_via_panel(self) -> bool:
+        """Confirm auth by loading the admin panel and ensuring it is not the login page."""
+        response = self._absolute_request(
+            "GET",
+            self._luci_url("admin/panel"),
+            timeout=DEFAULT_PAGE_TIMEOUT,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin",
+            },
+            allow_redirects=True,
+            silent=True,
+        )
+        if response is None:
+            return False
+
+        if self._extract_session_auth_cookie(response):
+            return True
+
+        if response.status_code == 403:
+            return False
+
+        return not self._looks_like_login_page(response.text)
+
     def _authenticate_legacy(self) -> bool:
         """Legacy authentication method (plain password)."""
         data_url = f"{self.base_url}/cgi-bin/luci"
@@ -273,94 +502,56 @@ class CudyRouter:
 
     def _authenticate_new(self) -> bool:
         """New authentication method with salt/token and SHA256 hashing (for 5G routers like P5)."""
-        session = self._get_session()
-        login_url = f"{self.base_url}/cgi-bin/luci/"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Referer": f"{self.base_url}/",
-        }
-
         try:
-            # GET login page to extract salt and token (may return 403 but still has HTML)
-            response = self._request(
-                "GET",
-                login_url,
-                timeout=DEFAULT_PAGE_TIMEOUT,
-                headers=headers,
-                allow_redirects=False,
-                silent=False,
-                retries=1,
-                reauth_on_403=False,
-            )
-            if not response:
-                # Fallback to legacy direct call for router compatibility.
-                session = self._get_session()
-                response = session.get(login_url, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
-            html = response.text
+            form = self._discover_login_form()
+            if form is None:
+                return False
 
-            csrf = _extract_hidden(html, "_csrf")
-            token = _extract_hidden(html, "token")
-            salt = _extract_hidden(html, "salt")
-
-            _LOGGER.debug(
-                "Login page HTTP: %s, csrf: %s, token: %s, salt: %s",
-                response.status_code,
-                bool(csrf),
-                bool(token),
-                bool(salt),
-            )
-
-            if not (salt and token):
+            if not (form.salt and form.token):
                 _LOGGER.debug("Could not extract salt/token from login page")
                 return False
 
             # Compute hashed password
-            luci_password = _compute_luci_password(self.password, salt, token)
+            luci_password = _compute_luci_password(self.password, form.salt, form.token)
 
             # POST login
             post_data = {
-                "_csrf": csrf,
-                "token": token,
-                "salt": salt,
+                "_csrf": form.csrf,
+                "token": form.token,
+                "salt": form.salt,
                 "luci_username": self.username,
                 "luci_password": luci_password,
-                "zonename": "UTC",
-                "timeclock": "0",
+                "luci_language": form.language,
+                "zonename": self._local_zonename(),
+                "timeclock": str(int(time.time())),
             }
+            headers = self._browser_headers()
             post_headers = {
                 **headers,
                 "Content-Type": "application/x-www-form-urlencoded",
-                "Origin": self.base_url,
+                "Referer": form.page_url,
+                "Origin": self._origin_for_url(form.page_url),
             }
 
-            response = self._request(
+            response = self._absolute_request(
                 "POST",
-                login_url,
+                form.action_url,
                 timeout=DEFAULT_PAGE_TIMEOUT,
                 headers=post_headers,
                 data=urllib.parse.urlencode(post_data),
-                allow_redirects=False,
+                allow_redirects=True,
                 silent=False,
-                retries=1,
-                reauth_on_403=False,
             )
-            if not response:
-                session = self._get_session()
-                response = session.post(
-                    login_url,
-                    timeout=DEFAULT_PAGE_TIMEOUT,
-                    headers=post_headers,
-                    data=urllib.parse.urlencode(post_data),
-                    allow_redirects=False,
-                )
+            if response is None:
+                return False
 
-            # Check for sysauth cookie
-            for cookie in session.cookies:
-                if cookie.name == "sysauth":
-                    self.auth_cookie = cookie.value
-                    _LOGGER.debug("New auth successful, got sysauth cookie")
-                    return True
+            if self._extract_session_auth_cookie(response):
+                _LOGGER.debug("New auth successful, got sysauth cookie")
+                return True
+
+            if self._login_confirmed_via_panel():
+                _LOGGER.debug("New auth confirmed by admin panel access")
+                return True
 
             _LOGGER.debug("New auth: no sysauth cookie received, status=%s", response.status_code)
             return False
@@ -376,36 +567,16 @@ class CudyRouter:
     def get_model(self) -> str:
         """Get the cudy router model displayed on login page."""
 
-        login_url = f"{self.base_url}/cgi-bin/luci/"
-
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Referer": f"{self.base_url}/",
-        }
-
         try:
-            # GET login page to extract salt and token (may return 403 but still has HTML)
-            response = self._request(
-                "GET",
-                login_url,
-                timeout=DEFAULT_PAGE_TIMEOUT,
-                headers=headers,
-                allow_redirects=False,
-                silent=False,
-                retries=1,
-                reauth_on_403=False,
-            )
-            if not response:
-                session = self._get_session()
-                response = session.get(login_url, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
-            html = response.text
+            form = self._discover_login_form()
+            if form is None:
+                _LOGGER.debug("Could not discover login page for model detection")
+                return "default"
 
-            device_model = _extract_model(html)
+            device_model = _extract_model(form.html)
 
             _LOGGER.debug(
-                "Login page HTTP: %s, device_model: %s",
-                response.status_code,
+                "Login page model detection: device_model=%s",
                 str(device_model),
             )
 
