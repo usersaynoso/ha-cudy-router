@@ -74,3 +74,25 @@ def test_router_data_uses_dhcp_fallbacks_and_filters_empty_wan_values() -> None:
     assert 'wan_data.pop(duplicated_key, None)' in source
     assert '"wan_ip"' in source
     assert 'if entry.get("value") not in (None, "")' in source
+
+
+def test_router_data_collects_lan_subnet_and_guards_wan_subnet_fallback() -> None:
+    """Subnet masks should come from LAN config and only guarded WAN fallbacks."""
+    source = ROUTER_DATA_PATH.read_text(encoding="utf-8")
+
+    assert "parse_lan_settings" in source
+    assert "admin/network/lan/config?nomodal=" in source
+    assert "parse_wan_settings" in source
+    assert "admin/network/wan/config/detail?nomodal=&iface=wan" in source
+    assert 'status_subnet_mask in (None, "", "255.255.255.255")' in source
+    assert 'for key in ("public_ip", "wan_ip", "gateway", "dns")' in source
+
+
+def test_sensor_descriptions_distinguish_lan_and_wan_subnet_entities() -> None:
+    """Sensor descriptions should expose separate LAN and WAN subnet names."""
+    source = SENSOR_DESCRIPTIONS_PATH.read_text(encoding="utf-8")
+
+    assert '(MODULE_WAN, "subnet_mask")' in source
+    assert 'name_suffix="WAN Subnet mask"' in source
+    assert '(MODULE_LAN, "subnet_mask")' in source
+    assert 'name_suffix="Subnet mask"' in source

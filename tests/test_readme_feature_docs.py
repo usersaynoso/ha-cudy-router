@@ -18,9 +18,14 @@ def test_readme_documents_new_settings_entities() -> None:
     assert "Network search" in source
     assert "APN profile" in source
     assert "VPN site-to-site" in source
+    assert "VPN tunnel IP" in source
+    assert "Load balancing WAN1" in source
+    assert "WAN bytes received" in source
+    assert "ARP br-lan count" in source
     assert "Auto update time" in source
     assert "internet access switch" in source.lower()
     assert "DNS filter switch" in source
+    assert "VPN switch" in source
     assert "WiFi 2.4G hidden network" in source
     assert "WiFi 5G separate clients" in source
 
@@ -30,6 +35,7 @@ def test_readme_documents_connected_device_auto_add_option() -> None:
     source = README_PATH.read_text(encoding="utf-8")
 
     assert "Automatically Add Connected Devices" in source
+    assert "Disabled by default for new integrations." in source
     assert "Manually Add Connected Devices" in source
     assert "currently connected device reported by the router" in source
     assert "device_tracker" in source
@@ -57,6 +63,7 @@ def test_readme_lists_emulator_backed_compatibility_models() -> None:
     assert "Only the **Cudy P5** has been tested on real hardware so far." in source
     assert "mapped but have **not** been tested on real hardware yet" in source
     assert "WR11000" in source
+    assert "R700" in source
     assert "LT500" in source
     assert "M3000" in source
     assert "RE1200-Outdoor" in source

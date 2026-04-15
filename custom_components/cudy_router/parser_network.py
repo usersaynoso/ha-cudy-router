@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from .parser import get_seconds_duration, get_upload_download_values, parse_tables
+from .bs4_compat import BeautifulSoup
+from .parser import (
+    get_seconds_duration,
+    get_upload_download_values,
+    parse_data_size_bytes,
+    parse_tables,
+)
 
 
 def _pick_first_value(raw_data: dict[str, Any], *keys: str) -> Any:
@@ -37,13 +43,55 @@ def _clean_text(value: Any) -> str | None:
     return cleaned
 
 
+def _cell_strings(element: Any) -> list[str]:
+    """Extract unique text chunks from a table cell."""
+    parts: list[str] = []
+    for text in element.stripped_strings:
+        normalized = text.strip()
+        if not normalized or normalized in parts:
+            continue
+        parts.append(normalized)
+    return parts
+
+
 def parse_vpn_status(input_html: str) -> dict[str, Any]:
     """Parse VPN status page."""
     raw_data = parse_tables(input_html)
 
     return {
-        "protocol": {"value": raw_data.get("Protocol")},
-        "vpn_clients": {"value": raw_data.get("Devices")},
+        "protocol": {"value": _clean_text(_pick_first_value(raw_data, "Protocol", "VPN Protocol"))},
+        "vpn_clients": {"value": _clean_text(_pick_first_value(raw_data, "Devices", "Clients"))},
+        "tunnel_ip": {"value": _clean_text(_pick_first_value(raw_data, "Tunnel IP", "Tunnel Address"))},
+    }
+
+
+def parse_arp_status(input_html: str, interface: str) -> dict[str, Any]:
+    """Parse an ARP table page and count entries for a specific interface."""
+    soup = BeautifulSoup(input_html, "html.parser")
+    interface_count = 0
+    wanted_interface = interface.strip().lower()
+
+    for row in soup.select("tbody tr[id^='cbi-table-']"):
+        columns = row.find_all("td")
+        if len(columns) < 5:
+            continue
+
+        interface_values = _cell_strings(columns[4])
+        if interface_values and interface_values[0].strip().lower() == wanted_interface:
+            interface_count += 1
+
+    return {
+        f"arp_{interface.replace('-', '_')}_count": {"value": interface_count},
+    }
+
+
+def parse_load_balancing_status(input_html: str) -> dict[str, Any]:
+    """Parse load-balancing status page."""
+    raw_data = parse_tables(input_html)
+
+    return {
+        "wan1_status": {"value": _clean_text(_pick_first_value(raw_data, "WAN1", "WAN 1"))},
+        "wan4_status": {"value": _clean_text(_pick_first_value(raw_data, "WAN4", "WAN 4"))},
     }
 
 
@@ -87,6 +135,16 @@ def parse_wan_status(input_html: str) -> dict[str, Any]:
         },
         "dns": {
             "value": _clean_text(_pick_first_value(raw_data, "DNS", "Preferred DNS", "Primary DNS"))
+        },
+        "bytes_received": {
+            "value": parse_data_size_bytes(
+                _pick_first_value(raw_data, "Bytes Received", "RX Bytes", "Received Bytes")
+            )
+        },
+        "bytes_sent": {
+            "value": parse_data_size_bytes(
+                _pick_first_value(raw_data, "Bytes Sent", "TX Bytes", "Sent Bytes")
+            )
         },
         "session_upload": {"value": session_upload},
         "session_download": {"value": session_download},

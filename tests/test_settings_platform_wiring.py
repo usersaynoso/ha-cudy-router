@@ -29,6 +29,9 @@ def test_router_data_collects_configuration_modules() -> None:
     assert '"admin/network/gcom/config/apn"' in source
     assert '"admin/network/wireless/config/combo"' in source
     assert '"admin/network/vpn/config"' in source
+    assert '"admin/network/vpn/pptp/status"' in source
+    assert '"admin/network/mwan3/status"' in source
+    assert '"admin/system/status/arp"' in source
     assert '"admin/system/autoupgrade"' in source
     assert "existing_feature(device_model, MODULE_WIRELESS_SETTINGS)" in source
     assert "existing_feature(device_model, MODULE_AUTO_UPDATE_SETTINGS)" in source
@@ -59,11 +62,67 @@ def test_switch_and_select_platforms_cover_router_settings() -> None:
     assert "ROUTER_SETTING_SWITCHES" in switch_source
     assert "CudyClientFeatureSwitch" in switch_source
     assert '"site_to_site"' in switch_source
+    assert '("vpn", "VPN", "mdi:vpn")' in switch_source
     assert "existing_feature(device_model, MODULE_MESH)" in switch_source
+    assert 'mesh_data.get("main_router_led_status") is not None' in switch_source
+    assert 'entity_registry.async_get_entity_id("switch", DOMAIN, unique_id)' in switch_source
+    assert "entity_registry.async_remove(entity_id)" in switch_source
     assert "ROUTER_SELECTS" in select_source
     assert "CudyRouterSettingSelect" in select_source
     assert '"network_search"' in select_source
     assert '"apn_profile"' in select_source
+
+
+def test_router_vpn_entities_include_r700_status_fields() -> None:
+    """VPN entity wiring should cover the R700 PPTP status page fields."""
+    router_data_source = ROUTER_DATA_PATH.read_text(encoding="utf-8")
+    switch_source = SWITCH_PATH.read_text(encoding="utf-8")
+    sensor_descriptions_source = (ROOT / "custom_components" / "cudy_router" / "sensor_descriptions.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"admin/network/vpn/openvpns/status?status="' in router_data_source
+    assert '"admin/network/vpn/pptp/status"' in router_data_source
+    assert '"tunnel_ip"' in router_data_source
+    assert '"VPN tunnel IP"' in sensor_descriptions_source
+    assert '("vpn", "VPN", "mdi:vpn")' in switch_source
+
+
+def test_router_load_balancing_entities_include_r700_status_fields() -> None:
+    """Load-balancing entity wiring should cover the R700 dashboard status page."""
+    router_data_source = ROUTER_DATA_PATH.read_text(encoding="utf-8")
+    parser_network_source = (ROOT / "custom_components" / "cudy_router" / "parser_network.py").read_text(
+        encoding="utf-8"
+    )
+    sensor_descriptions_source = (ROOT / "custom_components" / "cudy_router" / "sensor_descriptions.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"admin/network/mwan3/status"' in router_data_source
+    assert '"wan1_status"' in parser_network_source
+    assert '"wan4_status"' in parser_network_source
+    assert '"Load balancing WAN1"' in sensor_descriptions_source
+    assert '"Load balancing WAN4"' in sensor_descriptions_source
+
+
+def test_router_device_and_interface_stats_include_r700_specific_sensors() -> None:
+    """R700-specific ARP and byte counters should be wired into the integration."""
+    router_data_source = ROUTER_DATA_PATH.read_text(encoding="utf-8")
+    sensor_descriptions_source = (ROOT / "custom_components" / "cudy_router" / "sensor_descriptions.py").read_text(
+        encoding="utf-8"
+    )
+    parser_network_source = (ROOT / "custom_components" / "cudy_router" / "parser_network.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"admin/system/status/arp"' in router_data_source
+    assert '"admin/network/lan/status?detail=1"' in router_data_source
+    assert '"admin/network/wan/status?detail=1&iface={iface_name}"' in router_data_source
+    assert "interface.replace('-', '_')" in parser_network_source
+    assert '"bytes_received"' in parser_network_source
+    assert '"ARP br-lan count"' in sensor_descriptions_source
+    assert '"WAN bytes received"' in sensor_descriptions_source
+    assert 'name_suffix="Bytes received"' in sensor_descriptions_source
 
 
 def test_sensor_platform_adds_connected_client_and_mesh_detail_sensors() -> None:

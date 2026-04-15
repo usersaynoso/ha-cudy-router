@@ -1,7 +1,7 @@
 # Cudy Router for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-blue.svg)](https://github.com/usersaynoso/ha-cudy-router)
-[![Version](https://img.shields.io/badge/version-1.3.4-blue.svg)](https://github.com/usersaynoso/ha-cudy-router/releases)
+[![Version](https://img.shields.io/badge/version-1.3.5-blue.svg)](https://github.com/usersaynoso/ha-cudy-router/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE.md)
 
 `cudy_router` is a community-built Home Assistant integration for Cudy routers that expose a LuCI-based web interface.
@@ -14,12 +14,12 @@ This project is not endorsed, maintained, or supported by Cudy.
 ## Highlights
 
 - Local polling integration with config flow and options flow
-- Router-wide sensors for modem, WAN, LAN, DHCP, VPN, Wi-Fi, SMS, traffic, and system status
+- Router-wide sensors for modem, WAN, LAN, DHCP, VPN, load balancing, Wi-Fi, SMS, traffic, and system status
 - Writable router configuration exposed as Home Assistant `switch` and `select` entities
 - Main router reboot button and service calls for advanced actions (SMS, AT commands, band switching)
 - Mesh node support with separate Home Assistant devices, per-node LED control, and reboot
 - Connected client support with separate Home Assistant devices
-- Per-client control switches for internet access and DNS filter
+- Per-client control switches for internet access, DNS filter, and VPN
 - Optional manual client tracking with `device_tracker` entities
 - Clean Home Assistant device registry layout with router, mesh, and client devices split apart
 - Automatic config entry migration from older versions
@@ -33,7 +33,7 @@ The integration includes an explicit model capability map so unsupported module 
 
 The following devices are mapped but have **not** been tested on real hardware yet:
 
-- **Routers:** WR11000, WR6500, WR3600H, TR3000, WR3000E, WR3000, WR1500, WR1300V4.0, WR1300E, WR1300EV2, TR1200, WR1200, WR300S
+- **Routers:** WR11000, WR6500, WR3600H, TR3000, WR3000E, WR3000, WR1500, WR1300V4.0, WR1300E, WR1300EV2, TR1200, WR1200, WR300S, R700
 - **4G/5G routers:** P2, LT15E, LT700E, LT500, LT400E, LT300V3, LT700-Outdoor, LT400-Outdoor, IR02
 - **Mesh Wi-Fi:** M11000, M3000, M1500, M1200
 - **Extenders:** RE3600, RE1500, RE1200, RE1200-Outdoor
@@ -85,7 +85,7 @@ Mesh node devices can expose: node name, model, MAC, IP, firmware, hardware, sta
 
 Connected clients can also be exposed as separate Home Assistant devices under the main router.
 
-Client devices can expose: IP address, connection type, signal, online time, internet access switch, and DNS filter switch.
+Client devices can expose: IP address, connection type, signal, online time, internet access switch, DNS filter switch, and VPN switch.
 
 
 ## Entity Categories
@@ -112,7 +112,7 @@ Network, Signal strength, SIM slot, Connected time, Cell information, RSRP, RSRQ
 
 ### WAN
 
-Protocol, Connected time, Public IP, WAN IP, Subnet mask, Gateway, DNS, Session upload, Session download.
+Protocol, Connected time, Public IP, WAN IP, WAN Subnet mask, Gateway, DNS, WAN bytes received, WAN bytes sent, Session upload, Session download.
 
 When both modem and WAN modules are present, duplicate fields (connected time, public IP, WAN IP, session upload/download) are suppressed from the WAN module to avoid redundant entities.
 
@@ -134,7 +134,7 @@ WiFi 2.4G SSID, WiFi 2.4G channel, WiFi 5G SSID, WiFi 5G channel.
 
 ### LAN
 
-LAN IP, LAN MAC.
+LAN IP, Subnet mask, LAN MAC, Bytes received, Bytes sent.
 
 ### DHCP
 
@@ -142,11 +142,15 @@ IP Start, IP End, Preferred DNS, Default Gateway, Leasetime.
 
 ### VPN
 
-VPN protocol, VPN clients.
+VPN protocol, VPN clients, VPN tunnel IP.
+
+### Load Balancing
+
+Load balancing WAN1, Load balancing WAN4.
 
 ### Connected Device Summary
 
-Device count, WiFi 2.4G clients, WiFi 5G clients, Wired clients, Total clients, Top downloader speed, Top downloader MAC, Top downloader hostname, Top uploader speed, Top uploader MAC, Top uploader hostname, Total download speed, Total upload speed, Mesh devices connected.
+Device count, ARP br-lan count, WiFi 2.4G clients, WiFi 5G clients, Wired clients, Total clients, Top downloader speed, Top downloader MAC, Top downloader hostname, Top uploader speed, Top uploader MAC, Top uploader hostname, Total download speed, Total upload speed, Mesh devices connected.
 
 ### Connected Client Detail Sensors
 
@@ -169,7 +173,7 @@ LED (per node).
 
 ### Per-Client Switches
 
-Internet access, DNS filter.
+Internet access, DNS filter, VPN.
 
 
 ## Selects
@@ -206,7 +210,9 @@ Important behavior:
 
 ### Automatically Add Connected Devices
 
-When enabled (the default), the integration creates client devices and live per-client entities for every currently connected device reported by the router.
+Disabled by default for new integrations.
+
+When enabled, the integration creates client devices and live per-client entities for every currently connected device reported by the router.
 
 ### Manually Add Connected Devices
 

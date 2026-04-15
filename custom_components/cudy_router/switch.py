@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_MODEL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -152,6 +153,14 @@ async def async_setup_entry(
     device_model = config_entry.data.get(CONF_MODEL, "default")
 
     entities: list[SwitchEntity] = []
+    entity_registry = async_get_entity_registry(hass)
+
+    def _remove_main_router_led_entity() -> None:
+        """Remove the main-router LED entity when the model does not support it."""
+        unique_id = f"{config_entry.entry_id}-main-router-led"
+        entity_id = entity_registry.async_get_entity_id("switch", DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
 
     for description in ROUTER_SETTING_SWITCHES:
         if (
@@ -168,17 +177,23 @@ async def async_setup_entry(
                 )
             )
 
-    if existing_feature(device_model, MODULE_MESH):
+    mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
+    main_router_led_supported = (
+        existing_feature(device_model, MODULE_MESH)
+        and mesh_data.get("main_router_led_status") is not None
+    )
+    if main_router_led_supported:
         entities.append(
             CudyMainRouterLEDSwitch(
                 coordinator,
                 router_name,
             )
         )
+    else:
+        _remove_main_router_led_entity()
 
     # Add mesh device switches
     if coordinator.data and existing_feature(device_model, MODULE_MESH):
-        mesh_data = coordinator.data.get(MODULE_MESH, {})
         mesh_devices = mesh_data.get("mesh_devices", {})
         async_cleanup_stale_mesh_entities(
             hass,
@@ -228,6 +243,7 @@ async def async_setup_entry(
             for feature_key, name_suffix, icon in (
                 ("internet", "Internet access", "mdi:web"),
                 ("dnsfilter", "DNS filter", "mdi:dns"),
+                ("vpn", "VPN", "mdi:vpn"),
             ):
                 if device.get(feature_key) is None:
                     continue
@@ -339,7 +355,7 @@ class CudyRouterSettingSwitch(
 class CudyClientFeatureSwitch(
     CoordinatorEntity[CudyRouterDataUpdateCoordinator], SwitchEntity
 ):
-    """Per-client internet access and DNS filter switches."""
+    """Per-client internet, DNS filter, and VPN switches."""
 
     _attr_has_entity_name = True
 

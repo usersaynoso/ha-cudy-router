@@ -41,6 +41,19 @@ def test_known_legacy_models_disable_auto_update_when_emulator_lacks_it() -> Non
     assert features.existing_feature("LT400-Outdoor V1.0", const.MODULE_AUTO_UPDATE_SETTINGS) is False
 
 
+def test_r700_emulator_does_not_expose_mesh_only_features() -> None:
+    """R700 should not inherit mesh/LED support from the permissive unknown-model profile."""
+    assert features.existing_feature("R700 V1.0", const.MODULE_MESH) is False
+    assert features.existing_feature("R700", const.MODULE_WAN) is True
+    assert features.existing_feature("R700", const.MODULE_DHCP) is True
+    assert features.existing_feature("R700", const.MODULE_LOAD_BALANCING) is True
+    assert features.existing_feature("R700", const.MODULE_VPN) is True
+    assert features.existing_feature("R700", const.MODULE_VPN_SETTINGS) is True
+    assert features.existing_feature("R700", const.MODULE_WIFI_2G) is False
+    assert features.existing_feature("R700", const.MODULE_WIFI_5G) is False
+    assert features.existing_feature("R700", const.MODULE_WIRELESS_SETTINGS) is False
+
+
 def test_unknown_models_keep_best_effort_default_profile() -> None:
     """Unknown models should still fall back to the permissive compatibility profile."""
     assert features.existing_feature("Some Future Model V1.0", const.MODULE_MODEM) is True

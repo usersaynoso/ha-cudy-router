@@ -18,7 +18,7 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import MODULE_DHCP, MODULE_VPN, MODULE_WAN
+from .const import MODULE_DHCP, MODULE_LAN, MODULE_LOAD_BALANCING, MODULE_VPN, MODULE_WAN
 
 @dataclass(frozen=True, kw_only=True)
 class CudyRouterSensorEntityDescription(SensorEntityDescription):
@@ -104,6 +104,13 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module="devices",
         name_suffix="Device count",
         state_class=SensorStateClass.MEASUREMENT,
+    ),
+    ("devices", "arp_br_lan_count"): CudyRouterSensorEntityDescription(
+        key="arp_br_lan_count",
+        module="devices",
+        name_suffix="ARP br-lan count",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:table-network",
     ),
     ("devices", "top_downloader_speed"): CudyRouterSensorEntityDescription(
         key="top_downloader_speed",
@@ -245,7 +252,7 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
     (MODULE_WAN, "subnet_mask"): CudyRouterSensorEntityDescription(
         key="subnet_mask",
         module=MODULE_WAN,
-        name_suffix="Subnet mask",
+        name_suffix="WAN Subnet mask",
         icon="mdi:ip",
     ),
     (MODULE_WAN, "gateway"): CudyRouterSensorEntityDescription(
@@ -259,6 +266,22 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module=MODULE_WAN,
         name_suffix="DNS",
         icon="mdi:dns",
+    ),
+    (MODULE_WAN, "bytes_received"): CudyRouterSensorEntityDescription(
+        key="bytes_received",
+        module=MODULE_WAN,
+        name_suffix="WAN bytes received",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    (MODULE_WAN, "bytes_sent"): CudyRouterSensorEntityDescription(
+        key="bytes_sent",
+        module=MODULE_WAN,
+        name_suffix="WAN bytes sent",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     (MODULE_WAN, "session_upload"): CudyRouterSensorEntityDescription(
         key="session_upload",
@@ -372,19 +395,42 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         icon="mdi:wifi",
     ),
     # LAN sensors
-    ("lan", "ip_address"): CudyRouterSensorEntityDescription(
+    (MODULE_LAN, "ip_address"): CudyRouterSensorEntityDescription(
         key="ip_address",
-        module="lan",
+        module=MODULE_LAN,
         name_suffix="LAN IP",
         icon="mdi:ip",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
-    ("lan", "mac_address"): CudyRouterSensorEntityDescription(
+    (MODULE_LAN, "subnet_mask"): CudyRouterSensorEntityDescription(
+        key="subnet_mask",
+        module=MODULE_LAN,
+        name_suffix="Subnet mask",
+        icon="mdi:ip",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    (MODULE_LAN, "mac_address"): CudyRouterSensorEntityDescription(
         key="mac_address",
-        module="lan",
+        module=MODULE_LAN,
         name_suffix="LAN MAC",
         icon="mdi:lan",
         entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    (MODULE_LAN, "bytes_received"): CudyRouterSensorEntityDescription(
+        key="bytes_received",
+        module=MODULE_LAN,
+        name_suffix="Bytes received",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    (MODULE_LAN, "bytes_sent"): CudyRouterSensorEntityDescription(
+        key="bytes_sent",
+        module=MODULE_LAN,
+        name_suffix="Bytes sent",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     # Devices status sensors (client counts)
     ("devices", "wifi_2g_clients"): CudyRouterSensorEntityDescription(
@@ -434,6 +480,24 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         module=MODULE_VPN,
         name_suffix="VPN clients",
         icon="mdi:account-star",
+    ),
+    (MODULE_VPN, "tunnel_ip"): CudyRouterSensorEntityDescription(
+        key="tunnel_ip",
+        module=MODULE_VPN,
+        name_suffix="VPN tunnel IP",
+        icon="mdi:ip",
+    ),
+    (MODULE_LOAD_BALANCING, "wan1_status"): CudyRouterSensorEntityDescription(
+        key="wan1_status",
+        module=MODULE_LOAD_BALANCING,
+        name_suffix="Load balancing WAN1",
+        icon="mdi:wan",
+    ),
+    (MODULE_LOAD_BALANCING, "wan4_status"): CudyRouterSensorEntityDescription(
+        key="wan4_status",
+        module=MODULE_LOAD_BALANCING,
+        name_suffix="Load balancing WAN4",
+        icon="mdi:wan",
     ),
     (MODULE_DHCP, "dhcp_ip_start"): CudyRouterSensorEntityDescription(
         key="dhcp_ip_start",

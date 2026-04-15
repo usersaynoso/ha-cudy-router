@@ -10,7 +10,7 @@ parser_settings = load_cudy_module("parser_settings")
 
 
 def test_parse_devices_extracts_client_access_flags_from_modern_rows() -> None:
-    """Modern device rows should capture internet and DNS filter states."""
+    """Modern device rows should capture internet, DNS filter, and VPN states."""
     html = """
     <table class="table">
       <tbody>
@@ -29,6 +29,9 @@ def test_parse_devices_extracts_client_access_flags_from_modern_rows() -> None:
           <td>
             <input type="hidden" name="cbid.table.1.dnsfilter" value="1" />
           </td>
+          <td>
+            <input type="hidden" name="cbid.table.1.vpn" value="0" />
+          </td>
         </tr>
       </tbody>
     </table>
@@ -39,6 +42,7 @@ def test_parse_devices_extracts_client_access_flags_from_modern_rows() -> None:
 
     assert device["internet"] is False
     assert device["dnsfilter"] is True
+    assert device["vpn"] is False
     assert device["connection_type"] == "wifi"
     assert device["signal"] == "-58 dBm"
     assert device["online_time"] == "00:21:46"

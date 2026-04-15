@@ -12,6 +12,7 @@ from .const import (
     MODULE_DEVICES,
     MODULE_DHCP,
     MODULE_LAN,
+    MODULE_LOAD_BALANCING,
     MODULE_MESH,
     MODULE_MODEM,
     MODULE_SMS,
@@ -37,11 +38,19 @@ from .parser import (
     parse_system_status,
     parse_wifi_status,
 )
-from .parser_network import parse_dhcp_status, parse_vpn_status, parse_wan_status
+from .parser_network import (
+    parse_arp_status,
+    parse_dhcp_status,
+    parse_load_balancing_status,
+    parse_vpn_status,
+    parse_wan_status,
+)
 from .parser_settings import (
     parse_auto_update_settings,
     parse_cellular_settings,
+    parse_lan_settings,
     parse_vpn_settings,
+    parse_wan_settings,
     parse_wireless_settings,
 )
 
@@ -94,6 +103,14 @@ async def collect_router_data(
         devices_status = parse_devices_status(devices_status_html)
         data[MODULE_DEVICES].update(devices_status)
 
+        arp_status_html = await hass.async_add_executor_job(
+            router.get,
+            "admin/system/status/arp",
+            True,
+        )
+        if arp_status_html:
+            data[MODULE_DEVICES].update(parse_arp_status(arp_status_html, "br-lan"))
+
     if existing_feature(device_model, MODULE_SYSTEM) is True:
         # System status (uptime, firmware, local time)
         # Fetch from multiple endpoints to increase chances of finding firmware
@@ -142,13 +159,54 @@ async def collect_router_data(
 
     # LAN status
     if existing_feature(device_model, MODULE_LAN) is True:
-        data[MODULE_LAN] = parse_lan_status(await hass.async_add_executor_job(router.get, "admin/network/lan/status"))
+        lan_status_html = await hass.async_add_executor_job(
+            router.get,
+            "admin/network/lan/status?detail=1",
+            True,
+        )
+        if not lan_status_html or "ip address" not in lan_status_html.lower():
+            lan_status_html = await hass.async_add_executor_job(router.get, "admin/network/lan/status")
+
+        lan_data = parse_lan_status(lan_status_html)
+        lan_settings_html = await hass.async_add_executor_job(
+            router.get,
+            "admin/network/lan/config?nomodal=",
+            True,
+        )
+        if lan_settings_html:
+            lan_settings = parse_lan_settings(lan_settings_html)
+            if lan_settings:
+                lan_data.update(lan_settings)
+        data[MODULE_LAN] = lan_data
 
     # VPN status
     if existing_feature(device_model, MODULE_VPN) is True:
-        data[MODULE_VPN] = parse_vpn_status(
-            await hass.async_add_executor_job(router.get, "admin/network/vpn/openvpns/status?status=")
-        )
+        vpn_status_html = ""
+        for vpn_status_path in (
+            "admin/network/vpn/openvpns/status?status=",
+            "admin/network/vpn/pptp/status",
+            "admin/network/vpn/status",
+        ):
+            candidate_html = await hass.async_add_executor_job(
+                router.get,
+                vpn_status_path,
+                True,
+            )
+            if not candidate_html:
+                continue
+
+            parsed_candidate = parse_vpn_status(candidate_html)
+            if any(
+                parsed_candidate.get(key, {}).get("value") not in (None, "")
+                for key in ("protocol", "vpn_clients", "tunnel_ip")
+            ):
+                vpn_status_html = candidate_html
+                break
+
+            if not vpn_status_html:
+                vpn_status_html = candidate_html
+
+        data[MODULE_VPN] = parse_vpn_status(vpn_status_html)
         vpn_settings_html = await hass.async_add_executor_job(
             router.get,
             "admin/network/vpn/config",
@@ -165,19 +223,89 @@ async def collect_router_data(
             await hass.async_add_executor_job(router.get, "admin/services/dhcp/status?detail=1")
         )
 
+    # Load-balancing status
+    if existing_feature(device_model, MODULE_LOAD_BALANCING) is True:
+        data[MODULE_LOAD_BALANCING] = parse_load_balancing_status(
+            await hass.async_add_executor_job(
+                router.get,
+                "admin/network/mwan3/status",
+                True,
+            )
+        )
+
     # WAN status
     if existing_feature(device_model, MODULE_WAN) is True:
         # Probe support first; some models expose a generic/empty page.
-        wan_status_html = await hass.async_add_executor_job(
-            router.get,
-            "admin/network/wan/status?detail=1&iface=wan",
-            True,
-        )
-        if wan_status_html and any(
-            marker in wan_status_html.lower()
-            for marker in ("public ip", "ip address", "gateway", "subnet", "protocol")
+        wan_candidates: list[tuple[str, dict[str, Any]]] = []
+        for iface_name, expected_marker in (
+            ("wan", None),
+            ("wand", "wan4"),
         ):
-            wan_data = parse_wan_status(wan_status_html)
+            if iface_name != "wan" and existing_feature(device_model, MODULE_LOAD_BALANCING) is not True:
+                continue
+
+            wan_status_html = await hass.async_add_executor_job(
+                router.get,
+                f"admin/network/wan/status?detail=1&iface={iface_name}",
+                True,
+            )
+            if not wan_status_html:
+                continue
+
+            normalized_html = wan_status_html.lower()
+            if expected_marker and expected_marker not in normalized_html:
+                # Some firmware returns the default WAN1 panel for unknown iface names.
+                continue
+
+            if any(
+                marker in normalized_html
+                for marker in (
+                    "public ip",
+                    "ip address",
+                    "gateway",
+                    "subnet",
+                    "protocol",
+                    "bytes received",
+                    "bytes sent",
+                    "rx bytes",
+                    "tx bytes",
+                )
+            ):
+                wan_candidates.append((iface_name, parse_wan_status(wan_status_html)))
+
+        if wan_candidates:
+            wan_data = dict(wan_candidates[0][1])
+            for byte_key in ("bytes_received", "bytes_sent"):
+                byte_values = [
+                    entry.get(byte_key, {}).get("value")
+                    for _, entry in wan_candidates
+                    if entry.get(byte_key, {}).get("value") is not None
+                ]
+                if byte_values:
+                    wan_data[byte_key] = {"value": sum(byte_values)}
+
+            wan_settings_html = await hass.async_add_executor_job(
+                router.get,
+                "admin/network/wan/config/detail?nomodal=&iface=wan",
+                True,
+            )
+            if wan_settings_html:
+                wan_settings = parse_wan_settings(wan_settings_html)
+                config_subnet_mask = wan_settings.get("subnet_mask", {}).get("value")
+                status_subnet_mask = wan_data.get("subnet_mask", {}).get("value")
+                has_live_wan_addressing = any(
+                    wan_data.get(key, {}).get("value") not in (None, "")
+                    for key in ("public_ip", "wan_ip", "gateway", "dns")
+                )
+                # Some models report a DHCP /32 mask on the live status page even when the
+                # router UI shows the configured subnet. Only trust the config fallback when
+                # the WAN is otherwise live so disconnected interfaces do not invent values.
+                if (
+                    has_live_wan_addressing
+                    and config_subnet_mask not in (None, "")
+                    and status_subnet_mask in (None, "", "255.255.255.255")
+                ):
+                    wan_data["subnet_mask"] = {"value": config_subnet_mask}
 
             # Some firmware only exposes DNS/Gateway on DHCP status.
             dhcp_data = data.get(MODULE_DHCP, {})

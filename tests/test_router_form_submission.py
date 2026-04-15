@@ -88,3 +88,62 @@ def test_submit_form_executes_embedded_apply_workflow(monkeypatch) -> None:
 
     apply_post = posted_requests[1][1]
     assert apply_post == {"token": ["apply-token"]}
+
+
+def test_set_device_access_supports_vpn_toggle(monkeypatch) -> None:
+    """Per-device access toggles should support the VPN control exposed by R700."""
+    router = router_module.CudyRouter(None, "https://192.168.10.1", "user", "password")
+
+    page_html = """
+    <form class="form-horizontal" role="form" method="post">
+      <input type="hidden" name="token" value="page-token" />
+      <table class="table table-striped">
+        <tbody>
+          <tr id="cbi-table-1">
+            <td>NICK</td>
+            <td>192.168.10.20</td>
+            <td>74:86:E2:10:22:61</td>
+            <td>
+              <input type="hidden" name="cbi.cbe.table.1.vpn" value="1" />
+              <input type="hidden" id="cbid.table.1.vpn" name="cbid.table.1.vpn" value="1" />
+              <i class="fa fa-toggle-on" onclick="cbi_switch_toggle(this, true, '/cgi-bin/luci/admin/network/devices/vpn?macaddr=74:86:E2:10:22:61&hostname=NICK&internet=1&vpn=1')"></i>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </form>
+    """
+    posted: list[tuple[str, dict[str, str], str]] = []
+
+    monkeypatch.setattr(
+        router,
+        "get",
+        lambda path, silent=False: page_html if path == "admin/network/devices/devlist?detail=1" else "",
+    )
+
+    def fake_post(path: str, **kwargs):
+        posted.append((path, kwargs["data"], kwargs["headers"]["Referer"]))
+        return _response("ok")
+
+    monkeypatch.setattr(router, "_luci_post", fake_post)
+
+    result = router.set_device_access(
+        {"mac": "74:86:E2:10:22:61"},
+        "vpn",
+        False,
+    )
+
+    assert result == (200, "ok")
+    assert posted == [
+        (
+            "admin/network/devices/vpn?macaddr=74:86:E2:10:22:61&hostname=NICK&internet=1&vpn=1",
+            {
+                "token": "page-token",
+                "cbi.submit": "1",
+                "cbi.toggle": "1",
+                "cbi.cbe.table.1.vpn": "1",
+                "cbid.table.1.vpn": "0",
+            },
+            "https://192.168.10.1/cgi-bin/luci/admin/network/devices/devlist",
+        )
+    ]

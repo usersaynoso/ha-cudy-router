@@ -13,6 +13,7 @@ const = load_cudy_module("const")
 load_cudy_module("model_names")
 parser = load_cudy_module("parser")
 parser_network = load_cudy_module("parser_network")
+parser_settings = load_cudy_module("parser_settings")
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -70,6 +71,62 @@ def test_parse_wan_status_supports_alternate_labels() -> None:
     assert parsed["dns"]["value"] == "1.1.1.1"
     assert parsed["session_upload"]["value"] == 51.6
     assert parsed["session_download"]["value"] == 368.07
+
+
+def test_parse_arp_status_counts_br_lan_entries() -> None:
+    """ARP parsing should count only the requested interface rows."""
+    parsed = parser_network.parse_arp_status(_fixture_text("devices", "r700_arp_status.html"), "br-lan")
+
+    assert parsed["arp_br_lan_count"]["value"] == 3
+
+
+def test_parse_lan_settings_reads_subnet_mask_from_config_page() -> None:
+    """LAN config parsing should expose the router subnet mask."""
+    parsed = parser_settings.parse_lan_settings(_fixture_text("lan", "lan_config_subnet.html"))
+
+    assert parsed["ip_address"]["value"] == "192.168.10.1"
+    assert parsed["subnet_mask"]["value"] == "255.255.255.0"
+
+
+def test_parse_lan_status_reads_byte_counters() -> None:
+    """LAN status parsing should expose explicit RX/TX byte counters."""
+    parsed = parser.parse_lan_status(_fixture_text("lan", "lan_status_bytes.html"))
+
+    assert parsed["bytes_received"]["value"] == int(1.5 * 1024**3)
+    assert parsed["bytes_sent"]["value"] == 512 * 1024**2
+
+
+def test_parse_wan_settings_reads_protocol_and_subnet_mask_from_config_page() -> None:
+    """WAN config parsing should keep the selected protocol and configured mask."""
+    parsed = parser_settings.parse_wan_settings(_fixture_text("wan", "wan_config_subnet.html"))
+
+    assert parsed["protocol"]["value"] == "dhcp"
+    assert parsed["subnet_mask"]["value"] == "255.255.255.0"
+
+
+def test_parse_wan_status_reads_byte_counters() -> None:
+    """WAN status parsing should expose explicit receive/transmit byte counters."""
+    parsed = parser_network.parse_wan_status(_fixture_text("wan", "wan_status_bytes.html"))
+
+    assert parsed["bytes_received"]["value"] == 2 * 1024**3
+    assert parsed["bytes_sent"]["value"] == 256 * 1024**2
+
+
+def test_parse_vpn_status_reads_r700_pptp_fields() -> None:
+    """R700 VPN status parsing should expose the PPTP protocol and tunnel IP."""
+    parsed = parser_network.parse_vpn_status(_fixture_text("vpn", "vpn_r700_status.html"))
+
+    assert parsed["protocol"]["value"] == "PPTP Client"
+    assert parsed["tunnel_ip"]["value"] == "192.168.2.20"
+    assert parsed["vpn_clients"]["value"] is None
+
+
+def test_parse_load_balancing_status_reads_r700_interfaces() -> None:
+    """R700 load-balancing status parsing should expose interface health."""
+    parsed = parser_network.parse_load_balancing_status(_fixture_text("load_balancing", "r700_status.html"))
+
+    assert parsed["wan1_status"]["value"] == "Online"
+    assert parsed["wan4_status"]["value"] == "Online"
 
 
 def test_get_sim_value_returns_none_when_status_icon_is_missing() -> None:

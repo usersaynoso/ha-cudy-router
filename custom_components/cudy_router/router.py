@@ -1202,8 +1202,8 @@ class CudyRouter:
         )
 
     def set_device_access(self, device: dict[str, Any], feature: str, enabled: bool) -> tuple[int, str]:
-        """Toggle per-device internet or DNS filter access."""
-        if feature not in {"internet", "dnsfilter"}:
+        """Toggle per-device internet, DNS filter, or VPN access."""
+        if feature not in {"internet", "dnsfilter", "vpn"}:
             return 0, f"Unsupported device feature: {feature}"
 
         mac_address = device.get("mac")

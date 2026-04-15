@@ -30,6 +30,8 @@ def test_options_flow_exposes_connected_device_auto_add_toggle() -> None:
     assert "OPTIONS_AUTO_ADD_CONNECTED_DEVICES" in source
     assert "selector.BooleanSelector()" in source
     assert "self.add_suggested_values_to_schema" in source
+    assert "options={" in source
+    assert "OPTIONS_AUTO_ADD_CONNECTED_DEVICES: False" in source
     assert 'updated_options[OPTIONS_DEVICELIST] = (' in source
 
 
@@ -61,6 +63,7 @@ def test_translations_describe_connected_device_auto_add_toggle() -> None:
         assert data["auto_add_connected_devices"] == "Automatically add connected devices"
         assert data["device_list"] == "Manually add connected devices"
         assert "currently connected device" in descriptions["auto_add_connected_devices"]
+        assert "Disabled by default for new integrations" in descriptions["auto_add_connected_devices"]
         assert "turned off" in descriptions["device_list"]
 
 

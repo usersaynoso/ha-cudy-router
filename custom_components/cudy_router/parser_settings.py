@@ -21,6 +21,31 @@ def _normalize_label(label: str) -> str:
     return normalized
 
 
+def _input_value(soup: BeautifulSoup, field_name: str) -> str | None:
+    """Read the first non-empty input value for a form field."""
+    for field in soup.find_all("input", attrs={"name": field_name}):
+        value = (field.get("value") or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _field_value(soup: BeautifulSoup, field_name: str) -> str | None:
+    """Read the effective field value from a matching input or select."""
+    input_value = _input_value(soup, field_name)
+    if input_value is not None:
+        return input_value
+
+    entry = _select_entry(soup, field_name)
+    if entry is None:
+        return None
+
+    value = entry.get("value")
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
 def _hidden_bool(
     soup: BeautifulSoup,
     field_name: str,
@@ -152,6 +177,40 @@ def parse_auto_update_settings(input_html: str) -> dict[str, Any]:
     update_time = _select_entry(soup, "cbid.upgrade.1.upgrade_time")
     if update_time is not None:
         data["update_time"] = update_time
+
+    return data
+
+
+def parse_lan_settings(input_html: str) -> dict[str, Any]:
+    """Parse the LAN configuration page."""
+    soup = _soup(input_html)
+
+    data: dict[str, Any] = {}
+
+    for key, field_name in (
+        ("ip_address", "cbid.network.lan.ipaddr"),
+        ("subnet_mask", "cbid.network.lan.netmask"),
+    ):
+        value = _field_value(soup, field_name)
+        if value not in (None, ""):
+            data[key] = {"value": value}
+
+    return data
+
+
+def parse_wan_settings(input_html: str) -> dict[str, Any]:
+    """Parse WAN configuration details used for status fallbacks."""
+    soup = _soup(input_html)
+
+    data: dict[str, Any] = {}
+
+    for key, field_name in (
+        ("protocol", "cbid.network.wan.proto"),
+        ("subnet_mask", "cbid.network.wan.netmask"),
+    ):
+        value = _field_value(soup, field_name)
+        if value not in (None, ""):
+            data[key] = {"value": value}
 
     return data
 

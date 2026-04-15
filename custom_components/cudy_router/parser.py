@@ -61,6 +61,15 @@ def _parse_device_speed_pair(cell_text: str) -> tuple[float | None, float | None
     return upload, download
 
 
+def _hidden_input_bool(columns: list[Any], name_suffix: str) -> bool | None:
+    """Read a 0/1 hidden input value from any column in the row."""
+    for column in columns:
+        value = _hidden_input_value(column, name_suffix)
+        if value is not None:
+            return value == "1"
+    return None
+
+
 def _device_row_from_modern_columns(columns: list[Any]) -> dict[str, Any] | None:
     """Parse a newer Cudy connected-device table layout."""
     if len(columns) < 6:
@@ -77,8 +86,6 @@ def _device_row_from_modern_columns(columns: list[Any]) -> dict[str, Any] | None
     upload_speed, download_speed = _parse_device_speed_pair(speed_text)
     signal = " ".join(_clean_cell_strings(columns[6])) if len(columns) > 6 else None
     online_time = " ".join(_clean_cell_strings(columns[7])) if len(columns) > 7 else None
-    internet = _hidden_input_value(columns[8], "internet") if len(columns) > 8 else None
-    dnsfilter = _hidden_input_value(columns[9], "dnsfilter") if len(columns) > 9 else None
 
     if not (hostname or ip_address or mac_address):
         return None
@@ -92,8 +99,9 @@ def _device_row_from_modern_columns(columns: list[Any]) -> dict[str, Any] | None
         "connection_type": connection_type,
         "signal": signal,
         "online_time": online_time,
-        "internet": internet == "1" if internet is not None else None,
-        "dnsfilter": dnsfilter == "1" if dnsfilter is not None else None,
+        "internet": _hidden_input_bool(columns, "internet"),
+        "dnsfilter": _hidden_input_bool(columns, "dnsfilter"),
+        "vpn": _hidden_input_bool(columns, "vpn"),
     }
 
 
@@ -646,6 +654,20 @@ def parse_lan_status(input_html: str) -> dict[str, Any]:
     return {
         "ip_address": {"value": raw_data.get("IP Address")},
         "mac_address": {"value": raw_data.get("MAC-Address")},
+        "bytes_received": {
+            "value": parse_data_size_bytes(
+                raw_data.get("Bytes Received")
+                or raw_data.get("RX Bytes")
+                or raw_data.get("Received Bytes")
+            )
+        },
+        "bytes_sent": {
+            "value": parse_data_size_bytes(
+                raw_data.get("Bytes Sent")
+                or raw_data.get("TX Bytes")
+                or raw_data.get("Sent Bytes")
+            )
+        },
     }
 
 
@@ -751,6 +773,28 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
         "wired_clients": {"value": wired},
         "total_clients": {"value": total},
     }
+
+
+def parse_data_size_bytes(size_str: str) -> int | None:
+    """Parse a data size string like '219.49 GB' to bytes."""
+    if not size_str:
+        return None
+
+    normalized = size_str.strip().replace(",", "")
+    match = re.match(r"([\d.]+)\s*(B|KB|MB|GB|TB)", normalized, re.IGNORECASE)
+    if not match:
+        return None
+
+    value = float(match.group(1))
+    unit = match.group(2).upper()
+    multipliers = {
+        "B": 1,
+        "KB": 1024,
+        "MB": 1024**2,
+        "GB": 1024**3,
+        "TB": 1024**4,
+    }
+    return int(round(value * multipliers[unit]))
 
 
 def _generate_pseudo_mac(name: str) -> str:
