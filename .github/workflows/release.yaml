@@ -24,7 +24,18 @@ jobs:
             exit 0
           fi
 
-          gh release create "$RELEASE_TAG" \
+          if gh release create "$RELEASE_TAG" \
             --repo "$REPOSITORY" \
             --generate-notes \
-            --verify-tag
+            --verify-tag; then
+            echo "Published release $RELEASE_TAG."
+            exit 0
+          fi
+
+          if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG was created concurrently; leaving it unchanged."
+            exit 0
+          fi
+
+          echo "Failed to publish release $RELEASE_TAG."
+          exit 1

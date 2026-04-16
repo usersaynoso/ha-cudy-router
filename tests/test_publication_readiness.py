@@ -79,6 +79,8 @@ def test_release_workflow_creates_github_releases_from_version_tags() -> None:
     assert 'gh release create "$RELEASE_TAG"' in release_workflow
     assert "--generate-notes" in release_workflow
     assert "--verify-tag" in release_workflow
+    assert 'was created concurrently; leaving it unchanged.' in release_workflow
+    assert 'Failed to publish release $RELEASE_TAG.' in release_workflow
 
 
 def test_local_brand_assets_exist() -> None:
