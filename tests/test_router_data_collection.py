@@ -101,3 +101,6 @@ def test_collect_router_data_skips_duplicate_multi_wan_page_and_aggregates_valid
     assert data[const.MODULE_WAN]["wan_ip"]["value"] == "192.0.2.2"
     assert data[const.MODULE_WAN]["bytes_received"]["value"] == (1024**3) + (2 * 1024**3)
     assert data[const.MODULE_WAN]["bytes_sent"]["value"] == (128 * 1024**2) + (256 * 1024**2)
+    assert set(data[const.MODULE_LOAD_BALANCING]) == {"wan1_status", "wan4_status"}
+    assert data[const.MODULE_LOAD_BALANCING]["wan1_status"]["value"] == "Online"
+    assert data[const.MODULE_LOAD_BALANCING]["wan4_status"]["value"] == "Online"

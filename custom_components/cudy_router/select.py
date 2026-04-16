@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_MODEL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -174,14 +175,24 @@ async def async_setup_entry(
     """Set up Cudy Router select entities."""
     coordinator: CudyRouterDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     device_model = config_entry.data.get(CONF_MODEL, "default")
+    entity_registry = async_get_entity_registry(hass)
 
-    entities = [
-        CudyRouterSettingSelect(coordinator, description)
-        for description in ROUTER_SELECTS
-        if existing_feature(device_model, description.module)
-        and coordinator.data
-        and coordinator.data.get(description.module, {}).get(description.key)
-    ]
+    entities = []
+    for description in ROUTER_SELECTS:
+        supported = (
+            existing_feature(device_model, description.module)
+            and coordinator.data
+            and coordinator.data.get(description.module, {}).get(description.key)
+        )
+        if supported:
+            entities.append(CudyRouterSettingSelect(coordinator, description))
+            continue
+
+        unique_id = f"{config_entry.entry_id}-{description.module}-{description.key}"
+        entity_id = entity_registry.async_get_entity_id("select", DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
+
     async_add_entities(entities)
 
 

@@ -44,6 +44,15 @@ def test_sensor_setup_skips_empty_sensor_values() -> None:
     assert 'data_entry.get("value") in (None, "")' in source
 
 
+def test_sensor_setup_removes_inactive_load_balancing_entities() -> None:
+    """Inactive load-balancing WAN sensors should be cleaned up from the registry."""
+    source = SENSOR_PATH.read_text(encoding="utf-8")
+
+    assert "_LOAD_BALANCING_DYNAMIC_KEYS" in source
+    assert "MODULE_LOAD_BALANCING" in source
+    assert 'f"{config_entry.entry_id}-{MODULE_LOAD_BALANCING}-{sensor_key}"' in source
+
+
 def test_wan_parser_supports_fallback_key_names() -> None:
     """WAN parser should support alternate field labels used by Cudy pages."""
     source = PARSER_NETWORK_PATH.read_text(encoding="utf-8")

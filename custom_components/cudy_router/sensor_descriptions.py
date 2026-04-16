@@ -493,6 +493,18 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         name_suffix="Load balancing WAN1",
         icon="mdi:wan",
     ),
+    (MODULE_LOAD_BALANCING, "wan2_status"): CudyRouterSensorEntityDescription(
+        key="wan2_status",
+        module=MODULE_LOAD_BALANCING,
+        name_suffix="Load balancing WAN2",
+        icon="mdi:wan",
+    ),
+    (MODULE_LOAD_BALANCING, "wan3_status"): CudyRouterSensorEntityDescription(
+        key="wan3_status",
+        module=MODULE_LOAD_BALANCING,
+        name_suffix="Load balancing WAN3",
+        icon="mdi:wan",
+    ),
     (MODULE_LOAD_BALANCING, "wan4_status"): CudyRouterSensorEntityDescription(
         key="wan4_status",
         module=MODULE_LOAD_BALANCING,

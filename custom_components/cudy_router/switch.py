@@ -162,13 +162,21 @@ async def async_setup_entry(
         if entity_id:
             entity_registry.async_remove(entity_id)
 
+    def _remove_router_setting_entity(description: CudyRouterSettingSwitchDescription) -> None:
+        """Remove a stale router-level setting switch."""
+        unique_id = f"{config_entry.entry_id}-{description.module}-{description.key}"
+        entity_id = entity_registry.async_get_entity_id("switch", DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
+
     for description in ROUTER_SETTING_SWITCHES:
-        if (
+        supported = (
             existing_feature(device_model, description.module)
             and coordinator.data
             and coordinator.data.get(description.module, {}).get(description.key)
             is not None
-        ):
+        )
+        if supported:
             entities.append(
                 CudyRouterSettingSwitch(
                     coordinator,
@@ -176,6 +184,8 @@ async def async_setup_entry(
                     description,
                 )
             )
+        else:
+            _remove_router_setting_entity(description)
 
     mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
     main_router_led_supported = (

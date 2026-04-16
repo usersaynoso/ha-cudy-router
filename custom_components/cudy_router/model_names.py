@@ -32,6 +32,18 @@ def base_model_name(model_name: str | None) -> str:
     return re.sub(r"\s+V\d+(?:\.\d+)?$", "", normalized, flags=re.IGNORECASE)
 
 
+def family_model_name(model_name: str | None) -> str:
+    """Return the leading model family token when firmware adds a marketing suffix."""
+    base_name = base_model_name(model_name)
+    if not base_name:
+        return ""
+    if base_name.lower().endswith("-outdoor"):
+        return base_name
+
+    match = re.match(r"^[A-Z]+[0-9]+[A-Z0-9.]*", base_name, flags=re.IGNORECASE)
+    return match.group(0) if match else base_name
+
+
 def resolve_model_name(model_name: str | None, default: str = "default") -> str:
     """Map model aliases to a stable value while remaining permissive."""
     normalized = normalize_model_name(model_name)
@@ -52,6 +64,10 @@ def iter_model_name_candidates(model_name: str | None) -> tuple[str, ...]:
     if base_name and base_name not in candidates:
         candidates.append(base_name)
 
+    family_name = family_model_name(normalized)
+    if family_name and family_name not in candidates:
+        candidates.append(family_name)
+
     alias = _MODEL_ALIASES.get(normalized)
     if alias and alias not in candidates:
         candidates.append(alias)
@@ -59,6 +75,10 @@ def iter_model_name_candidates(model_name: str | None) -> tuple[str, ...]:
     base_alias = _MODEL_ALIASES.get(base_name)
     if base_alias and base_alias not in candidates:
         candidates.append(base_alias)
+
+    family_alias = _MODEL_ALIASES.get(family_name)
+    if family_alias and family_alias not in candidates:
+        candidates.append(family_alias)
 
     for variant in tuple(candidates):
         compact = variant.replace(" ", "")

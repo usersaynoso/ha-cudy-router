@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .bs4_compat import BeautifulSoup
@@ -11,6 +12,8 @@ from .parser import (
     parse_data_size_bytes,
     parse_tables,
 )
+
+_LOAD_BALANCING_INTERFACE_RE = re.compile(r"^wan\s*([1-4])$", re.IGNORECASE)
 
 
 def _pick_first_value(raw_data: dict[str, Any], *keys: str) -> Any:
@@ -87,12 +90,40 @@ def parse_arp_status(input_html: str, interface: str) -> dict[str, Any]:
 
 def parse_load_balancing_status(input_html: str) -> dict[str, Any]:
     """Parse load-balancing status page."""
-    raw_data = parse_tables(input_html)
+    soup = BeautifulSoup(input_html, "html.parser")
+    parsed: dict[str, Any] = {}
 
-    return {
-        "wan1_status": {"value": _clean_text(_pick_first_value(raw_data, "WAN1", "WAN 1"))},
-        "wan4_status": {"value": _clean_text(_pick_first_value(raw_data, "WAN4", "WAN 4"))},
-    }
+    for row in soup.select("tbody tr[id^='cbi-table-']"):
+        columns = row.find_all("td")
+        if len(columns) < 2:
+            continue
+
+        interface_values = _cell_strings(columns[0])
+        status_values = _cell_strings(columns[1])
+        if not interface_values or not status_values:
+            continue
+
+        match = _LOAD_BALANCING_INTERFACE_RE.fullmatch(interface_values[0].strip())
+        status = _clean_text(status_values[0])
+        if match and status is not None:
+            parsed[f"wan{match.group(1)}_status"] = {"value": status}
+
+    if parsed:
+        return parsed
+
+    raw_data = parse_tables(input_html)
+    for interface_number in range(1, 5):
+        status = _clean_text(
+            _pick_first_value(
+                raw_data,
+                f"WAN{interface_number}",
+                f"WAN {interface_number}",
+            )
+        )
+        if status is not None:
+            parsed[f"wan{interface_number}_status"] = {"value": status}
+
+    return parsed
 
 
 def parse_wan_status(input_html: str) -> dict[str, Any]:

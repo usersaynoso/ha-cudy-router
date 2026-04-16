@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
     MODULE_DEVICES,
+    MODULE_LOAD_BALANCING,
     MODULE_MESH,
     MODULE_MODEM,
     MODULE_WAN,
@@ -69,6 +70,8 @@ _WAN_DUPLICATE_MODEM_KEYS = {
 _WAN_REMOVED_SENSOR_KEYS = {
     "mac_address",
 }
+
+_LOAD_BALANCING_DYNAMIC_KEYS = {f"wan{interface_number}_status" for interface_number in range(1, 5)}
 
 
 def _connected_devices(coordinator: CudyRouterDataUpdateCoordinator) -> list[dict[str, Any]]:
@@ -141,6 +144,11 @@ async def async_setup_entry(
     for sensor_key in ("subnet_mask", "gateway", "dns"):
         if isinstance(wan_data, dict) and wan_data.get(sensor_key, {}).get("value") in (None, ""):
             _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
+    load_balancing_data = coordinator.data.get(MODULE_LOAD_BALANCING, {}) if coordinator.data else {}
+    if isinstance(load_balancing_data, dict):
+        for sensor_key in _LOAD_BALANCING_DYNAMIC_KEYS:
+            if load_balancing_data.get(sensor_key, {}).get("value") in (None, ""):
+                _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_LOAD_BALANCING}-{sensor_key}")
     _remove_legacy_manual_device_sensors()
 
     # Add sensors based on available data from coordinator

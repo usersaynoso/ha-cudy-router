@@ -125,8 +125,18 @@ def test_parse_load_balancing_status_reads_r700_interfaces() -> None:
     """R700 load-balancing status parsing should expose interface health."""
     parsed = parser_network.parse_load_balancing_status(_fixture_text("load_balancing", "r700_status.html"))
 
+    assert set(parsed) == {"wan1_status", "wan4_status"}
     assert parsed["wan1_status"]["value"] == "Online"
     assert parsed["wan4_status"]["value"] == "Online"
+
+
+def test_parse_load_balancing_status_supports_middle_wan_interfaces() -> None:
+    """Load-balancing parsing should support WAN2/WAN3 without inventing other sensors."""
+    parsed = parser_network.parse_load_balancing_status(_fixture_text("load_balancing", "r700_status_wan2_wan3.html"))
+
+    assert set(parsed) == {"wan2_status", "wan3_status"}
+    assert parsed["wan2_status"]["value"] == "Online"
+    assert parsed["wan3_status"]["value"] == "Offline"
 
 
 def test_get_sim_value_returns_none_when_status_icon_is_missing() -> None:

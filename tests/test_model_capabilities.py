@@ -47,11 +47,20 @@ def test_r700_emulator_does_not_expose_mesh_only_features() -> None:
     assert features.existing_feature("R700", const.MODULE_WAN) is True
     assert features.existing_feature("R700", const.MODULE_DHCP) is True
     assert features.existing_feature("R700", const.MODULE_LOAD_BALANCING) is True
+    assert features.existing_feature("R700", const.MODULE_AUTO_UPDATE_SETTINGS) is False
     assert features.existing_feature("R700", const.MODULE_VPN) is True
     assert features.existing_feature("R700", const.MODULE_VPN_SETTINGS) is True
     assert features.existing_feature("R700", const.MODULE_WIFI_2G) is False
     assert features.existing_feature("R700", const.MODULE_WIFI_5G) is False
     assert features.existing_feature("R700", const.MODULE_WIRELESS_SETTINGS) is False
+
+
+def test_r700_variants_keep_the_r700_feature_profile() -> None:
+    """Regional or marketing suffixes should not fall back to the default profile."""
+    assert features.existing_feature("R700-UK", const.MODULE_LOAD_BALANCING) is True
+    assert features.existing_feature("R700-UK", const.MODULE_AUTO_UPDATE_SETTINGS) is False
+    assert features.existing_feature("R700 AX3000", const.MODULE_LOAD_BALANCING) is True
+    assert features.existing_feature("R700 AX3000", const.MODULE_AUTO_UPDATE_SETTINGS) is False
 
 
 def test_unknown_models_keep_best_effort_default_profile() -> None:

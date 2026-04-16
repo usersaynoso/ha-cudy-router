@@ -67,10 +67,14 @@ def test_switch_and_select_platforms_cover_router_settings() -> None:
     assert 'mesh_data.get("main_router_led_status") is not None' in switch_source
     assert 'entity_registry.async_get_entity_id("switch", DOMAIN, unique_id)' in switch_source
     assert "entity_registry.async_remove(entity_id)" in switch_source
+    assert "_remove_router_setting_entity" in switch_source
     assert "ROUTER_SELECTS" in select_source
     assert "CudyRouterSettingSelect" in select_source
     assert '"network_search"' in select_source
     assert '"apn_profile"' in select_source
+    assert 'async_get_entity_registry' in select_source
+    assert 'entity_registry.async_get_entity_id("select", DOMAIN, unique_id)' in select_source
+    assert "entity_registry.async_remove(entity_id)" in select_source
 
 
 def test_router_vpn_entities_include_r700_status_fields() -> None:
@@ -99,9 +103,11 @@ def test_router_load_balancing_entities_include_r700_status_fields() -> None:
     )
 
     assert '"admin/network/mwan3/status"' in router_data_source
-    assert '"wan1_status"' in parser_network_source
-    assert '"wan4_status"' in parser_network_source
+    assert "range(1, 5)" in parser_network_source
+    assert "_LOAD_BALANCING_INTERFACE_RE" in parser_network_source
     assert '"Load balancing WAN1"' in sensor_descriptions_source
+    assert '"Load balancing WAN2"' in sensor_descriptions_source
+    assert '"Load balancing WAN3"' in sensor_descriptions_source
     assert '"Load balancing WAN4"' in sensor_descriptions_source
 
 

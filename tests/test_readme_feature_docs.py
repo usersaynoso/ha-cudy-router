@@ -20,6 +20,9 @@ def test_readme_documents_new_settings_entities() -> None:
     assert "VPN site-to-site" in source
     assert "VPN tunnel IP" in source
     assert "Load balancing WAN1" in source
+    assert "Load balancing WAN2" in source
+    assert "Load balancing WAN3" in source
+    assert "Load balancing WAN4" in source
     assert "WAN bytes received" in source
     assert "ARP br-lan count" in source
     assert "Auto update time" in source
