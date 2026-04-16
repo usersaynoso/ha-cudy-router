@@ -104,3 +104,37 @@ def test_collect_router_data_skips_duplicate_multi_wan_page_and_aggregates_valid
     assert set(data[const.MODULE_LOAD_BALANCING]) == {"wan1_status", "wan4_status"}
     assert data[const.MODULE_LOAD_BALANCING]["wan1_status"]["value"] == "Online"
     assert data[const.MODULE_LOAD_BALANCING]["wan4_status"]["value"] == "Online"
+
+
+def test_collect_router_data_reads_auto_update_from_r700_setup_page_fallback(monkeypatch) -> None:
+    """Auto-update settings should fall back to admin/setup when the legacy page is absent."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_AUTO_UPDATE_SETTINGS,
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/system/autoupgrade": "",
+            "admin/setup": """
+            <form>
+              <input type="hidden" name="cbid.setup.firmware.auto_upgrade" value="1" />
+              <select name="cbid.setup.firmware.upgrade_time">
+                <option value="2" selected="selected">02:00 - 04:00</option>
+              </select>
+            </form>
+            """,
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert data[const.MODULE_AUTO_UPDATE_SETTINGS]["auto_update"]["value"] is True
+    assert data[const.MODULE_AUTO_UPDATE_SETTINGS]["update_time"]["value"] == "2"

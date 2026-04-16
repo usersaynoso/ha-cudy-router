@@ -362,15 +362,19 @@ async def collect_router_data(
                 data[MODULE_WIRELESS_SETTINGS] = wireless_settings
 
     if existing_feature(device_model, MODULE_AUTO_UPDATE_SETTINGS) is True:
-        auto_update_html = await hass.async_add_executor_job(
-            router.get,
-            "admin/system/autoupgrade",
-            True,
-        )
-        if auto_update_html:
+        for auto_update_path in ("admin/system/autoupgrade", "admin/setup"):
+            auto_update_html = await hass.async_add_executor_job(
+                router.get,
+                auto_update_path,
+                True,
+            )
+            if not auto_update_html:
+                continue
+
             auto_update_settings = parse_auto_update_settings(auto_update_html)
             if auto_update_settings:
                 data[MODULE_AUTO_UPDATE_SETTINGS] = auto_update_settings
+                break
 
     # Mesh devices - try multiple possible endpoints (silent since mesh is optional)
     if existing_feature(device_model, MODULE_MESH) is True:

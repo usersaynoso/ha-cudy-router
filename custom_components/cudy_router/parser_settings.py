@@ -65,6 +65,22 @@ def _hidden_bool(
     return not enabled if inverted else enabled
 
 
+def _field_name_by_suffix(
+    soup: BeautifulSoup,
+    field_name_suffix: str,
+    *,
+    tag_names: tuple[str, ...] = ("input", "select"),
+) -> str | None:
+    """Find the first field name matching a suffix."""
+    normalized_suffix = field_name_suffix.strip().lower()
+    for tag_name in tag_names:
+        for field in soup.find_all(tag_name):
+            field_name = (field.get("name") or "").strip()
+            if field_name and field_name.lower().endswith(normalized_suffix):
+                return field_name
+    return None
+
+
 def _select_entry(
     soup: BeautifulSoup,
     field_name: str,
@@ -95,6 +111,32 @@ def _select_entry(
         "value": selected_value,
         "options": options,
     }
+
+
+def _hidden_bool_by_suffix(
+    soup: BeautifulSoup,
+    field_name_suffix: str,
+    *,
+    inverted: bool = False,
+) -> bool | None:
+    """Read a hidden 0/1 switch field by suffix."""
+    field_name = _field_name_by_suffix(soup, field_name_suffix, tag_names=("input",))
+    if field_name is None:
+        return None
+    return _hidden_bool(soup, field_name, inverted=inverted)
+
+
+def _select_entry_by_suffix(
+    soup: BeautifulSoup,
+    field_name_suffix: str,
+    *,
+    label_transform: Callable[[str], str] | None = None,
+) -> dict[str, Any] | None:
+    """Read a select field and its options by suffix."""
+    field_name = _field_name_by_suffix(soup, field_name_suffix, tag_names=("select",))
+    if field_name is None:
+        return None
+    return _select_entry(soup, field_name, label_transform=label_transform)
 
 
 def _first_select_entry(
@@ -171,10 +213,14 @@ def parse_auto_update_settings(input_html: str) -> dict[str, Any]:
     data: dict[str, Any] = {}
 
     auto_update = _hidden_bool(soup, "cbid.upgrade.1.auto_upgrade")
+    if auto_update is None:
+        auto_update = _hidden_bool_by_suffix(soup, "auto_upgrade")
     if auto_update is not None:
         data["auto_update"] = {"value": auto_update}
 
     update_time = _select_entry(soup, "cbid.upgrade.1.upgrade_time")
+    if update_time is None:
+        update_time = _select_entry_by_suffix(soup, "upgrade_time")
     if update_time is not None:
         data["update_time"] = update_time
 

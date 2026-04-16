@@ -147,3 +147,56 @@ def test_set_device_access_supports_vpn_toggle(monkeypatch) -> None:
             "https://192.168.10.1/cgi-bin/luci/admin/network/devices/devlist",
         )
     ]
+
+
+def test_set_auto_update_setting_falls_back_to_setup_page(monkeypatch) -> None:
+    """Auto-update writes should target admin/setup when newer firmware exposes the controls there."""
+    router = router_module.CudyRouter(None, "https://192.168.10.1", "user", "password")
+
+    setup_html = """
+    <form action="/cgi-bin/luci/admin/setup">
+      <input type="hidden" name="token" value="page-token" />
+      <input type="hidden" name="timeclock" value="" />
+      <input type="hidden" name="cbi.submit" value="1" />
+      <input type="hidden" name="cbid.setup.firmware.auto_upgrade" value="0" />
+      <select name="cbid.setup.firmware.upgrade_time">
+        <option value="1">01:00 - 03:00</option>
+        <option value="4" selected="selected">04:00 - 06:00</option>
+      </select>
+      <button type="submit" name="cbi.apply">Save &amp; Apply</button>
+    </form>
+    """
+
+    posted: list[tuple[str, dict[str, list[str]], str]] = []
+
+    monkeypatch.setattr(router, "get", lambda path, silent=False: setup_html if path == "admin/setup" else "")
+
+    def fake_get(path: str, **kwargs):
+        if path == "admin/setup":
+            return _response(setup_html)
+        raise AssertionError(f"Unexpected GET path: {path}")
+
+    def fake_post(path: str, **kwargs):
+        posted.append((path, parse_qs(kwargs["data"], keep_blank_values=True), kwargs["headers"]["Referer"]))
+        return _response("saved")
+
+    monkeypatch.setattr(router, "_luci_get", fake_get)
+    monkeypatch.setattr(router, "_luci_post", fake_post)
+
+    result = router.set_auto_update_setting("auto_update", True)
+
+    assert result == (200, "saved")
+    assert posted == [
+        (
+            "admin/setup",
+            {
+                "token": ["page-token"],
+                "timeclock": [posted[0][1]["timeclock"][0]],
+                "cbi.submit": ["1"],
+                "cbid.setup.firmware.auto_upgrade": ["1"],
+                "cbid.setup.firmware.upgrade_time": ["4"],
+                "cbi.apply": [""],
+            },
+            "https://192.168.10.1/cgi-bin/luci/admin/setup",
+        )
+    ]

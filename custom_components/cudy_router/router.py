@@ -62,6 +62,24 @@ def _extract_model(html: str) -> str:
     return match.group(1) if match else ""
 
 
+def _find_form_field_name_by_suffix(
+    html: str,
+    field_name_suffix: str,
+    *,
+    tag_names: tuple[str, ...],
+) -> str:
+    """Find a form field by suffix in an HTML document."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    normalized_suffix = field_name_suffix.strip().lower()
+
+    for tag_name in tag_names:
+        for field in soup.find_all(tag_name):
+            field_name = (field.get("name") or "").strip()
+            if field_name and field_name.lower().endswith(normalized_suffix):
+                return field_name
+    return ""
+
+
 def _compute_luci_password(plain_password: str, salt: str, token: str) -> str:
     """Compute the LuCI password hash.
 
@@ -1089,18 +1107,53 @@ class CudyRouter:
 
     def set_auto_update_setting(self, key: str, value: str | bool) -> tuple[int, str]:
         """Set an auto-update configuration value."""
-        field_map: dict[str, tuple[str, Any]] = {
-            "auto_update": ("cbid.upgrade.1.auto_upgrade", lambda enabled: "1" if enabled else "0"),
-            "update_time": ("cbid.upgrade.1.upgrade_time", str),
+        field_serializers: dict[str, Any] = {
+            "auto_update": lambda enabled: "1" if enabled else "0",
+            "update_time": str,
         }
-        if key not in field_map:
+        if key not in field_serializers:
             return 0, f"Unsupported auto-update setting: {key}"
 
-        field_name, serializer = field_map[key]
+        fetch_path = "admin/system/autoupgrade"
+        referer = f"{self.base_url}/cgi-bin/luci/admin/system/autoupgrade"
+        resolved_field_names = {
+            "auto_update": "cbid.upgrade.1.auto_upgrade",
+            "update_time": "cbid.upgrade.1.upgrade_time",
+        }
+        for candidate_path, candidate_referer in (
+            ("admin/system/autoupgrade", f"{self.base_url}/cgi-bin/luci/admin/system/autoupgrade"),
+            ("admin/setup", f"{self.base_url}/cgi-bin/luci/admin/setup"),
+        ):
+            html = self.get(candidate_path, True)
+            if not html:
+                continue
+
+            candidate_field_names = {
+                "auto_update": _find_form_field_name_by_suffix(
+                    html,
+                    "auto_upgrade",
+                    tag_names=("input",),
+                ),
+                "update_time": _find_form_field_name_by_suffix(
+                    html,
+                    "upgrade_time",
+                    tag_names=("select", "input"),
+                ),
+            }
+            if any(candidate_field_names.values()):
+                fetch_path = candidate_path
+                referer = candidate_referer
+                resolved_field_names.update(
+                    {field_key: field_name for field_key, field_name in candidate_field_names.items() if field_name}
+                )
+                break
+
+        field_name = resolved_field_names[key]
+        serializer = field_serializers[key]
         return self._submit_form(
-            "admin/system/autoupgrade",
+            fetch_path,
             {field_name: serializer(value)},
-            referer=f"{self.base_url}/cgi-bin/luci/admin/system/autoupgrade",
+            referer=referer,
         )
 
     def _wireless_setting_context(self) -> tuple[bool, str]:

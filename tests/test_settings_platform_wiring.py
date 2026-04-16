@@ -33,6 +33,7 @@ def test_router_data_collects_configuration_modules() -> None:
     assert '"admin/network/mwan3/status"' in source
     assert '"admin/system/status/arp"' in source
     assert '"admin/system/autoupgrade"' in source
+    assert '"admin/setup"' in source
     assert "existing_feature(device_model, MODULE_WIRELESS_SETTINGS)" in source
     assert "existing_feature(device_model, MODULE_AUTO_UPDATE_SETTINGS)" in source
 
@@ -52,6 +53,8 @@ def test_router_client_exposes_setting_mutators() -> None:
         assert f"def {method_name}" in source
     assert '"cbi.toggle"' in source
     assert "cbid.table" in source
+    assert '"admin/setup"' in source
+    assert '"auto_upgrade"' in source
 
 
 def test_switch_and_select_platforms_cover_router_settings() -> None:

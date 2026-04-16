@@ -13,7 +13,7 @@ from .parser import (
     parse_tables,
 )
 
-_LOAD_BALANCING_INTERFACE_RE = re.compile(r"^wan\s*([1-4])$", re.IGNORECASE)
+_LOAD_BALANCING_INTERFACE_RE = re.compile(r"\bwan\s*([1-4])\b", re.IGNORECASE)
 
 
 def _pick_first_value(raw_data: dict[str, Any], *keys: str) -> Any:
@@ -57,6 +57,25 @@ def _cell_strings(element: Any) -> list[str]:
     return parts
 
 
+def _extract_load_balancing_interface(values: list[str]) -> str | None:
+    """Return the WAN interface number embedded in a load-balancing cell."""
+    for value in values:
+        match = _LOAD_BALANCING_INTERFACE_RE.search(value.strip())
+        if match:
+            return match.group(1)
+    return None
+
+
+def _extract_load_balancing_status(values: list[str]) -> str | None:
+    """Return the first non-interface status value from a load-balancing cell."""
+    for value in values:
+        cleaned = _clean_text(value)
+        if cleaned is None or _LOAD_BALANCING_INTERFACE_RE.search(cleaned):
+            continue
+        return cleaned
+    return None
+
+
 def parse_vpn_status(input_html: str) -> dict[str, Any]:
     """Parse VPN status page."""
     raw_data = parse_tables(input_html)
@@ -93,33 +112,53 @@ def parse_load_balancing_status(input_html: str) -> dict[str, Any]:
     soup = BeautifulSoup(input_html, "html.parser")
     parsed: dict[str, Any] = {}
 
-    for row in soup.select("tbody tr[id^='cbi-table-']"):
+    for row in soup.select("table tr"):
         columns = row.find_all("td")
         if len(columns) < 2:
             continue
 
-        interface_values = _cell_strings(columns[0])
-        status_values = _cell_strings(columns[1])
-        if not interface_values or not status_values:
+        column_values = [_cell_strings(column) for column in columns]
+        interface_column_index: int | None = None
+        interface_number: str | None = None
+        for index, values in enumerate(column_values):
+            interface_number = _extract_load_balancing_interface(values)
+            if interface_number is not None:
+                interface_column_index = index
+                break
+
+        if interface_number is None or interface_column_index is None:
             continue
 
-        match = _LOAD_BALANCING_INTERFACE_RE.fullmatch(interface_values[0].strip())
-        status = _clean_text(status_values[0])
-        if match and status is not None:
-            parsed[f"wan{match.group(1)}_status"] = {"value": status}
+        for index, values in enumerate(column_values):
+            if index == interface_column_index:
+                continue
+
+            status = _extract_load_balancing_status(values)
+            if status is not None:
+                parsed[f"wan{interface_number}_status"] = {"value": status}
+                break
 
     if parsed:
         return parsed
 
     raw_data = parse_tables(input_html)
     for interface_number in range(1, 5):
-        status = _clean_text(
+        status: str | None = _clean_text(
             _pick_first_value(
                 raw_data,
                 f"WAN{interface_number}",
                 f"WAN {interface_number}",
             )
         )
+        if status is None:
+            for raw_key, raw_value in raw_data.items():
+                if not isinstance(raw_key, str):
+                    continue
+                match = _LOAD_BALANCING_INTERFACE_RE.search(raw_key.strip())
+                if match and match.group(1) == str(interface_number):
+                    status = _clean_text(raw_value)
+                    if status is not None:
+                        break
         if status is not None:
             parsed[f"wan{interface_number}_status"] = {"value": status}
 

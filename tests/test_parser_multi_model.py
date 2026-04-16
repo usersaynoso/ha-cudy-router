@@ -139,6 +139,17 @@ def test_parse_load_balancing_status_supports_middle_wan_interfaces() -> None:
     assert parsed["wan3_status"]["value"] == "Offline"
 
 
+def test_parse_load_balancing_status_supports_protocol_annotated_interfaces() -> None:
+    """Protocol text in the interface column should not hide a WAN3 status row."""
+    parsed = parser_network.parse_load_balancing_status(
+        _fixture_text("load_balancing", "r700_status_protocol_labels.html")
+    )
+
+    assert set(parsed) == {"wan1_status", "wan3_status"}
+    assert parsed["wan1_status"]["value"] == "Online"
+    assert parsed["wan3_status"]["value"] == "Online"
+
+
 def test_get_sim_value_returns_none_when_status_icon_is_missing() -> None:
     """Missing SIM markup should not emit an invalid enum sensor state."""
     assert parser.get_sim_value("<html><body><p>No SIM icon</p></body></html>") is None

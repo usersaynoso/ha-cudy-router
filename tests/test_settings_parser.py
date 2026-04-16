@@ -250,3 +250,21 @@ def test_parse_vpn_and_auto_update_settings_extract_controls() -> None:
     assert vpn["vpn_policy"]["value"] == "killswitch"
     assert autoupdate["auto_update"]["value"] is True
     assert autoupdate["update_time"]["value"] == "3"
+
+
+def test_parse_auto_update_settings_supports_setup_page_field_names() -> None:
+    """Auto-update parsing should accept setup-page field prefixes used by newer R700 firmware."""
+    setup_html = """
+    <form>
+      <input type="hidden" name="cbid.setup.firmware.auto_upgrade" value="0" />
+      <select name="cbid.setup.firmware.upgrade_time">
+        <option value="1">01:00 - 03:00</option>
+        <option value="4" selected="selected">04:00 - 06:00</option>
+      </select>
+    </form>
+    """
+
+    autoupdate = parser_settings.parse_auto_update_settings(setup_html)
+
+    assert autoupdate["auto_update"]["value"] is False
+    assert autoupdate["update_time"]["value"] == "4"
