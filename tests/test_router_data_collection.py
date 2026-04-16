@@ -138,3 +138,56 @@ def test_collect_router_data_reads_auto_update_from_r700_setup_page_fallback(mon
 
     assert data[const.MODULE_AUTO_UPDATE_SETTINGS]["auto_update"]["value"] is True
     assert data[const.MODULE_AUTO_UPDATE_SETTINGS]["update_time"]["value"] == "2"
+
+
+def test_collect_router_data_falls_back_to_alternate_r700_subnet_config_paths(monkeypatch) -> None:
+    """LAN/WAN subnet collection should tolerate alternate config endpoints on newer R700 firmware."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module in {const.MODULE_LAN, const.MODULE_WAN, const.MODULE_DHCP},
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/lan/status?detail=1": """
+            <table class="table">
+              <tr><td><p class="visible-xs">IP Address</p></td><td><p class="visible-xs">192.168.10.1</p></td></tr>
+            </table>
+            """,
+            "admin/network/lan/config?nomodal=": "",
+            "admin/network/lan/config/detail?nomodal=": """
+            <form>
+              <select name="cbid.setup.lan.netmask">
+                <option value="255.255.255.0" selected="selected">255.255.255.0</option>
+              </select>
+            </form>
+            """,
+            "admin/services/dhcp/status?detail=1": "",
+            "admin/network/wan/status?detail=1&iface=wan": """
+            <table class="table">
+              <tr><td><p class="visible-xs">Protocol</p></td><td><p class="visible-xs">DHCP client</p></td></tr>
+              <tr><td><p class="visible-xs">IP Address</p></td><td><p class="visible-xs">192.0.2.2</p></td></tr>
+            </table>
+            """,
+            "admin/network/wan/config/detail?nomodal=&iface=wan": "",
+            "admin/network/wan/config?nomodal=&iface=wan": """
+            <form>
+              <select name="cbid.setup.wan.netmask">
+                <option value="255.255.255.0" selected="selected">255.255.255.0</option>
+              </select>
+            </form>
+            """,
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert data[const.MODULE_LAN]["subnet_mask"]["value"] == "255.255.255.0"
+    assert data[const.MODULE_WAN]["subnet_mask"]["value"] == "255.255.255.0"

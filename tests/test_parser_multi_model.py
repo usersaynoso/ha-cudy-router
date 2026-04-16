@@ -80,6 +80,35 @@ def test_parse_arp_status_counts_br_lan_entries() -> None:
     assert parsed["arp_br_lan_count"]["value"] == 3
 
 
+def test_parse_arp_status_matches_annotated_interface_cells() -> None:
+    """ARP parsing should tolerate newer interface cells that include extra text."""
+    parsed = parser_network.parse_arp_status(
+        """
+        <table class="table">
+          <tbody>
+            <tr id="cbi-table-1">
+              <td>1</td>
+              <td>192.168.10.140</td>
+              <td>AA:BB:CC:DD:EE:FF</td>
+              <td>Host</td>
+              <td><p class="form-control-static">br-lan (bridge)</p></td>
+            </tr>
+            <tr id="cbi-table-2">
+              <td>2</td>
+              <td>192.168.0.10</td>
+              <td>AA:BB:CC:DD:EE:00</td>
+              <td>WAN</td>
+              <td><p class="form-control-static">eth1.3</p></td>
+            </tr>
+          </tbody>
+        </table>
+        """,
+        "br-lan",
+    )
+
+    assert parsed["arp_br_lan_count"]["value"] == 1
+
+
 def test_parse_lan_settings_reads_subnet_mask_from_config_page() -> None:
     """LAN config parsing should expose the router subnet mask."""
     parsed = parser_settings.parse_lan_settings(_fixture_text("lan", "lan_config_subnet.html"))

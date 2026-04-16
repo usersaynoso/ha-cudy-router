@@ -46,6 +46,14 @@ def _field_value(soup: BeautifulSoup, field_name: str) -> str | None:
     return str(value)
 
 
+def _field_value_by_suffix(soup: BeautifulSoup, field_name_suffix: str) -> str | None:
+    """Read the effective field value from the first field matching a suffix."""
+    field_name = _field_name_by_suffix(soup, field_name_suffix)
+    if field_name is None:
+        return None
+    return _field_value(soup, field_name)
+
+
 def _hidden_bool(
     soup: BeautifulSoup,
     field_name: str,
@@ -238,6 +246,9 @@ def parse_lan_settings(input_html: str) -> dict[str, Any]:
         ("subnet_mask", "cbid.network.lan.netmask"),
     ):
         value = _field_value(soup, field_name)
+        if value in (None, ""):
+            suffix = "ipaddr" if key == "ip_address" else "netmask"
+            value = _field_value_by_suffix(soup, suffix)
         if value not in (None, ""):
             data[key] = {"value": value}
 
@@ -255,6 +266,9 @@ def parse_wan_settings(input_html: str) -> dict[str, Any]:
         ("subnet_mask", "cbid.network.wan.netmask"),
     ):
         value = _field_value(soup, field_name)
+        if value in (None, ""):
+            suffix = "proto" if key == "protocol" else "netmask"
+            value = _field_value_by_suffix(soup, suffix)
         if value not in (None, ""):
             data[key] = {"value": value}
 

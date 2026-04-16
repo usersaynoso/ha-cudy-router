@@ -76,6 +76,20 @@ def _extract_load_balancing_status(values: list[str]) -> str | None:
     return None
 
 
+def _contains_interface_name(values: list[str], interface: str) -> bool:
+    """Return whether any cell value references the requested interface."""
+    wanted_interface = interface.strip().lower()
+    for value in values:
+        normalized = value.strip().lower()
+        if not normalized:
+            continue
+        if normalized == wanted_interface:
+            return True
+        if re.search(rf"\b{re.escape(wanted_interface)}\b", normalized):
+            return True
+    return False
+
+
 def parse_vpn_status(input_html: str) -> dict[str, Any]:
     """Parse VPN status page."""
     raw_data = parse_tables(input_html)
@@ -91,15 +105,13 @@ def parse_arp_status(input_html: str, interface: str) -> dict[str, Any]:
     """Parse an ARP table page and count entries for a specific interface."""
     soup = BeautifulSoup(input_html, "html.parser")
     interface_count = 0
-    wanted_interface = interface.strip().lower()
 
     for row in soup.select("tbody tr[id^='cbi-table-']"):
         columns = row.find_all("td")
-        if len(columns) < 5:
+        if len(columns) < 2:
             continue
 
-        interface_values = _cell_strings(columns[4])
-        if interface_values and interface_values[0].strip().lower() == wanted_interface:
+        if any(_contains_interface_name(_cell_strings(column), interface) for column in columns):
             interface_count += 1
 
     return {

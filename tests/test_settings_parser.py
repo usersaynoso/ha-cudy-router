@@ -268,3 +268,33 @@ def test_parse_auto_update_settings_supports_setup_page_field_names() -> None:
 
     assert autoupdate["auto_update"]["value"] is False
     assert autoupdate["update_time"]["value"] == "4"
+
+
+def test_parse_lan_and_wan_settings_support_suffix_fallback_keys() -> None:
+    """LAN/WAN setting parsers should accept newer field prefixes when suffixes still match."""
+    lan_html = """
+    <form>
+      <input type="text" name="cbid.setup.lan.ipaddr" value="192.168.10.1" />
+      <select name="cbid.setup.lan.netmask">
+        <option value="255.255.255.0" selected="selected">255.255.255.0</option>
+      </select>
+    </form>
+    """
+    wan_html = """
+    <form>
+      <select name="cbid.setup.wan.proto">
+        <option value="dhcp" selected="selected">DHCP</option>
+      </select>
+      <select name="cbid.setup.wan.netmask">
+        <option value="255.255.255.0" selected="selected">255.255.255.0</option>
+      </select>
+    </form>
+    """
+
+    lan = parser_settings.parse_lan_settings(lan_html)
+    wan = parser_settings.parse_wan_settings(wan_html)
+
+    assert lan["ip_address"]["value"] == "192.168.10.1"
+    assert lan["subnet_mask"]["value"] == "255.255.255.0"
+    assert wan["protocol"]["value"] == "dhcp"
+    assert wan["subnet_mask"]["value"] == "255.255.255.0"

@@ -168,15 +168,22 @@ async def collect_router_data(
             lan_status_html = await hass.async_add_executor_job(router.get, "admin/network/lan/status")
 
         lan_data = parse_lan_status(lan_status_html)
-        lan_settings_html = await hass.async_add_executor_job(
-            router.get,
+        for lan_settings_path in (
             "admin/network/lan/config?nomodal=",
-            True,
-        )
-        if lan_settings_html:
+            "admin/network/lan/config/detail?nomodal=",
+        ):
+            lan_settings_html = await hass.async_add_executor_job(
+                router.get,
+                lan_settings_path,
+                True,
+            )
+            if not lan_settings_html:
+                continue
+
             lan_settings = parse_lan_settings(lan_settings_html)
             if lan_settings:
                 lan_data.update(lan_settings)
+                break
         data[MODULE_LAN] = lan_data
 
     # VPN status
@@ -284,12 +291,18 @@ async def collect_router_data(
                 if byte_values:
                     wan_data[byte_key] = {"value": sum(byte_values)}
 
-            wan_settings_html = await hass.async_add_executor_job(
-                router.get,
+            for wan_settings_path in (
                 "admin/network/wan/config/detail?nomodal=&iface=wan",
-                True,
-            )
-            if wan_settings_html:
+                "admin/network/wan/config?nomodal=&iface=wan",
+            ):
+                wan_settings_html = await hass.async_add_executor_job(
+                    router.get,
+                    wan_settings_path,
+                    True,
+                )
+                if not wan_settings_html:
+                    continue
+
                 wan_settings = parse_wan_settings(wan_settings_html)
                 config_subnet_mask = wan_settings.get("subnet_mask", {}).get("value")
                 status_subnet_mask = wan_data.get("subnet_mask", {}).get("value")
@@ -306,6 +319,8 @@ async def collect_router_data(
                     and status_subnet_mask in (None, "", "255.255.255.255")
                 ):
                     wan_data["subnet_mask"] = {"value": config_subnet_mask}
+                if wan_settings:
+                    break
 
             # Some firmware only exposes DNS/Gateway on DHCP status.
             dhcp_data = data.get(MODULE_DHCP, {})
