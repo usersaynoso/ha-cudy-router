@@ -40,3 +40,34 @@ def test_bs4_compat_injects_missing_warnings_module(monkeypatch) -> None:
     assert hasattr(warnings_module, "GuessedAtParserWarning")
     assert hasattr(warnings_module, "XMLParsedAsHTMLWarning")
 
+
+def test_bs4_compat_injects_missing_deprecation_module(monkeypatch) -> None:
+    """A broken bs4 install missing bs4._deprecation should still import."""
+    for module_name in (
+        "custom_components.cudy_router.bs4_compat",
+        "bs4",
+        "bs4._deprecation",
+    ):
+        sys.modules.pop(module_name, None)
+
+    fake_bs4 = types.SimpleNamespace(BeautifulSoup=object())
+    call_count = 0
+
+    def fake_import_module(name: str, package: str | None = None):
+        nonlocal call_count
+        assert package is None
+        if name != "bs4":
+            return importlib.__import__(name)
+        call_count += 1
+        if call_count == 1:
+            raise ModuleNotFoundError("No module named 'bs4._deprecation'", name="bs4._deprecation")
+        return fake_bs4
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    module = load_cudy_module("bs4_compat")
+
+    assert module.BeautifulSoup is fake_bs4.BeautifulSoup
+    deprecation_module = sys.modules["bs4._deprecation"]
+    assert hasattr(deprecation_module, "_deprecated")
+    assert hasattr(deprecation_module, "_deprecated_alias")
