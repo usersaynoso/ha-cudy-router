@@ -19,20 +19,49 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+          release_exists() {
+            gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1
+          }
+
+          wait_for_release() {
+            for attempt in 1 2 3 4 5; do
+              if release_exists; then
+                return 0
+              fi
+              sleep 2
+            done
+            return 1
+          }
+
+          if release_exists; then
             echo "Release $RELEASE_TAG already exists; leaving it unchanged."
             exit 0
           fi
 
-          if gh release create "$RELEASE_TAG" \
-            --repo "$REPOSITORY" \
-            --generate-notes \
-            --verify-tag; then
+          set +e
+          create_output="$(
+            gh release create "$RELEASE_TAG" \
+              --repo "$REPOSITORY" \
+              --generate-notes \
+              --verify-tag \
+              2>&1
+          )"
+          create_status=$?
+          set -e
+
+          if [ "$create_status" -eq 0 ]; then
+            echo "$create_output"
             echo "Published release $RELEASE_TAG."
             exit 0
           fi
 
-          if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+          echo "$create_output"
+
+          if printf '%s' "$create_output" | grep -Fq 'Release.tag_name already exists'; then
+            echo "Release $RELEASE_TAG already exists according to GitHub; waiting for visibility."
+          fi
+
+          if wait_for_release; then
             echo "Release $RELEASE_TAG was created concurrently; leaving it unchanged."
             exit 0
           fi

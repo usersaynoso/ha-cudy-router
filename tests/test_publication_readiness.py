@@ -75,10 +75,14 @@ def test_release_workflow_creates_github_releases_from_version_tags() -> None:
     assert "contents: write" in release_workflow
     assert 'uses: actions/checkout@v4' in release_workflow
     assert 'name: Publish GitHub release' in release_workflow
+    assert 'release_exists() {' in release_workflow
+    assert 'wait_for_release() {' in release_workflow
     assert 'gh release view "$RELEASE_TAG"' in release_workflow
     assert 'gh release create "$RELEASE_TAG"' in release_workflow
     assert "--generate-notes" in release_workflow
     assert "--verify-tag" in release_workflow
+    assert "Release.tag_name already exists" in release_workflow
+    assert "waiting for visibility" in release_workflow
     assert 'was created concurrently; leaving it unchanged.' in release_workflow
     assert 'Failed to publish release $RELEASE_TAG.' in release_workflow
 
