@@ -1,7 +1,7 @@
 # Cudy Router for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-blue.svg)](https://github.com/usersaynoso/ha-cudy-router)
-[![Version](https://img.shields.io/badge/version-1.3.8-blue.svg)](https://github.com/usersaynoso/ha-cudy-router/releases)
+[![Version](https://img.shields.io/badge/version-1.3.9-blue.svg)](https://github.com/usersaynoso/ha-cudy-router/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE.md)
 
 `cudy_router` is a community-built Home Assistant integration for Cudy routers that expose a LuCI-based web interface.
@@ -20,7 +20,7 @@ This project is not endorsed, maintained, or supported by Cudy.
 - Mesh node support with separate Home Assistant devices, per-node LED control, and reboot
 - Connected client support with separate Home Assistant devices
 - Per-client control switches for internet access, DNS filter, and VPN
-- Optional manual client tracking with `device_tracker` entities
+- Optional connected-client tracking with `device_tracker` entities
 - Clean Home Assistant device registry layout with router, mesh, and client devices split apart
 - Automatic config entry migration from older versions
 
@@ -196,14 +196,15 @@ Reboot (per node).
 
 ## Device Trackers
 
-The integration supports `device_tracker` entities for manually selected clients.
+The integration supports opt-in `device_tracker` entities for connected clients.
 
 Important behavior:
 
-- `device_tracker` entities are opt-in.
-- They are created from the **Manually Add Connected Devices** list.
-- They are only created when **Automatically Add Connected Devices** is turned off.
-- Manual matching supports MAC addresses, hostnames, and IP addresses.
+- `device_tracker` entities are controlled separately from automatic client-device creation.
+- **Automatically Add Device Trackers For Connected Devices** creates trackers for every currently connected client with a MAC address.
+- **Tracked Devices** keeps individual `device_tracker` entities for selected clients, even after reloads or when those clients are currently offline.
+- Live client sensors and switches still use entity availability from the router's current connected-device list.
+- **Manually Add Connected Devices** is a picker for client devices and live client entities when automatic connected-device discovery is turned off.
 
 
 ## Integration Options
@@ -214,11 +215,29 @@ Disabled by default for new integrations.
 
 When enabled, the integration creates client devices and live per-client entities for every currently connected device reported by the router.
 
+These live client entities use availability to show whether the client is currently connected. This option does not control `device_tracker` creation.
+
 ### Manually Add Connected Devices
 
-A comma-separated list of MAC addresses, hostnames, or IP addresses.
+A picker of connected clients.
 
-When **Automatically Add Connected Devices** is turned off, client entities and `device_tracker` entities are only created for devices matching this list. Stale auto-added client entities are removed.
+When **Automatically Add Connected Devices** is turned off, client devices and live client entities are only created for devices selected in this picker.
+
+Selected manual client devices stay in Home Assistant when they go offline and their client sensors and switches become unavailable until the client reconnects.
+
+Legacy text-based values using MAC addresses, hostnames, and IP addresses are still honored until you save the picker.
+
+### Automatically Add Device Trackers For Connected Devices
+
+Disabled by default.
+
+When enabled, the integration creates `device_tracker` entities for every currently connected device with a MAC address.
+
+### Tracked Devices
+
+A picker of connected clients that should always keep a `device_tracker` entity.
+
+Selected trackers persist across reloads and report `not_home` when the client is offline. When automatic connected-device discovery is turned off, this picker shows the manual connected devices selected in the previous step, or all live connected clients when no manual connected devices are selected.
 
 ### Update Interval
 
@@ -322,7 +341,7 @@ Turn off **Automatically Add Connected Devices** and use **Manually Add Connecte
 
 ### Client Device Did Not Match
 
-The manual list accepts MAC addresses, hostnames, and IP addresses. Use the same value style the router reports in its connected-device table.
+Open the manual connected-device picker while the client is online and select it from the list. Legacy text-based values using MAC addresses, hostnames, and IP addresses are still read until you save the picker.
 
 ### Router Cannot Connect
 

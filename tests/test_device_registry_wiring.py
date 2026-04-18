@@ -22,6 +22,14 @@ def test_platforms_use_shared_device_info_builders() -> None:
         assert "build_router_device_info" in source or "build_client_device_info" in source or "build_mesh_device_info" in source
 
 
+def test_device_tracker_platform_repairs_legacy_tracker_device_links() -> None:
+    """Tracker setup should repair raw-MAC legacy entities that lack device links."""
+    source = DEVICE_TRACKER_PATH.read_text(encoding="utf-8")
+
+    assert "async_ensure_client_entity_device" in source
+    assert '"device_tracker"' in source
+
+
 def test_mesh_cleanup_runs_on_dynamic_mesh_platforms() -> None:
     """Mesh entities should prune stale registry entries when nodes disappear."""
     for path in (BUTTON_PATH, SENSOR_PATH, SWITCH_PATH):

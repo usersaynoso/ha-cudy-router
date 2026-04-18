@@ -107,6 +107,28 @@ def test_parse_devices_merges_legacy_and_modern_views_for_same_row() -> None:
     assert device["dnsfilter"] is False
 
 
+def test_parse_devices_accepts_picker_style_device_lists() -> None:
+    """Manual picker MAC lists should still populate the detailed device mapping."""
+    html = """
+    <table class="table">
+      <tbody>
+        <tr id="cbi-table-1">
+          <td>1</td>
+          <td><p class="hidden-xs">HomePod <span>wifi</span></p></td>
+          <td>ignore</td>
+          <td>ignore</td>
+          <td><p class="hidden-xs">192.168.10.60 <span>AA:BB:CC:DD:EE:60</span></p></td>
+          <td><p class="hidden-xs">Up: 1 Mbps Down: 8 Mbps</p></td>
+        </tr>
+      </tbody>
+    </table>
+    """
+
+    parsed = parser.parse_devices(html, ["aabbccddee60"])
+
+    assert parsed["detailed"]["AA:BB:CC:DD:EE:60"]["hostname"] == "HomePod"
+
+
 def test_parse_cellular_settings_reads_current_values_and_options() -> None:
     """Cellular parser should normalize key APN settings."""
     html = """

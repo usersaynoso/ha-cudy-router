@@ -71,3 +71,103 @@ def test_bs4_compat_injects_missing_deprecation_module(monkeypatch) -> None:
     deprecation_module = sys.modules["bs4._deprecation"]
     assert hasattr(deprecation_module, "_deprecated")
     assert hasattr(deprecation_module, "_deprecated_alias")
+
+
+def test_bs4_compat_repairs_missing_top_level_public_exports(monkeypatch) -> None:
+    """Broken bs4 installs missing top-level aliases should be repaired after import."""
+    for module_name in (
+        "custom_components.cudy_router.bs4_compat",
+        "bs4",
+        "bs4.element",
+        "bs4.filter",
+        "bs4.css",
+        "bs4.dammit",
+        "bs4.exceptions",
+    ):
+        sys.modules.pop(module_name, None)
+
+    class FakeBS4(types.ModuleType):
+        BeautifulSoup = object()
+
+    fake_bs4 = FakeBS4("bs4")
+    fake_element = types.SimpleNamespace(
+        Tag=object(),
+        Comment=object(),
+        Declaration=object(),
+        ProcessingInstruction=object(),
+        ResultSet=object(),
+        Script=object(),
+        Stylesheet=object(),
+        TemplateString=object(),
+        CData=object(),
+        Doctype=object(),
+    )
+    fake_filter = types.SimpleNamespace(ElementFilter=object())
+    fake_css = types.SimpleNamespace(CSS=object())
+    fake_dammit = types.SimpleNamespace(UnicodeDammit=object())
+    fake_exceptions = types.SimpleNamespace(
+        FeatureNotFound=object(),
+        ParserRejectedMarkup=object(),
+        StopParsing=object(),
+    )
+
+    def fake_import_module(name: str, package: str | None = None):
+        assert package is None
+        modules = {
+            "bs4": fake_bs4,
+            "bs4.element": fake_element,
+            "bs4.filter": fake_filter,
+            "bs4.css": fake_css,
+            "bs4.dammit": fake_dammit,
+            "bs4.exceptions": fake_exceptions,
+        }
+        if name in modules:
+            return modules[name]
+        return importlib.__import__(name)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    module = load_cudy_module("bs4_compat")
+
+    assert module.BeautifulSoup is fake_bs4.BeautifulSoup
+    assert fake_bs4.Tag is fake_element.Tag
+    assert fake_bs4.ResultSet is fake_element.ResultSet
+    assert fake_bs4.CSS is fake_css.CSS
+    assert fake_bs4.UnicodeDammit is fake_dammit.UnicodeDammit
+    assert fake_bs4.FeatureNotFound is fake_exceptions.FeatureNotFound
+
+
+def test_bs4_compat_adds_dynamic_getattr_fallback_for_missing_exports(monkeypatch) -> None:
+    """Missing bs4 aliases should still resolve later through module __getattr__."""
+    for module_name in (
+        "custom_components.cudy_router.bs4_compat",
+        "bs4",
+        "bs4.element",
+    ):
+        sys.modules.pop(module_name, None)
+
+    class FakeBS4(types.ModuleType):
+        BeautifulSoup = object()
+
+    fake_bs4 = FakeBS4("bs4")
+    fake_element = types.SimpleNamespace(Tag=object())
+    import_calls: list[str] = []
+
+    def fake_import_module(name: str, package: str | None = None):
+        assert package is None
+        import_calls.append(name)
+        if name == "bs4":
+            return fake_bs4
+        if name == "bs4.element":
+            return fake_element
+        raise ImportError(name)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    load_cudy_module("bs4_compat")
+
+    delattr(fake_bs4, "Tag")
+
+    assert fake_bs4.__getattr__("Tag") is fake_element.Tag
+    assert fake_bs4.Tag is fake_element.Tag
+    assert "bs4.element" in import_calls

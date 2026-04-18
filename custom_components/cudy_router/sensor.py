@@ -32,11 +32,16 @@ from .device_info import (
     build_client_device_info,
     build_mesh_device_info,
     build_router_device_info,
+    known_client_devices,
     mesh_display_name,
     router_display_name,
 )
+from .device_tracking import (
+    build_client_seed_device,
+    connected_device_lookup,
+    manual_allowed_client_macs,
+)
 from .features import existing_feature
-from .device_tracking import configured_device_ids, is_selected_device
 from .sensor_descriptions import (
     CudyRouterSensorEntityDescription,
     DEVICE_CONNECTION_TYPE_SENSOR,
@@ -192,28 +197,31 @@ async def async_setup_entry(
     # Add device-specific sensors based on options
     options = config_entry.options
     auto_add_connected_devices = options.get(OPTIONS_AUTO_ADD_CONNECTED_DEVICES, True) if options else True
-    device_list_str = options.get(OPTIONS_DEVICELIST, "") if options else ""
-    selected_ids = configured_device_ids(device_list_str)
-    matched_connected_devices = [
-        device
-        for device in _connected_devices(coordinator)
-        if auto_add_connected_devices or is_selected_device(device, selected_ids)
-    ]
+    connected_devices = _connected_devices(coordinator)
+    connected_devices_by_mac = connected_device_lookup(connected_devices)
+    known_clients = known_client_devices(hass, config_entry)
+    if auto_add_connected_devices:
+        allowed_client_macs = set(connected_devices_by_mac)
+    else:
+        allowed_client_macs = manual_allowed_client_macs(
+            connected_devices=connected_devices,
+            device_list=options.get(OPTIONS_DEVICELIST) if options else None,
+            known_clients=known_clients,
+        )
 
     async_cleanup_stale_client_entities(
         hass,
         config_entry,
         "sensor",
-        {device.get("mac") for device in matched_connected_devices},
+        allowed_client_macs,
     )
 
-    seen_connected_device_ids: set[str] = set()
-    for device in matched_connected_devices:
-        normalized_mac = (device.get("mac") or "").replace(":", "").replace("-", "").lower()
-        if not normalized_mac or normalized_mac in seen_connected_device_ids:
-            continue
-
-        seen_connected_device_ids.add(normalized_mac)
+    for normalized_mac in sorted(allowed_client_macs):
+        device = build_client_seed_device(
+            normalized_mac,
+            connected_devices_by_mac,
+            known_clients.get(normalized_mac, {}).get("name"),
+        )
         for description in (
             DEVICE_IP_SENSOR,
             DEVICE_CONNECTION_TYPE_SENSOR,

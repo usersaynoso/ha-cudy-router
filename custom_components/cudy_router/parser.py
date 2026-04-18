@@ -11,6 +11,7 @@ from dateutil.relativedelta import relativedelta
 
 from .bs4_compat import BeautifulSoup
 from .const import SECTION_DETAILED, SECTION_DEVICE_LIST
+from .device_tracking import configured_device_values
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -385,7 +386,10 @@ def get_seconds_duration(raw_duration: str) -> int:
     return (datetime.now() - (datetime.now() - duration)).total_seconds()
 
 
-def parse_devices(input_html: str, device_list_str: str) -> dict[str, Any]:
+def parse_devices(
+    input_html: str,
+    device_list_value: list[str] | tuple[str, ...] | set[str] | str | None,
+) -> dict[str, Any]:
     """Parses devices page"""
 
     devices = get_all_devices(input_html)
@@ -404,7 +408,7 @@ def parse_devices(input_html: str, device_list_str: str) -> dict[str, Any]:
         data["top_uploader_hostname"] = {"value": top_upload_device.get("hostname")}
 
         data[SECTION_DETAILED] = {}
-        device_list = [x.strip() for x in (device_list_str or "").split(",") if x.strip()]
+        device_list = configured_device_values(device_list_value)
         for device in devices:
             normalized_mac = _normalize_device_lookup(device.get("mac"))
             normalized_hostname = _normalize_device_lookup(device.get("hostname"))

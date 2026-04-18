@@ -18,8 +18,31 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    MODULE_DEVICES,
+    OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
+    OPTIONS_AUTO_ADD_DEVICE_TRACKERS,
+    OPTIONS_DEVICELIST,
+    OPTIONS_TRACKED_DEVICE_MACS,
+    SECTION_DEVICE_LIST,
+)
 from .coordinator import CudyRouterDataUpdateCoordinator
+from .device_info import (
+    async_cleanup_stale_client_entities,
+    async_cleanup_stale_tracker_entities,
+    known_client_devices,
+    known_tracker_clients,
+)
+from .device_tracking import (
+    configured_device_ids,
+    configured_tracked_macs,
+    connected_device_lookup,
+    is_selected_device,
+    manual_allowed_client_macs,
+    normalize_mac,
+    tracker_allowed_macs,
+)
 from .model_names import resolve_model_name
 from .router import CudyRouter
 
@@ -169,6 +192,71 @@ async def async_setup_entry(hass: HomeAssistant, entry: CudyRouterConfigEntry) -
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
+    coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    connected_devices = []
+    if coordinator is not None and getattr(coordinator, "data", None):
+        connected_devices = [
+            device
+            for device in coordinator.data.get(MODULE_DEVICES, {}).get(
+                SECTION_DEVICE_LIST,
+                [],
+            )
+            if isinstance(device, dict)
+        ]
+
+    if entry.options.get(OPTIONS_AUTO_ADD_CONNECTED_DEVICES, True):
+        allowed_client_macs = set(connected_device_lookup(connected_devices))
+    else:
+        allowed_client_macs = manual_allowed_client_macs(
+            connected_devices=connected_devices,
+            device_list=entry.options.get(OPTIONS_DEVICELIST),
+            known_clients=known_client_devices(hass, entry),
+        )
+
+    async_cleanup_stale_client_entities(
+        hass,
+        entry,
+        Platform.SENSOR.value,
+        allowed_client_macs,
+    )
+    async_cleanup_stale_client_entities(
+        hass,
+        entry,
+        Platform.SWITCH.value,
+        allowed_client_macs,
+    )
+
+    known_trackers = known_tracker_clients(hass, entry)
+    tracker_options_configured = (
+        OPTIONS_AUTO_ADD_DEVICE_TRACKERS in entry.options
+        or OPTIONS_TRACKED_DEVICE_MACS in entry.options
+    )
+    legacy_tracked_macs = set(known_trackers)
+    if not entry.options.get(OPTIONS_AUTO_ADD_CONNECTED_DEVICES, True):
+        selected_ids = configured_device_ids(entry.options.get(OPTIONS_DEVICELIST))
+        legacy_tracked_macs.update(
+            normalize_mac(device.get("mac"))
+            for device in connected_devices
+            if is_selected_device(device, selected_ids) and normalize_mac(device.get("mac"))
+        )
+
+    async_cleanup_stale_tracker_entities(
+        hass,
+        entry,
+        Platform.DEVICE_TRACKER.value,
+        tracker_allowed_macs(
+            auto_add_device_trackers=entry.options.get(
+                OPTIONS_AUTO_ADD_DEVICE_TRACKERS,
+                False,
+            ),
+            connected_devices=connected_devices,
+            tracked_device_macs=configured_tracked_macs(
+                entry.options.get(OPTIONS_TRACKED_DEVICE_MACS)
+            ),
+            legacy_tracked_macs=legacy_tracked_macs,
+            tracker_options_configured=tracker_options_configured,
+        ),
+    )
     await hass.config_entries.async_reload(entry.entry_id)
 
 

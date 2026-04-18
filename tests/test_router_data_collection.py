@@ -61,6 +61,49 @@ def test_collect_router_data_adds_br_lan_arp_count(monkeypatch) -> None:
     assert data[const.MODULE_DEVICES]["arp_br_lan_count"]["value"] == 3
 
 
+def test_collect_router_data_passes_picker_style_manual_device_lists_to_parser(monkeypatch) -> None:
+    """Router data collection should accept the new MAC-list device_list option shape."""
+    captured_device_list: list[str] | None = None
+
+    def _parse_devices(html: str, device_list):
+        nonlocal captured_device_list
+        del html
+        captured_device_list = device_list
+        return {
+            const.SECTION_DEVICE_LIST: [],
+            "device_count": {"value": 0},
+        }
+
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_DEVICES,
+    )
+    monkeypatch.setattr(router_data, "parse_devices", _parse_devices)
+    monkeypatch.setattr(router_data, "parse_devices_status", lambda html: {})
+    monkeypatch.setattr(router_data, "parse_arp_status", lambda html, interface: {})
+
+    fake_router = _FakeRouter(
+        {
+            "admin/network/devices/devlist?detail=1": "",
+            "admin/network/devices/status?detail=1": "",
+            "admin/panel": "",
+            "admin/system/status/arp": "",
+        }
+    )
+
+    asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {const.OPTIONS_DEVICELIST: ["aabbccddee30"]},
+            "R700",
+        )
+    )
+
+    assert captured_device_list == ["aabbccddee30"]
+
+
 def test_collect_router_data_skips_duplicate_multi_wan_page_and_aggregates_valid_bytes(
     monkeypatch,
 ) -> None:

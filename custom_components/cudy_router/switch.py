@@ -34,11 +34,16 @@ from .device_info import (
     build_client_device_info,
     build_mesh_device_info,
     build_router_device_info,
+    known_client_devices,
     mesh_display_name,
     router_display_name,
 )
-from .device_tracking import normalize_mac
-from .device_tracking import configured_device_ids, is_selected_device
+from .device_tracking import (
+    build_client_seed_device,
+    connected_device_lookup,
+    manual_allowed_client_macs,
+    normalize_mac,
+)
 from .features import existing_feature
 
 _LOGGER = logging.getLogger(__name__)
@@ -229,33 +234,44 @@ async def async_setup_entry(
             OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
             True,
         )
-        selected_ids = configured_device_ids(config_entry.options.get(OPTIONS_DEVICELIST))
         devices = coordinator.data.get(MODULE_DEVICES, {}).get(SECTION_DEVICE_LIST, [])
-        matched_connected_devices = [
-            device
-            for device in devices
-            if isinstance(device, dict)
-            and (auto_add_connected_devices or is_selected_device(device, selected_ids))
-        ]
+        connected_devices = [device for device in devices if isinstance(device, dict)]
+        connected_devices_by_mac = connected_device_lookup(connected_devices)
+        known_clients = known_client_devices(hass, config_entry)
+        if auto_add_connected_devices:
+            allowed_client_macs = set(connected_devices_by_mac)
+        else:
+            allowed_client_macs = manual_allowed_client_macs(
+                connected_devices=connected_devices,
+                device_list=config_entry.options.get(OPTIONS_DEVICELIST),
+                known_clients=known_clients,
+            )
         async_cleanup_stale_client_entities(
             hass,
             config_entry,
             "switch",
-            {device.get("mac") for device in matched_connected_devices},
+            allowed_client_macs,
         )
 
-        for device in matched_connected_devices:
-
-            normalized_mac = normalize_mac(device.get("mac"))
-            if not normalized_mac:
-                continue
+        for normalized_mac in sorted(allowed_client_macs):
+            device = build_client_seed_device(
+                normalized_mac,
+                connected_devices_by_mac,
+                known_clients.get(normalized_mac, {}).get("name"),
+            )
+            current_device = connected_devices_by_mac.get(normalized_mac)
+            known_switch_features = set(
+                known_clients.get(normalized_mac, {}).get("switch_features", set())
+            )
 
             for feature_key, name_suffix, icon in (
                 ("internet", "Internet access", "mdi:web"),
                 ("dnsfilter", "DNS filter", "mdi:dns"),
                 ("vpn", "VPN", "mdi:vpn"),
             ):
-                if device.get(feature_key) is None:
+                if current_device is not None and current_device.get(feature_key) is None:
+                    continue
+                if current_device is None and feature_key not in known_switch_features:
                     continue
 
                 feature_id = (normalized_mac, feature_key)
@@ -400,12 +416,32 @@ class CudyClientFeatureSwitch(
         return self._fallback_device
 
     @property
+    def available(self) -> bool:
+        """Report availability based on current device presence."""
+        if not self.coordinator.data:
+            return False
+        devices = self.coordinator.data.get(MODULE_DEVICES, {}).get(SECTION_DEVICE_LIST, [])
+        return any(
+            normalize_mac(device.get("mac")) == self._normalized_mac
+            for device in devices
+            if isinstance(device, dict)
+        )
+
+    @property
     def is_on(self) -> bool | None:
         """Return the current feature state."""
         return self._current_device().get(self._feature_key)
 
     async def _set_value(self, value: bool) -> None:
         """Toggle the requested feature if needed."""
+        if not self.available:
+            _LOGGER.error(
+                "Failed to update %s for %s: device is offline",
+                self._feature_key,
+                self._normalized_mac,
+            )
+            return
+
         result = await self.hass.async_add_executor_job(
             self.coordinator.api.set_device_access,
             self._current_device(),

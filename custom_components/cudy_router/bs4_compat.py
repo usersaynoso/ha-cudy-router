@@ -7,6 +7,26 @@ import functools
 import sys
 import types
 import warnings
+from typing import Any
+
+_BS4_PUBLIC_EXPORTS = {
+    "Tag": ("bs4.element", "Tag"),
+    "Comment": ("bs4.element", "Comment"),
+    "Declaration": ("bs4.element", "Declaration"),
+    "ProcessingInstruction": ("bs4.element", "ProcessingInstruction"),
+    "ResultSet": ("bs4.element", "ResultSet"),
+    "Script": ("bs4.element", "Script"),
+    "Stylesheet": ("bs4.element", "Stylesheet"),
+    "TemplateString": ("bs4.element", "TemplateString"),
+    "CData": ("bs4.element", "CData"),
+    "Doctype": ("bs4.element", "Doctype"),
+    "ElementFilter": ("bs4.filter", "ElementFilter"),
+    "CSS": ("bs4.css", "CSS"),
+    "UnicodeDammit": ("bs4.dammit", "UnicodeDammit"),
+    "FeatureNotFound": ("bs4.exceptions", "FeatureNotFound"),
+    "ParserRejectedMarkup": ("bs4.exceptions", "ParserRejectedMarkup"),
+    "StopParsing": ("bs4.exceptions", "StopParsing"),
+}
 
 
 def _install_bs4_warnings_shim() -> None:
@@ -106,12 +126,40 @@ def _clear_bs4_modules() -> None:
             sys.modules.pop(module_name, None)
 
 
+def _repair_bs4_public_api(bs4_module: types.ModuleType | Any) -> types.ModuleType | Any:
+    """Restore top-level bs4 exports that some broken installs omit."""
+    def _resolve_export(name: str) -> Any:
+        module_name, attribute_name = _BS4_PUBLIC_EXPORTS[name]
+        module = importlib.import_module(module_name)
+        value = getattr(module, attribute_name)
+        setattr(bs4_module, name, value)
+        return value
+
+    for export_name, (module_name, attribute_name) in _BS4_PUBLIC_EXPORTS.items():
+        if hasattr(bs4_module, export_name):
+            continue
+        try:
+            _resolve_export(export_name)
+        except (ImportError, AttributeError):
+            continue
+
+    def _compat_getattr(name: str) -> Any:
+        if name not in _BS4_PUBLIC_EXPORTS:
+            raise AttributeError(name)
+        return _resolve_export(name)
+
+    if not hasattr(bs4_module, "__getattr__"):
+        setattr(bs4_module, "__getattr__", _compat_getattr)
+
+    return bs4_module
+
+
 def _load_beautiful_soup():
     """Import BeautifulSoup, repairing broken bs4 installs if necessary."""
     installed_shims: set[str] = set()
     for _ in range(3):
         try:
-            return importlib.import_module("bs4").BeautifulSoup
+            return _repair_bs4_public_api(importlib.import_module("bs4")).BeautifulSoup
         except ModuleNotFoundError as err:
             if err.name == "bs4._warnings" and err.name not in installed_shims:
                 _clear_bs4_modules()
@@ -124,7 +172,7 @@ def _load_beautiful_soup():
                 installed_shims.add(err.name)
                 continue
             raise
-    return importlib.import_module("bs4").BeautifulSoup
+    return _repair_bs4_public_api(importlib.import_module("bs4")).BeautifulSoup
 
 
 BeautifulSoup = _load_beautiful_soup()

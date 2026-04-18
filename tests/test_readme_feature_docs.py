@@ -41,8 +41,14 @@ def test_readme_documents_connected_device_auto_add_option() -> None:
     assert "Disabled by default for new integrations." in source
     assert "Manually Add Connected Devices" in source
     assert "currently connected device reported by the router" in source
+    assert "Automatically Add Device Trackers For Connected Devices" in source
+    assert "Tracked Devices" in source
     assert "device_tracker" in source
-    assert "MAC addresses, hostnames, and IP addresses" in source
+    assert "This option does not control `device_tracker` creation." in source
+    assert "Selected trackers persist across reloads and report `not_home`" in source
+    assert "A picker of connected clients." in source
+    assert "Legacy text-based values using MAC addresses, hostnames, and IP addresses" in source
+    assert "become unavailable until the client reconnects" in source
 
 
 def test_readme_covers_device_model_and_services() -> None:

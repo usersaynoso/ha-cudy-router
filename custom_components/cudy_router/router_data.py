@@ -89,7 +89,7 @@ async def collect_router_data(
     if existing_feature(device_model, MODULE_DEVICES) is True:
         data[MODULE_DEVICES] = parse_devices(
             await hass.async_add_executor_job(router.get, "admin/network/devices/devlist?detail=1"),
-            options and options.get(OPTIONS_DEVICELIST),
+            options.get(OPTIONS_DEVICELIST) if options else None,
         )
 
         # Add device client counts to the devices module
