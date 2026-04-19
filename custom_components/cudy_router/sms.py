@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from .const import DOMAIN, MODULE_SMS, OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR
-from .features import existing_feature
+from .features import existing_feature, known_feature
 from .parser import parse_sms_detail, parse_sms_list, parse_sms_status
 
 if TYPE_CHECKING:
@@ -36,8 +36,12 @@ def _sms_detail_path(cfg: str, smsbox: str) -> str:
 
 def coordinator_supports_sms(coordinator: Any) -> bool:
     """Return whether the coordinator's model supports SMS."""
-    model = coordinator.config_entry.data.get("model", "default")
-    return existing_feature(model, MODULE_SMS) is True
+    model = coordinator.config_entry.data.get("model")
+    if known_feature(model, MODULE_SMS):
+        return True
+
+    data = getattr(coordinator, "data", None)
+    return isinstance(data, dict) and MODULE_SMS in data
 
 
 def coordinator_shows_sms_panel_in_sidebar(coordinator: Any) -> bool:
@@ -122,6 +126,8 @@ async def async_fetch_sms_data(
     router = coordinator.api
     status_html = await hass.async_add_executor_job(router.get, SMS_STATUS_PATH)
     summary = parse_sms_status(status_html)
+    if summary is None:
+        raise RuntimeError("The selected router does not support SMS.")
     inbox_messages, inbox_available = await _async_fetch_sms_mailbox(router, hass, "rec")
     outbox_messages, outbox_available = await _async_fetch_sms_mailbox(router, hass, "sto")
 

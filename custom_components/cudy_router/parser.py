@@ -786,9 +786,14 @@ def parse_sms_detail(input_html: str) -> dict[str, Any] | None:
     }
 
 
-def parse_sms_status(input_html: str) -> dict[str, Any]:
+def parse_sms_status(input_html: str) -> dict[str, Any] | None:
     """Parses SMS status page."""
     raw_data = parse_tables(input_html)
+    inbox_count = as_int(raw_data.get("Inbox"))
+    outbox_count = as_int(raw_data.get("Outbox"))
+
+    if inbox_count is None and outbox_count is None:
+        return None
 
     # Parse new message count from header (look for "New Message" with number)
     new_messages = 0
@@ -803,8 +808,8 @@ def parse_sms_status(input_html: str) -> dict[str, Any]:
                 pass
 
     return {
-        "inbox_count": {"value": as_int(raw_data.get("Inbox"))},
-        "outbox_count": {"value": as_int(raw_data.get("Outbox"))},
+        "inbox_count": {"value": inbox_count},
+        "outbox_count": {"value": outbox_count},
         "unread_count": {"value": new_messages},
     }
 

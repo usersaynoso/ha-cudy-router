@@ -404,6 +404,32 @@ def test_collect_router_data_does_not_fetch_detailed_sms_pages(monkeypatch) -> N
     assert all("/smslist?" not in path and "/readsms?" not in path for path, _ in fake_router.requests)
 
 
+def test_collect_router_data_skips_sms_module_when_status_page_is_not_sms(monkeypatch) -> None:
+    """A missing or unrelated SMS status page should not keep the SMS panel enabled."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_SMS,
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/gcom/sms/status": "<html><body><h1>Status</h1><p>No modem tools here.</p></body></html>",
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "Some Future Model V1.0",
+        )
+    )
+
+    assert const.MODULE_SMS not in data
+    assert fake_router.requests == [("admin/network/gcom/sms/status", False)]
+
+
 def test_collect_router_data_skips_sms_module_for_non_sms_models(monkeypatch) -> None:
     """Routers without SMS support should not attempt to build SMS sensors."""
     monkeypatch.setattr(

@@ -186,9 +186,11 @@ async def collect_router_data(
 
     # SMS status
     if existing_feature(device_model, MODULE_SMS) is True:
-        data[MODULE_SMS] = parse_sms_status(
+        sms_status = parse_sms_status(
             await hass.async_add_executor_job(router.get, "admin/network/gcom/sms/status")
         )
+        if sms_status is not None:
+            data[MODULE_SMS] = sms_status
 
     # WiFi 2.4G status
     if existing_feature(device_model, MODULE_WIFI_2G) is True:

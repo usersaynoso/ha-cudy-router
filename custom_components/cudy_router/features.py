@@ -144,10 +144,21 @@ MODEL_FEATURES: Final[dict[str, FeatureSet]] = {
 
 def model_feature_set(device_model: str | None) -> FeatureSet:
     """Return the supported feature set for a model."""
+    return _matched_model_feature_set(device_model)[0]
+
+
+def _matched_model_feature_set(device_model: str | None) -> tuple[FeatureSet, bool]:
+    """Return the feature set and whether it came from a known non-default model."""
     for candidate in iter_model_name_candidates(device_model):
         if candidate in MODEL_FEATURES:
-            return MODEL_FEATURES[candidate]
-    return MODEL_FEATURES["default"]
+            return MODEL_FEATURES[candidate], candidate != "default"
+    return MODEL_FEATURES["default"], False
+
+
+def known_feature(device_model: str | None, key_entity: str) -> bool:
+    """Check if a feature is supported by an explicitly mapped model."""
+    feature_set, matched_known_model = _matched_model_feature_set(device_model)
+    return matched_known_model and key_entity in feature_set
 
 
 def existing_feature(device_model: str, key_entity: str, model_entity: str = "") -> bool:
