@@ -58,6 +58,55 @@ def test_parse_system_status_supports_alternate_labels() -> None:
     assert parsed["uptime"]["value"] == pytest.approx(97276.0)
 
 
+def test_parse_sms_status_and_inbox_rows_from_p5_layout() -> None:
+    """SMS parsing should extract counts and inbox row metadata from the P5 layout."""
+    status = parser.parse_sms_status(_fixture_text("sms", "status.html"))
+    inbox_messages = parser.parse_sms_list(_fixture_text("sms", "inbox_list.html"), "rec")
+
+    assert status["inbox_count"]["value"] == 1
+    assert status["outbox_count"]["value"] == 1
+    assert status["unread_count"]["value"] == 1
+    assert inbox_messages is not None
+    assert len(inbox_messages) == 1
+    assert inbox_messages[0]["folder"] == "inbox"
+    assert inbox_messages[0]["index"] == 1
+    assert inbox_messages[0]["phone"] == "+441234500001"
+    assert inbox_messages[0]["timestamp"] == "04/12/26, 08:41:23"
+    assert inbox_messages[0]["cfg"] == "cfginbox1"
+    assert inbox_messages[0]["read"] is False
+
+
+def test_parse_sms_outbox_rows_and_detail_modal() -> None:
+    """SMS parsing should extract outbox metadata and full detail text."""
+    outbox_messages = parser.parse_sms_list(_fixture_text("sms", "outbox_list.html"), "sto")
+    outbox_detail = parser.parse_sms_detail(_fixture_text("sms", "outbox_detail.html"))
+
+    assert outbox_messages is not None
+    assert len(outbox_messages) == 1
+    assert outbox_messages[0]["folder"] == "outbox"
+    assert outbox_messages[0]["preview"] == "Confirmed | back gate..."
+    assert outbox_messages[0]["cfg"] == "cfgoutbox1"
+    assert outbox_messages[0]["read"] is None
+    assert outbox_detail == {
+        "direction": "To",
+        "phone": "+441234500002",
+        "timestamp": "04/12/26, 08:55:00",
+        "text": "Confirmed | back gate at 18:00.",
+    }
+
+
+def test_parse_sms_inbox_detail_modal() -> None:
+    """SMS detail parsing should preserve the full inbox message body."""
+    inbox_detail = parser.parse_sms_detail(_fixture_text("sms", "inbox_detail.html"))
+
+    assert inbox_detail == {
+        "direction": "From",
+        "phone": "+441234500001",
+        "timestamp": "04/12/26, 08:41:23",
+        "text": "Reminder: use *new* code [ALPHA].\nBring ID.",
+    }
+
+
 def test_parse_wan_status_supports_alternate_labels() -> None:
     """WAN parser should accept common alternate field names."""
     parsed = parser_network.parse_wan_status(_fixture_text("wan", "wan_alt_labels.html"))

@@ -59,7 +59,6 @@ _LOGGER = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-
 async def collect_router_data(
     router: Any,
     hass: HomeAssistant,

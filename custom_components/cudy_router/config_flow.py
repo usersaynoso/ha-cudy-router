@@ -29,9 +29,11 @@ from .const import (
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
     MODULE_DEVICES,
+    MODULE_SMS,
     OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
     OPTIONS_AUTO_ADD_DEVICE_TRACKERS,
     OPTIONS_DEVICELIST,
+    OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR,
     OPTIONS_TRACKED_DEVICE_MACS,
     SECTION_DEVICE_LIST,
     normalize_scan_interval,
@@ -45,6 +47,7 @@ from .device_tracking import (
     next_options_flow_step,
     tracker_picker_options,
 )
+from .features import existing_feature
 from .model_names import resolve_model_name
 from .router import CudyRouter
 
@@ -237,7 +240,7 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
     def _default_pending_options(self) -> dict[str, Any]:
         """Return options state used to drive the multi-step flow."""
         options = self._config_entry.options
-        return {
+        pending = {
             OPTIONS_AUTO_ADD_CONNECTED_DEVICES: options.get(
                 OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
                 True,
@@ -252,6 +255,22 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
                 options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
             ),
         }
+        if self._supports_sms():
+            pending[OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR] = options.get(
+                OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR,
+                True,
+            )
+        return pending
+
+    def _supports_sms(self) -> bool:
+        """Return whether this config entry supports SMS-specific options."""
+        return (
+            existing_feature(
+                self._config_entry.data.get(CONF_MODEL, "default"),
+                MODULE_SMS,
+            )
+            is True
+        )
 
     def _pending_options_state(self) -> dict[str, Any]:
         """Return the in-progress options payload."""
@@ -316,6 +335,11 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
                     options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                 )
             )
+            if self._supports_sms():
+                self._pending_options[OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR] = user_input.get(
+                    OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR,
+                    options.get(OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR, True),
+                )
 
             next_step = self._next_step()
             if next_step == "manual_devices":
@@ -324,39 +348,50 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
                 return await self.async_step_trackers()
             return self._async_create_entry_from_pending_options()
 
-        schema = vol.Schema(
-            {
-                vol.Optional(OPTIONS_AUTO_ADD_CONNECTED_DEVICES): selector.BooleanSelector(),
-                vol.Optional(OPTIONS_AUTO_ADD_DEVICE_TRACKERS): selector.BooleanSelector(),
-                vol.Optional(CONF_SCAN_INTERVAL): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        mode=selector.NumberSelectorMode.BOX,
-                        unit_of_measurement="seconds",
-                        min=MIN_SCAN_INTERVAL,
-                        max=MAX_SCAN_INTERVAL,
-                        step=5,
-                    ),
+        schema_fields: dict[Any, Any] = {
+            vol.Optional(OPTIONS_AUTO_ADD_CONNECTED_DEVICES): selector.BooleanSelector(),
+            vol.Optional(OPTIONS_AUTO_ADD_DEVICE_TRACKERS): selector.BooleanSelector(),
+            vol.Optional(CONF_SCAN_INTERVAL): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="seconds",
+                    min=MIN_SCAN_INTERVAL,
+                    max=MAX_SCAN_INTERVAL,
+                    step=5,
                 ),
-            }
-        )
+            ),
+        }
+        if self._supports_sms():
+            schema_fields[vol.Optional(OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR)] = (
+                selector.BooleanSelector()
+            )
+
+        schema = vol.Schema(schema_fields)
+
+        suggested_values = {
+            OPTIONS_AUTO_ADD_CONNECTED_DEVICES: options.get(
+                OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
+                True,
+            ),
+            OPTIONS_AUTO_ADD_DEVICE_TRACKERS: options.get(
+                OPTIONS_AUTO_ADD_DEVICE_TRACKERS,
+                False,
+            ),
+            CONF_SCAN_INTERVAL: normalize_scan_interval(
+                options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            ),
+        }
+        if self._supports_sms():
+            suggested_values[OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR] = options.get(
+                OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR,
+                True,
+            )
 
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
                 schema,
-                {
-                    OPTIONS_AUTO_ADD_CONNECTED_DEVICES: options.get(
-                        OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
-                        True,
-                    ),
-                    OPTIONS_AUTO_ADD_DEVICE_TRACKERS: options.get(
-                        OPTIONS_AUTO_ADD_DEVICE_TRACKERS,
-                        False,
-                    ),
-                    CONF_SCAN_INTERVAL: normalize_scan_interval(
-                        options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-                    ),
-                },
+                suggested_values,
             ),
         )
 

@@ -15,7 +15,11 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
@@ -34,6 +38,7 @@ from .device_info import (
     known_client_devices,
     known_tracker_clients,
 )
+from .frontend import async_refresh_frontend
 from .device_tracking import (
     configured_device_ids,
     configured_tracked_macs,
@@ -45,6 +50,7 @@ from .device_tracking import (
 )
 from .model_names import resolve_model_name
 from .router import CudyRouter
+from .sms import async_send_sms_message, coordinator_supports_sms
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -183,6 +189,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CudyRouterConfigEntry) -
 
     # Register services
     await _async_setup_services(hass)
+    await async_refresh_frontend(hass)
 
     # Reload entry when options are updated
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -307,9 +314,13 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
         if not coordinator:
             _LOGGER.error("No Cudy Router coordinator found")
             return
+        if not coordinator_supports_sms(coordinator):
+            raise HomeAssistantError("The selected Cudy Router does not support SMS")
         phone = call.data[ATTR_PHONE_NUMBER]
         message = call.data[ATTR_MESSAGE]
-        await hass.async_add_executor_job(coordinator.api.send_sms, phone, message)
+        result = await async_send_sms_message(hass, coordinator, phone, message)
+        if not result["success"]:
+            raise HomeAssistantError(result["message"])
 
     async def handle_send_at_command(call: ServiceCall) -> None:
         """Handle the send AT command service call."""
@@ -361,6 +372,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
+        await async_refresh_frontend(hass)
         # Unregister services if no more entries
         if not hass.data[DOMAIN]:
             del hass.data[DOMAIN]
