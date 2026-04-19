@@ -25,6 +25,7 @@ def test_manifest_has_required_hacs_fields() -> None:
     assert manifest["domain"] == "cudy_router"
     assert manifest["name"] == "Cudy Router"
     assert manifest["documentation"] == "https://github.com/usersaynoso/ha-cudy-router#readme"
+    assert manifest["dependencies"] == ["http"]
     assert manifest["issue_tracker"] == "https://github.com/usersaynoso/ha-cudy-router/issues"
     assert manifest["integration_type"] == "hub"
     assert manifest["requirements"] == [

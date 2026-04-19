@@ -44,6 +44,7 @@
 ## Release Management
 
 - When a task ends with a commit and push, treat release management as part of the same job only if the task intentionally bumps `custom_components/cudy_router/manifest.json` or the user explicitly asked for a release.
+- After any commit-and-push task, check the relevant GitHub workflows for the pushed SHA and do not return until they have completed successfully. If a workflow fails, inspect the failed logs, fix the issue, rerun the required local checks, and push the fix before returning.
 - Docs-only, test-only, or chore-only commit-and-push tasks do not bump `custom_components/cudy_router/manifest.json`, do not create or move a `v<manifest_version>` tag, and do not publish or update a GitHub release unless the user explicitly asked for that release work.
 - Treat the manifest bump, tag push, and GitHub release steps below as the default release/versioning artifacts for release-bearing commit-and-push tasks, unless the user explicitly asks not to change those artifacts in the current task.
 - If shipped behavior changes, bump `custom_components/cudy_router/manifest.json` to the next version before committing.

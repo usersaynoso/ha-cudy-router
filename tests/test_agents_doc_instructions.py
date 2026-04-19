@@ -40,3 +40,12 @@ def test_agents_requires_runtime_tests_for_router_compatibility_changes() -> Non
     assert "parser fixture test" in source
     assert "`collect_router_data` test" in source
     assert "Do not rely only on source-string assertions for compatibility changes." in source
+
+
+def test_agents_requires_post_push_workflow_success_checks() -> None:
+    """AGENTS should require checking GitHub workflows after commit-and-push tasks."""
+    source = AGENTS_PATH.read_text(encoding="utf-8")
+
+    assert "check the relevant GitHub workflows for the pushed SHA" in source
+    assert "do not return until they have completed successfully" in source
+    assert "inspect the failed logs, fix the issue" in source
