@@ -46,6 +46,25 @@ def _clean_text(value: Any) -> str | None:
     return cleaned
 
 
+def _clean_count(value: Any) -> int | None:
+    """Extract an integer count from a status value."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+
+    cleaned = _clean_text(value)
+    if cleaned is None:
+        return None
+
+    match = re.search(r"\d+", cleaned)
+    if not match:
+        return None
+    return int(match.group(0))
+
+
 def _cell_strings(element: Any) -> list[str]:
     """Extract unique text chunks from a table cell."""
     parts: list[str] = []
@@ -96,8 +115,22 @@ def parse_vpn_status(input_html: str) -> dict[str, Any]:
 
     return {
         "protocol": {"value": _clean_text(_pick_first_value(raw_data, "Protocol", "VPN Protocol"))},
-        "vpn_clients": {"value": _clean_text(_pick_first_value(raw_data, "Devices", "Clients"))},
-        "tunnel_ip": {"value": _clean_text(_pick_first_value(raw_data, "Tunnel IP", "Tunnel Address"))},
+        "vpn_clients": {
+            "value": _clean_count(
+                _pick_first_value(
+                    raw_data,
+                    "Devices",
+                    "Clients",
+                    "Connected",
+                    "Connected Clients",
+                    "Online Clients",
+                    "Peers",
+                )
+            )
+        },
+        "tunnel_ip": {
+            "value": _clean_text(_pick_first_value(raw_data, "Tunnel IP", "Tunnel Address", "Tunnel Address/IP"))
+        },
     }
 
 

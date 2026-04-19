@@ -59,6 +59,52 @@ _LOGGER = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
+
+_VPN_STATUS_PATHS: tuple[str, ...] = (
+    "admin/network/vpn/wireguard/status?detail=",
+    "admin/network/vpn/openvpns/status?status=",
+    "admin/network/vpn/pptp/status?detail=",
+    "admin/network/vpn/status?detail=",
+    "admin/network/vpn/pptp/status",
+    "admin/network/vpn/status",
+)
+
+_LOAD_BALANCING_STATUS_PATHS: tuple[str, ...] = (
+    "admin/network/mwan3/status?detail=",
+    "admin/network/mwan3/status",
+)
+
+_WAN_STATUS_IFACES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("wan", ()),
+    ("wanb", ("wan2", "wanb")),
+    ("wanc", ("wan3", "wanc")),
+    ("wand", ("wan4", "wand")),
+)
+
+
+def _entry_value(parsed: dict[str, Any], key: str) -> Any:
+    """Return the nested value for a parsed coordinator entry."""
+    entry = parsed.get(key, {})
+    if isinstance(entry, dict):
+        return entry.get("value")
+    return None
+
+
+def _vpn_candidate_score(parsed: dict[str, Any]) -> tuple[int, int, int, int, int]:
+    """Score VPN pages so richer active-session pages win over placeholder ones."""
+    protocol = _entry_value(parsed, "protocol")
+    tunnel_ip = _entry_value(parsed, "tunnel_ip")
+    vpn_clients = _entry_value(parsed, "vpn_clients")
+    populated_fields = sum(value not in (None, "") for value in (protocol, vpn_clients, tunnel_ip))
+    numeric_clients = vpn_clients if isinstance(vpn_clients, int) else -1
+    return (
+        1 if tunnel_ip not in (None, "") else 0,
+        1 if numeric_clients > 0 else 0,
+        1 if protocol not in (None, "") else 0,
+        populated_fields,
+        numeric_clients,
+    )
+
 async def collect_router_data(
     router: Any,
     hass: HomeAssistant,
@@ -188,11 +234,10 @@ async def collect_router_data(
     # VPN status
     if existing_feature(device_model, MODULE_VPN) is True:
         vpn_status_html = ""
-        for vpn_status_path in (
-            "admin/network/vpn/openvpns/status?status=",
-            "admin/network/vpn/pptp/status",
-            "admin/network/vpn/status",
-        ):
+        best_vpn_data: dict[str, Any] | None = None
+        best_vpn_score = (-1, -1, -1, -1, -1)
+        vpn_client_counts: list[int] = []
+        for vpn_status_path in _VPN_STATUS_PATHS:
             candidate_html = await hass.async_add_executor_job(
                 router.get,
                 vpn_status_path,
@@ -201,18 +246,23 @@ async def collect_router_data(
             if not candidate_html:
                 continue
 
-            parsed_candidate = parse_vpn_status(candidate_html)
-            if any(
-                parsed_candidate.get(key, {}).get("value") not in (None, "")
-                for key in ("protocol", "vpn_clients", "tunnel_ip")
-            ):
-                vpn_status_html = candidate_html
-                break
-
             if not vpn_status_html:
                 vpn_status_html = candidate_html
 
-        data[MODULE_VPN] = parse_vpn_status(vpn_status_html)
+            parsed_candidate = parse_vpn_status(candidate_html)
+            candidate_score = _vpn_candidate_score(parsed_candidate)
+            if candidate_score > best_vpn_score:
+                best_vpn_data = parsed_candidate
+                best_vpn_score = candidate_score
+
+            vpn_clients = _entry_value(parsed_candidate, "vpn_clients")
+            if isinstance(vpn_clients, int):
+                vpn_client_counts.append(vpn_clients)
+
+        vpn_data = dict(best_vpn_data) if best_vpn_data is not None else parse_vpn_status(vpn_status_html)
+        if vpn_client_counts:
+            vpn_data["vpn_clients"] = {"value": max(vpn_client_counts)}
+        data[MODULE_VPN] = vpn_data
         vpn_settings_html = await hass.async_add_executor_job(
             router.get,
             "admin/network/vpn/config",
@@ -231,22 +281,22 @@ async def collect_router_data(
 
     # Load-balancing status
     if existing_feature(device_model, MODULE_LOAD_BALANCING) is True:
-        data[MODULE_LOAD_BALANCING] = parse_load_balancing_status(
-            await hass.async_add_executor_job(
+        load_balancing_status_html = ""
+        for load_balancing_status_path in _LOAD_BALANCING_STATUS_PATHS:
+            load_balancing_status_html = await hass.async_add_executor_job(
                 router.get,
-                "admin/network/mwan3/status",
+                load_balancing_status_path,
                 True,
             )
-        )
+            if load_balancing_status_html:
+                break
+        data[MODULE_LOAD_BALANCING] = parse_load_balancing_status(load_balancing_status_html)
 
     # WAN status
     if existing_feature(device_model, MODULE_WAN) is True:
         # Probe support first; some models expose a generic/empty page.
         wan_candidates: list[tuple[str, dict[str, Any]]] = []
-        for iface_name, expected_marker in (
-            ("wan", None),
-            ("wand", "wan4"),
-        ):
+        for iface_name, expected_markers in _WAN_STATUS_IFACES:
             if iface_name != "wan" and existing_feature(device_model, MODULE_LOAD_BALANCING) is not True:
                 continue
 
@@ -259,7 +309,7 @@ async def collect_router_data(
                 continue
 
             normalized_html = wan_status_html.lower()
-            if expected_marker and expected_marker not in normalized_html:
+            if expected_markers and not any(marker in normalized_html for marker in expected_markers):
                 # Some firmware returns the default WAN1 panel for unknown iface names.
                 continue
 

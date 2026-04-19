@@ -29,8 +29,10 @@ def test_router_data_collects_configuration_modules() -> None:
     assert '"admin/network/gcom/config/apn"' in source
     assert '"admin/network/wireless/config/combo"' in source
     assert '"admin/network/vpn/config"' in source
-    assert '"admin/network/vpn/pptp/status"' in source
-    assert '"admin/network/mwan3/status"' in source
+    assert '"admin/network/vpn/wireguard/status?detail="' in source
+    assert '"admin/network/vpn/pptp/status?detail="' in source
+    assert '"admin/network/vpn/status?detail="' in source
+    assert '"admin/network/mwan3/status?detail="' in source
     assert '"admin/system/status/arp"' in source
     assert '"admin/system/autoupgrade"' in source
     assert '"admin/setup"' in source
@@ -88,8 +90,10 @@ def test_router_vpn_entities_include_r700_status_fields() -> None:
         encoding="utf-8"
     )
 
+    assert '"admin/network/vpn/wireguard/status?detail="' in router_data_source
     assert '"admin/network/vpn/openvpns/status?status="' in router_data_source
-    assert '"admin/network/vpn/pptp/status"' in router_data_source
+    assert '"admin/network/vpn/pptp/status?detail="' in router_data_source
+    assert '"admin/network/vpn/status?detail="' in router_data_source
     assert '"tunnel_ip"' in router_data_source
     assert '"VPN tunnel IP"' in sensor_descriptions_source
     assert '("vpn", "VPN", "mdi:vpn")' in switch_source
@@ -105,7 +109,7 @@ def test_router_load_balancing_entities_include_r700_status_fields() -> None:
         encoding="utf-8"
     )
 
-    assert '"admin/network/mwan3/status"' in router_data_source
+    assert '"admin/network/mwan3/status?detail="' in router_data_source
     assert "range(1, 5)" in parser_network_source
     assert "_LOAD_BALANCING_INTERFACE_RE" in parser_network_source
     assert '"Load balancing WAN1"' in sensor_descriptions_source
@@ -127,9 +131,11 @@ def test_router_device_and_interface_stats_include_r700_specific_sensors() -> No
     assert '"admin/system/status/arp"' in router_data_source
     assert '"admin/network/lan/status?detail=1"' in router_data_source
     assert '"admin/network/wan/status?detail=1&iface={iface_name}"' in router_data_source
+    assert '"wanb"' in router_data_source
+    assert '"wanc"' in router_data_source
     assert "interface.replace('-', '_')" in parser_network_source
     assert '"bytes_received"' in parser_network_source
-    assert '"ARP br-lan count"' in sensor_descriptions_source
+    assert '"LAN ARP entries"' in sensor_descriptions_source
     assert '"WAN bytes received"' in sensor_descriptions_source
     assert 'name_suffix="Bytes received"' in sensor_descriptions_source
 

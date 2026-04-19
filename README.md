@@ -150,7 +150,7 @@ Load balancing WAN1, Load balancing WAN2, Load balancing WAN3, Load balancing WA
 
 ### Connected Device Summary
 
-Device count, ARP br-lan count, WiFi 2.4G clients, WiFi 5G clients, Wired clients, Total clients, Top downloader speed, Top downloader MAC, Top downloader hostname, Top uploader speed, Top uploader MAC, Top uploader hostname, Total download speed, Total upload speed, Mesh devices connected.
+Device count, LAN ARP entries, WiFi 2.4G clients, WiFi 5G clients, Wired clients, Total clients, Top downloader speed, Top downloader MAC, Top downloader hostname, Top uploader speed, Top uploader MAC, Top uploader hostname, Total download speed, Total upload speed, Mesh devices connected.
 
 ### Connected Client Detail Sensors
 

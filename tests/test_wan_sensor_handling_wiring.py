@@ -93,6 +93,9 @@ def test_router_data_collects_lan_subnet_and_guards_wan_subnet_fallback() -> Non
     assert "admin/network/lan/config?nomodal=" in source
     assert "admin/network/lan/config/detail?nomodal=" in source
     assert "parse_wan_settings" in source
+    assert "admin/network/mwan3/status?detail=" in source
+    assert '"wanb"' in source
+    assert '"wanc"' in source
     assert "admin/network/wan/config/detail?nomodal=&iface=wan" in source
     assert "admin/network/wan/config?nomodal=&iface=wan" in source
     assert 'status_subnet_mask in (None, "", "255.255.255.255")' in source

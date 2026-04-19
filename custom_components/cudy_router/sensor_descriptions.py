@@ -108,7 +108,7 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
     ("devices", "arp_br_lan_count"): CudyRouterSensorEntityDescription(
         key="arp_br_lan_count",
         module="devices",
-        name_suffix="ARP br-lan count",
+        name_suffix="LAN ARP entries",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:table-network",
     ),

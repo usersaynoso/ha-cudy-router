@@ -199,6 +199,15 @@ def test_parse_vpn_status_reads_r700_pptp_fields() -> None:
     assert parsed["vpn_clients"]["value"] is None
 
 
+def test_parse_vpn_status_reads_connected_client_count() -> None:
+    """VPN parsing should read connected-client counts from alternate status labels."""
+    parsed = parser_network.parse_vpn_status(_fixture_text("vpn", "vpn_connected_clients.html"))
+
+    assert parsed["protocol"]["value"] == "WireGuard"
+    assert parsed["vpn_clients"]["value"] == 1
+    assert parsed["tunnel_ip"]["value"] == "10.8.0.2"
+
+
 def test_parse_load_balancing_status_reads_r700_interfaces() -> None:
     """R700 load-balancing status parsing should expose interface health."""
     parsed = parser_network.parse_load_balancing_status(_fixture_text("load_balancing", "r700_status.html"))

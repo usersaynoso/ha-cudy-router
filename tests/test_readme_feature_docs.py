@@ -24,7 +24,7 @@ def test_readme_documents_new_settings_entities() -> None:
     assert "Load balancing WAN3" in source
     assert "Load balancing WAN4" in source
     assert "WAN bytes received" in source
-    assert "ARP br-lan count" in source
+    assert "LAN ARP entries" in source
     assert "Auto update time" in source
     assert "internet access switch" in source.lower()
     assert "DNS filter switch" in source
