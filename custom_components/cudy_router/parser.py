@@ -83,6 +83,23 @@ def _hidden_input_bool(columns: list[Any], name_suffix: str) -> bool | None:
     return None
 
 
+def _normalized_device_key_part(value: str | None) -> str:
+    """Normalize a device identifier fragment for dedupe keys."""
+    normalized = (value or "").strip().lower()
+    candidate_mac = normalized.replace("-", ":")
+    if _MAC_RE.fullmatch(candidate_mac):
+        return candidate_mac.replace(":", "")
+    return normalized
+
+
+def _device_identity_key(device: dict[str, Any]) -> tuple[str, str]:
+    """Build a normalized identity key for a connected-device row."""
+    return (
+        _normalized_device_key_part(device.get("mac")),
+        _normalized_device_key_part(device.get("ip")),
+    )
+
+
 def _device_row_from_modern_columns(columns: list[Any]) -> dict[str, Any] | None:
     """Parse a newer Cudy connected-device table layout."""
     if len(columns) < 6:
@@ -224,6 +241,8 @@ def get_all_devices(input_html: str) -> dict[str, Any]:
     for table in tables:
         for row in table.find_all("tr"):
             ip, mac, up_speed, down_speed, hostname = [None, None, None, None, None]
+            connection_type, signal, online_time = [None, None, None]
+            columns = row.find_all("td")
             cols = row.css.select("td div")
             for col in cols:
                 div_id = col.attrs.get("id")
@@ -237,9 +256,15 @@ def get_all_devices(input_html: str) -> dict[str, Any]:
                     if div_id.endswith("speed"):
                         up_speed, down_speed = [x.strip() for x in content.split("\n")]
                     if div_id.endswith("hostname"):
-                        hostname = content.split("\n")[0].strip()
+                        hostname_parts = [part.strip() for part in content.split("\n") if part.strip()]
+                        hostname = hostname_parts[0] if hostname_parts else None
+                        connection_type = hostname_parts[1] if len(hostname_parts) > 1 else None
                 elif div_id.endswith("hostname"):
                     hostname = content
+                elif div_id.endswith("signal"):
+                    signal = content
+                elif div_id.endswith("online"):
+                    online_time = content
             if mac or ip:
                 device = {
                     "hostname": hostname,
@@ -247,11 +272,14 @@ def get_all_devices(input_html: str) -> dict[str, Any]:
                     "mac": mac,
                     "up_speed": parse_speed(up_speed),
                     "down_speed": parse_speed(down_speed),
+                    "connection_type": connection_type,
+                    "signal": signal,
+                    "online_time": online_time,
+                    "internet": _hidden_input_bool(columns, "internet"),
+                    "dnsfilter": _hidden_input_bool(columns, "dnsfilter"),
+                    "vpn": _hidden_input_bool(columns, "vpn"),
                 }
-                device_key = (
-                    (device.get("mac") or "").lower(),
-                    (device.get("ip") or "").lower(),
-                )
+                device_key = _device_identity_key(device)
                 if device_key in device_index:
                     existing = devices[device_index[device_key]]
                     for key, value in device.items():
@@ -268,10 +296,7 @@ def get_all_devices(input_html: str) -> dict[str, Any]:
         if not device:
             continue
 
-        device_key = (
-            (device.get("mac") or "").lower(),
-            (device.get("ip") or "").lower(),
-        )
+        device_key = _device_identity_key(device)
         if device_key in device_index:
             existing = devices[device_index[device_key]]
             for key, value in device.items():

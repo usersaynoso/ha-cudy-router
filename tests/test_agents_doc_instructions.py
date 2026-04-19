@@ -16,7 +16,8 @@ def test_agents_documents_home_assistant_deploy_hygiene() -> None:
     assert "changed runtime files on the remote system" in source
     assert "COPYFILE_DISABLE=1" in source
     assert "`._*` AppleDouble files" in source
-    assert "tar-over-SSH copy" in source
+    assert "may not provide `rsync`" in source
+    assert "tar-over-SSH copy staged under `/tmp`" in source
     assert "outside `/config/custom_components`, for example under `/tmp`" in source
 
 

@@ -146,6 +146,111 @@ def test_parse_devices_merges_legacy_and_modern_views_for_same_row() -> None:
     assert device["dnsfilter"] is False
 
 
+def test_parse_devices_legacy_rows_keep_client_access_flags_without_modern_columns() -> None:
+    """Legacy WR3000S-style rows should still expose VPN state when the modern parser cannot run."""
+    html = """
+    <table class="table table-striped">
+      <tbody>
+        <tr id="cbi-table-7">
+          <td>
+            <div id="cbi-table-7-hostname">
+              <p class="visible-xs">Hallway Camera<br /><span class="text-primary">2.4G WiFi</span></p>
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-7-ipmac">
+              <p class="visible-xs">192.168.10.77<br />AA:BB:CC:DD:EE:77</p>
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-7-speed">
+              <p class="visible-xs">1.00 Kbps<br />5.00 Kbps</p>
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-7-internet">
+              <input type="hidden" name="cbid.table.7.internet" value="1" />
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-7-vpn">
+              <input type="hidden" name="cbid.table.7.vpn" value="1" />
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+
+    parsed = parser.parse_devices(html, "")
+    device = parsed["device_list"][0]
+
+    assert len(parsed["device_list"]) == 1
+    assert device["hostname"] == "Hallway Camera"
+    assert device["connection_type"] == "2.4G WiFi"
+    assert device["internet"] is True
+    assert device["vpn"] is True
+
+
+def test_parse_devices_merges_same_row_when_legacy_and_modern_mac_formats_differ() -> None:
+    """Rows should dedupe even when visible and hidden layouts format the MAC differently."""
+    html = """
+    <table class="table table-striped">
+      <tbody>
+        <tr id="cbi-table-3">
+          <td class="hidden-xs"><div id="cbi-table-3-idx"><p class="visible-xs">3</p></div></td>
+          <td class="hidden-xs">
+            <div id="cbi-table-3-hostname">
+              <p class="form-control-static hidden-xs">Bedroom Speaker<br /><span class="text-primary">2.4G WiFi</span></p>
+              <p class="visible-xs">Bedroom Speaker<br /><span class="text-primary">2.4G WiFi</span></p>
+            </div>
+          </td>
+          <td class="visible-xs">
+            <div id="cbi-table-3-hostnamexs">
+              <p class="visible-xs">Bedroom Speaker<br />192.168.10.88</p>
+            </div>
+          </td>
+          <td class="hidden-xs"><div id="cbi-table-3-icon"></div></td>
+          <td class="hidden-xs">
+            <div id="cbi-table-3-ipmac">
+              <p class="form-control-static hidden-xs">192.168.10.88<br />AA:BB:CC:DD:EE:88</p>
+              <p class="visible-xs">192.168.10.88<br />AA-BB-CC-DD-EE-88</p>
+            </div>
+          </td>
+          <td class="hidden-xs">
+            <div id="cbi-table-3-speed">
+              <p class="visible-xs"><i></i> 0.50 Kbps<br /><i></i> 1.00 Kbps</p>
+            </div>
+          </td>
+          <td class="hidden-xs"><div id="cbi-table-3-signal"><p class="visible-xs">-60 dBm</p></div></td>
+          <td class="hidden-xs"><div id="cbi-table-3-online"><p class="visible-xs">00:09:12</p></div></td>
+          <td>
+            <div id="cbi-table-3-internet">
+              <input type="hidden" value="1" name="cbi.cbe.table.3.internet" />
+              <input type="hidden" id="cbid.table.3.internet" name="cbid.table.3.internet" value="1" />
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-3-vpn">
+              <input type="hidden" value="1" name="cbi.cbe.table.3.vpn" />
+              <input type="hidden" id="cbid.table.3.vpn" name="cbid.table.3.vpn" value="1" />
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+
+    parsed = parser.parse_devices(html, "")
+    device = parsed["device_list"][0]
+
+    assert len(parsed["device_list"]) == 1
+    assert device["hostname"] == "Bedroom Speaker"
+    assert device["connection_type"] == "2.4G WiFi"
+    assert device["signal"] == "-60 dBm"
+    assert device["vpn"] is True
+
+
 def test_parse_devices_accepts_picker_style_device_lists() -> None:
     """Manual picker MAC lists should still populate the detailed device mapping."""
     html = """

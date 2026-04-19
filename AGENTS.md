@@ -5,7 +5,7 @@
 - Never restart, reboot, or reload Home Assistant unless the user explicitly asks for it in the current task.
 - After deploying to Home Assistant via `ssh ha`, confirm the changed runtime files on the remote system by file contents or checksum before reporting deployment success. Directory presence alone is not sufficient.
 - For macOS-originated deploys to Home Assistant, prefer `COPYFILE_DISABLE=1` and exclude or delete `._*` AppleDouble files so Finder metadata does not land in `/config/custom_components`.
-- If `rsync` is unavailable, prefer a tar-over-SSH copy rather than creating temporary or importable directories inside `/config/custom_components`.
+- Home Assistant OS targets reached via `ssh ha` may not provide `rsync`; prefer a tar-over-SSH copy staged under `/tmp`, then copy into `/config/custom_components` rather than creating temporary or importable directories inside `/config/custom_components`.
 - Keep deploy backups outside `/config/custom_components`, for example under `/tmp`, and still verify the remote checksums before reporting success.
 - After a Home Assistant restart or reload, validate only against fresh `cudy_router` log lines from the current boot/reload window.
 
