@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import urllib.parse
 from datetime import datetime
 from typing import Any, Tuple
 
@@ -19,6 +20,7 @@ _UP_RE = re.compile(r"up[:\s]+([\d.]+)\s*([kmg]?bps)", re.IGNORECASE)
 _DOWN_RE = re.compile(r"down[:\s]+([\d.]+)\s*([kmg]?bps)", re.IGNORECASE)
 _MAC_RE = re.compile(r"(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}", re.IGNORECASE)
 _IP_RE = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
+_SMS_MODAL_HEADER_RE = re.compile(r"^(From|To):\s*(.*?)\s*\(([^()]*)\)\s*$")
 
 
 def _clean_cell_strings(element: Any) -> list[str]:
@@ -614,6 +616,141 @@ def parse_data_usage(input_html: str) -> dict[str, Any]:
     }
 
 
+def _looks_like_login_page(input_html: str) -> bool:
+    """Return whether the HTML looks like the LuCI login form."""
+    if not input_html:
+        return False
+
+    soup = BeautifulSoup(input_html, "html.parser")
+    form = soup.find("form")
+    if form is None:
+        return False
+
+    return (
+        form.find("input", attrs={"name": "luci_password"}) is not None
+        and form.find("input", attrs={"id": "luci_password2"}) is not None
+    )
+
+
+def _find_sms_row_value(row: Any, suffix: str) -> str | None:
+    """Read a deduplicated text value from a table-row div suffix."""
+    element = row.find("div", attrs={"id": re.compile(rf"-{re.escape(suffix)}$")})
+    if element is None:
+        return None
+
+    values = _clean_cell_strings(element)
+    if not values:
+        return None
+    return " ".join(values)
+
+
+def _find_sms_cfg(row: Any) -> str | None:
+    """Extract the LuCI cfg identifier from a message row."""
+    for button in row.find_all("button"):
+        onclick = button.get("onclick", "")
+        if "readsms" not in onclick.lower():
+            continue
+
+        match = re.search(r"cfg=([^&\"']+)", onclick)
+        if match:
+            return urllib.parse.unquote(match.group(1))
+
+    return None
+
+
+def _find_sms_read_state(row: Any) -> bool | None:
+    """Extract the read/unread state from an inbox row."""
+    icon = row.find("i", attrs={"class": re.compile(r"icon-(?:unread|read)sms")})
+    if icon is None:
+        return None
+
+    icon_classes = set(icon.get("class", []))
+    if "icon-unreadsms" in icon_classes:
+        return False
+    if "icon-readsms" in icon_classes:
+        return True
+    return None
+
+
+def parse_sms_list(input_html: str, smsbox: str) -> list[dict[str, Any]] | None:
+    """Parse the SMS inbox or outbox list page."""
+    if not input_html or _looks_like_login_page(input_html):
+        return None
+
+    soup = BeautifulSoup(input_html, "html.parser")
+    if soup.find("table") is None:
+        return None
+
+    folder = "inbox" if smsbox == "rec" else "outbox"
+    direction = "From" if smsbox == "rec" else "To"
+    messages: list[dict[str, Any]] = []
+
+    for row in soup.select("tbody tr[id^='cbi-table-']"):
+        index = as_int(_find_sms_row_value(row, "idx"))
+        phone = _find_sms_row_value(row, "phone")
+        preview = _find_sms_row_value(row, "content")
+        timestamp = _find_sms_row_value(row, "timestamp")
+        cfg = _find_sms_cfg(row)
+        read = _find_sms_read_state(row) if smsbox == "rec" else None
+
+        if not any(value not in (None, "") for value in (phone, preview, timestamp, cfg, index)):
+            continue
+
+        messages.append(
+            {
+                "folder": folder,
+                "direction": direction,
+                "index": index,
+                "phone": phone,
+                "preview": preview,
+                "timestamp": timestamp,
+                "cfg": cfg,
+                "read": read,
+            }
+        )
+
+    return messages
+
+
+def parse_sms_detail(input_html: str) -> dict[str, Any] | None:
+    """Parse an SMS detail modal and extract the full message text."""
+    if not input_html or _looks_like_login_page(input_html):
+        return None
+
+    soup = BeautifulSoup(input_html, "html.parser")
+    header = soup.find("h4", class_="modal-title")
+    text_area = soup.find("textarea", attrs={"name": re.compile(r"\.text$")})
+    phone_input = soup.find("input", attrs={"name": re.compile(r"\.phone$")})
+
+    if header is None and text_area is None and phone_input is None:
+        return None
+
+    header_text = " ".join(header.stripped_strings) if header else ""
+    direction = None
+    phone = phone_input.get("value", "").strip() if phone_input else None
+    timestamp = None
+
+    header_match = _SMS_MODAL_HEADER_RE.match(header_text)
+    if header_match:
+        direction = header_match.group(1)
+        phone = header_match.group(2).strip() or phone
+        timestamp = header_match.group(3).strip() or None
+
+    text = None
+    if text_area is not None:
+        text = text_area.get_text("\n", strip=False).strip() or None
+
+    if not any(value not in (None, "") for value in (direction, phone, timestamp, text)):
+        return None
+
+    return {
+        "direction": direction,
+        "phone": phone,
+        "timestamp": timestamp,
+        "text": text,
+    }
+
+
 def parse_sms_status(input_html: str) -> dict[str, Any]:
     """Parses SMS status page."""
     raw_data = parse_tables(input_html)
@@ -621,7 +758,7 @@ def parse_sms_status(input_html: str) -> dict[str, Any]:
     # Parse new message count from header (look for "New Message" with number)
     new_messages = 0
     soup = BeautifulSoup(input_html, "html.parser")
-    header = soup.find("th", class_="text-primary")
+    header = soup.find("th", class_=re.compile(r"text-(?:primary|success)"))
     if header:
         next_th = header.find_next_sibling("th")
         if next_th:

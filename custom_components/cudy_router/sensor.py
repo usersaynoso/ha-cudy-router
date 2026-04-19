@@ -143,6 +143,7 @@ async def async_setup_entry(
     wan_data = coordinator.data.get(MODULE_WAN, {}) if coordinator.data else {}
     for sensor_key in _WAN_REMOVED_SENSOR_KEYS:
         _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
+    _remove_sensor_by_unique_id(f"{config_entry.entry_id}-sms-messages")
     for sensor_key in _WAN_DUPLICATE_MODEM_KEYS:
         if coordinator.data and MODULE_MODEM in coordinator.data:
             _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")

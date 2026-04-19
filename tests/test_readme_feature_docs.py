@@ -31,6 +31,10 @@ def test_readme_documents_new_settings_entities() -> None:
     assert "VPN switch" in source
     assert "WiFi 2.4G hidden network" in source
     assert "WiFi 5G separate clients" in source
+    assert "Cudy SMS" in source
+    assert "/cudy-router-sms" in source
+    assert "Show Cudy SMS in sidebar" in source
+    assert "device page still keeps `SMS inbox`, `SMS outbox`, and `SMS unread`" in source
 
 
 def test_readme_documents_connected_device_auto_add_option() -> None:

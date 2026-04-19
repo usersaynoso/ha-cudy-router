@@ -32,6 +32,7 @@ OPTIONS_DEVICELIST = "device_list"
 OPTIONS_AUTO_ADD_CONNECTED_DEVICES = "auto_add_connected_devices"
 OPTIONS_AUTO_ADD_DEVICE_TRACKERS = "auto_add_device_trackers"
 OPTIONS_TRACKED_DEVICE_MACS = "tracked_device_macs"
+OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR = "show_sms_panel_in_sidebar"
 
 # Mesh device attributes
 ATTR_MESH_MAC = "mac_address"

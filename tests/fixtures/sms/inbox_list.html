@@ -1,0 +1,76 @@
+<form class="form-horizontal" role="form" method="post" name="cbi" action="/cgi-bin/luci/admin/network/gcom/sms/smslist?smsbox=rec&amp;iface=4g">
+  <div>
+    <input type="hidden" name="token" value="fixture-token" />
+  </div>
+  <div class="table-responsive">
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>Status</th>
+          <th>Phone Number</th>
+          <th class="hidden-xs">Content</th>
+          <th class="hidden-xs">Received</th>
+          <th></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="cbi-section-table-descr"></tr>
+        <tr id="cbi-table-1" data-sid="1">
+          <td>
+            <div id="cbi-table-1-idx">
+              <p class="form-control-static hidden-xs">1</p>
+              <p class="visible-xs">1</p>
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-1-icon">
+              <span class="fa-2x"><i class="icon icon-unreadsms text-primary" aria-hidden="true"></i></span>
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-1-phone">
+              <p class="form-control-static hidden-xs">+441234500001</p>
+              <p class="visible-xs">+441234500001</p>
+            </div>
+          </td>
+          <td class="hidden-xs">
+            <div id="cbi-table-1-content">
+              <p class="form-control-static hidden-xs">Reminder: use *new* code [ALPHA]...</p>
+              <p class="visible-xs">Reminder: use *new* code [ALPHA]...</p>
+            </div>
+          </td>
+          <td class="hidden-xs">
+            <div id="cbi-table-1-timestamp">
+              <p class="form-control-static hidden-xs">04/12/26, 08:41:23</p>
+              <p class="visible-xs">04/12/26, 08:41:23</p>
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-1-readsms">
+              <button
+                class="btn btn-primary"
+                type="submit"
+                onclick='cbi_show_modal(this, "/cgi-bin/luci/admin/network/gcom/sms/readsms", "iface=4g&amp;cfg=cfginbox1&amp;smsbox=rec");return false;'
+                name="cbid.table.1.readsms"
+                value="More Details"
+              >More Details</button>
+            </div>
+          </td>
+          <td>
+            <div id="cbi-table-1-delsms">
+              <button
+                class="btn btn-danger"
+                type="submit"
+                onclick='cbi_show_modal(this, "/cgi-bin/luci/admin/network/gcom/sms/delsms", "iface=4g&amp;cfg=cfginbox1");return false;'
+                name="cbid.table.1.delsms"
+                value="Delete"
+              >Delete</button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</form>

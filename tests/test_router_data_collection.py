@@ -26,9 +26,10 @@ class _FakeHass:
 class _FakeRouter:
     def __init__(self, pages: dict[str, str]) -> None:
         self._pages = pages
+        self.requests: list[tuple[str, bool]] = []
 
     def get(self, path: str, silent: bool = False) -> str:
-        del silent
+        self.requests.append((path, silent))
         return self._pages.get(path, "")
 
 
@@ -234,3 +235,97 @@ def test_collect_router_data_falls_back_to_alternate_r700_subnet_config_paths(mo
 
     assert data[const.MODULE_LAN]["subnet_mask"]["value"] == "255.255.255.0"
     assert data[const.MODULE_WAN]["subnet_mask"]["value"] == "255.255.255.0"
+
+
+def test_collect_router_data_keeps_sms_counts_summary_only(monkeypatch) -> None:
+    """SMS-capable routers should keep summary counts in coordinator data only."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_SMS,
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/gcom/sms/status": _fixture_text("sms", "status.html"),
+            "admin/network/gcom/sms/smslist?smsbox=rec&iface=4g": _fixture_text("sms", "inbox_list.html"),
+            "admin/network/gcom/sms/smslist?smsbox=sto&iface=4g": _fixture_text("sms", "outbox_list.html"),
+            "admin/network/gcom/sms/readsms?iface=4g&cfg=cfginbox1&smsbox=rec": _fixture_text(
+                "sms",
+                "inbox_detail.html",
+            ),
+            "admin/network/gcom/sms/readsms?iface=4g&cfg=cfgoutbox1&smsbox=sto": _fixture_text(
+                "sms",
+                "outbox_detail.html",
+            ),
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "P5",
+        )
+    )
+
+    assert data[const.MODULE_SMS]["inbox_count"]["value"] == 1
+    assert data[const.MODULE_SMS]["outbox_count"]["value"] == 1
+    assert data[const.MODULE_SMS]["unread_count"]["value"] == 1
+    assert "messages" not in data[const.MODULE_SMS]
+    assert fake_router.requests == [("admin/network/gcom/sms/status", False)]
+
+
+def test_collect_router_data_does_not_fetch_detailed_sms_pages(monkeypatch) -> None:
+    """Coordinator polling should no longer fetch SMS inbox or outbox details."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_SMS,
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/gcom/sms/status": _fixture_text("sms", "status.html"),
+            "admin/network/gcom/sms/smslist?smsbox=rec&iface=4g": "",
+            "admin/network/gcom/sms/smslist?smsbox=sto&iface=4g": "",
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "P5",
+        )
+    )
+
+    assert data[const.MODULE_SMS]["inbox_count"]["value"] == 1
+    assert data[const.MODULE_SMS]["outbox_count"]["value"] == 1
+    assert "messages" not in data[const.MODULE_SMS]
+    assert all("/smslist?" not in path and "/readsms?" not in path for path, _ in fake_router.requests)
+
+
+def test_collect_router_data_skips_sms_module_for_non_sms_models(monkeypatch) -> None:
+    """Routers without SMS support should not attempt to build SMS sensors."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: False,
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/gcom/sms/status": _fixture_text("sms", "status.html"),
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "WR6500 V1.0",
+        )
+    )
+
+    assert const.MODULE_SMS not in data

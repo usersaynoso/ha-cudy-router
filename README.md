@@ -244,6 +244,22 @@ Selected trackers persist across reloads and report `not_home` when the client i
 Controls how often the router is polled for new data. The default is **60 seconds**. Accepted range is 15 to 3600 seconds, in steps of 5.
 
 
+## SMS Panel
+
+SMS-capable routers expose an admin-only sidebar panel at `/cudy-router-sms`.
+
+The **Cudy SMS** panel provides:
+
+- A router selector for multi-router setups
+- Inbox and outbox browsing with full message bodies
+- Reply prefill from a selected message
+- An SMS compose form for sending messages through the router modem
+
+On SMS-capable routers, **Configure Cudy Router** also includes a **Show Cudy SMS in sidebar** option. Turning it off hides the sidebar link while keeping the panel available by direct URL.
+
+The device page still keeps `SMS inbox`, `SMS outbox`, and `SMS unread` as standard count entities. Clicking those entities uses the normal Home Assistant more-info dialog and does not open the SMS browser.
+
+
 ## Services
 
 ### `cudy_router.reboot_router`
