@@ -87,6 +87,7 @@ def test_sms_sidebar_option_is_declared_only_in_options_resources() -> None:
     translations_source = TRANSLATIONS_PATH.read_text(encoding="utf-8")
 
     assert "OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR" in config_flow_source
+    assert "supports_sms_feature(" in config_flow_source
     assert "show_sms_panel_in_sidebar" in strings_source
     assert "Show Cudy SMS in sidebar" in strings_source
     assert "keep the SMS page available only by direct URL" in strings_source

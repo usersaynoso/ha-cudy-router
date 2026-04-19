@@ -43,8 +43,8 @@ class _FakeConfigEntry:
     def __init__(
         self,
         entry_id: str = "entry-1",
-        title: str = "P5 Router",
-        model: str = "P5",
+        title: str = "LT500 Router",
+        model: str = "LT500",
     ) -> None:
         self.entry_id = entry_id
         self.title = title
@@ -60,7 +60,7 @@ class _FakeCoordinator:
         self,
         router: _FakeRouter,
         *,
-        model: str = "P5",
+        model: str = "LT500",
         data: dict[str, object] | None = None,
     ) -> None:
         self.api = router
@@ -205,3 +205,14 @@ def test_coordinator_supports_sms_requires_runtime_signal_for_unknown_models() -
     }
 
     assert sms.coordinator_supports_sms(coordinator) is True
+
+
+def test_coordinator_supports_sms_rejects_known_non_sms_models_even_with_fallback_profile() -> None:
+    """Known non-SMS models should not expose SMS support unless SMS data was detected."""
+    coordinator = _FakeCoordinator(
+        _FakeRouter({}),
+        model="WR6500 V1.0",
+        data={},
+    )
+
+    assert sms.coordinator_supports_sms(coordinator) is False

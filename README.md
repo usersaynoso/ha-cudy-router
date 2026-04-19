@@ -34,7 +34,7 @@ The integration includes an explicit model capability map so unsupported module 
 The following devices are mapped but have **not** been tested on real hardware yet:
 
 - **Routers:** WR11000, WR6500, WR3600H, TR3000, WR3000E, WR3000, WR1500, WR1300V4.0, WR1300E, WR1300EV2, TR1200, WR1200, WR300S, R700
-- **4G/5G routers:** P2, LT15E, LT700E, LT500, LT400E, LT300V3, LT700-Outdoor, LT400-Outdoor, IR02
+- **4G/5G routers:** P2, P4, P5, LT15E, LT700E, LT500, LT400E, LT300V3, LT700-Outdoor, LT400-Outdoor, IR02
 - **Mesh Wi-Fi:** M11000, M3000, M1500, M1200
 - **Extenders:** RE3600, RE1500, RE1200, RE1200-Outdoor
 

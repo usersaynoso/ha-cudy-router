@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Any, Final
 
 from .const import (
     MODULE_AUTO_UPDATE_SETTINGS,
@@ -81,6 +81,12 @@ CELLULAR_LEGACY_FEATURES: Final[FeatureSet] = (
 CELLULAR_LEGACY_AUTO_UPDATE_FEATURES: Final[FeatureSet] = (
     CELLULAR_LEGACY_FEATURES | frozenset({MODULE_AUTO_UPDATE_SETTINGS})
 )
+CELLULAR_LEGACY_SMS_FEATURES: Final[FeatureSet] = (
+    CELLULAR_LEGACY_FEATURES | frozenset({MODULE_SMS})
+)
+CELLULAR_LEGACY_SMS_AUTO_UPDATE_FEATURES: Final[FeatureSet] = (
+    CELLULAR_LEGACY_AUTO_UPDATE_FEATURES | frozenset({MODULE_SMS})
+)
 CELLULAR_MESH_FEATURES: Final[FeatureSet] = (
     CELLULAR_LEGACY_AUTO_UPDATE_FEATURES | frozenset({MODULE_MESH})
 )
@@ -108,7 +114,8 @@ EXTENDER_AUTO_UPDATE_FEATURES: Final[FeatureSet] = (
 MODEL_FEATURES: Final[dict[str, FeatureSet]] = {
     "default": CELLULAR_SMS_MESH_FEATURES,
     "P5": CELLULAR_SMS_MESH_FEATURES,
-    "P2": CELLULAR_MESH_FEATURES,
+    "P4": CELLULAR_SMS_MESH_FEATURES,
+    "P2": CELLULAR_SMS_MESH_FEATURES,
     "WR11000": ROUTER_MESH_FEATURES,
     "WR6500": ROUTER_AUTO_UPDATE_FEATURES,
     "WR3600H": ROUTER_AUTO_UPDATE_FEATURES,
@@ -123,14 +130,14 @@ MODEL_FEATURES: Final[dict[str, FeatureSet]] = {
     "WR1200": ROUTER_BASE_FEATURES,
     "WR300S": ROUTER_LEGACY_MESH_FEATURES,
     "R700": WIRED_MULTI_WAN_ROUTER_AUTO_UPDATE_FEATURES,
-    "LT15E": CELLULAR_MESH_FEATURES,
-    "LT700E": CELLULAR_MESH_FEATURES,
+    "LT15E": CELLULAR_SMS_MESH_FEATURES,
+    "LT700E": CELLULAR_SMS_MESH_FEATURES,
     "LT500": CELLULAR_SMS_MESH_FEATURES,
-    "LT400E": CELLULAR_LEGACY_FEATURES,
-    "LT300V3": CELLULAR_LEGACY_AUTO_UPDATE_FEATURES,
-    "LT700-Outdoor": CELLULAR_MESH_FEATURES,
-    "LT400-Outdoor": CELLULAR_LEGACY_FEATURES,
-    "IR02": CELLULAR_MESH_FEATURES,
+    "LT400E": CELLULAR_LEGACY_SMS_FEATURES,
+    "LT300V3": CELLULAR_LEGACY_SMS_AUTO_UPDATE_FEATURES,
+    "LT700-Outdoor": CELLULAR_SMS_MESH_FEATURES,
+    "LT400-Outdoor": CELLULAR_LEGACY_SMS_FEATURES,
+    "IR02": CELLULAR_SMS_MESH_FEATURES,
     "M11000": ROUTER_MESH_FEATURES,
     "M3000": ROUTER_MESH_FEATURES,
     "M1500": ROUTER_MESH_FEATURES,
@@ -159,6 +166,16 @@ def known_feature(device_model: str | None, key_entity: str) -> bool:
     """Check if a feature is supported by an explicitly mapped model."""
     feature_set, matched_known_model = _matched_model_feature_set(device_model)
     return matched_known_model and key_entity in feature_set
+
+
+def supports_sms_feature(
+    device_model: str | None,
+    data: dict[str, Any] | None = None,
+) -> bool:
+    """Return whether SMS is supported by model mapping or detected runtime data."""
+    return known_feature(device_model, MODULE_SMS) or (
+        isinstance(data, dict) and MODULE_SMS in data
+    )
 
 
 def existing_feature(device_model: str, key_entity: str, model_entity: str = "") -> bool:

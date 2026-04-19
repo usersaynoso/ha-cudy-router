@@ -23,7 +23,35 @@ def test_cellular_capabilities_cover_modem_and_settings_pages() -> None:
     assert features.existing_feature("LT700E V1.0", const.MODULE_MODEM) is True
     assert features.existing_feature("LT700E V1.0", const.MODULE_CELLULAR_SETTINGS) is True
     assert features.existing_feature("LT700E V1.0", const.MODULE_MESH) is True
-    assert features.existing_feature("LT700E V1.0", const.MODULE_SMS) is False
+    assert features.existing_feature("LT700E V1.0", const.MODULE_SMS) is True
+
+
+def test_sms_capability_list_matches_supported_router_models() -> None:
+    """Only the explicit SMS-capable router list should report model-mapped SMS support."""
+    for model in (
+        "P4 V1.0",
+        "P5 V1.0",
+        "P2 V1.0",
+        "LT15E V1.0",
+        "LT700E V1.0",
+        "LT500 V1.0",
+        "LT400E V1.0",
+        "LT300V3",
+        "LT700-Outdoor V1.0",
+        "LT400-Outdoor V1.0",
+        "IR02 V1.0",
+    ):
+        assert features.known_feature(model, const.MODULE_SMS) is True
+
+    assert features.known_feature("WR6500 V1.0", const.MODULE_SMS) is False
+    assert features.existing_feature("WR6500 V1.0", const.MODULE_SMS) is False
+
+
+def test_mesh_wifi_models_keep_mesh_capabilities_without_sms() -> None:
+    """Mesh Wi-Fi models should expose mesh features without inheriting SMS support."""
+    for model in ("M11000", "M3000", "M1500", "M1200"):
+        assert features.existing_feature(model, const.MODULE_MESH) is True
+        assert features.existing_feature(model, const.MODULE_SMS) is False
 
 
 def test_extender_capabilities_hide_router_only_families() -> None:

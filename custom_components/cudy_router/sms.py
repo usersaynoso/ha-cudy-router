@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from .const import DOMAIN, MODULE_SMS, OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR
-from .features import existing_feature, known_feature
+from .features import supports_sms_feature
 from .parser import parse_sms_detail, parse_sms_list, parse_sms_status
 
 if TYPE_CHECKING:
@@ -36,12 +36,10 @@ def _sms_detail_path(cfg: str, smsbox: str) -> str:
 
 def coordinator_supports_sms(coordinator: Any) -> bool:
     """Return whether the coordinator's model supports SMS."""
-    model = coordinator.config_entry.data.get("model")
-    if known_feature(model, MODULE_SMS):
-        return True
-
-    data = getattr(coordinator, "data", None)
-    return isinstance(data, dict) and MODULE_SMS in data
+    return supports_sms_feature(
+        coordinator.config_entry.data.get("model"),
+        getattr(coordinator, "data", None),
+    )
 
 
 def coordinator_shows_sms_panel_in_sidebar(coordinator: Any) -> bool:

@@ -50,3 +50,12 @@ def test_agents_requires_post_push_workflow_success_checks() -> None:
     assert "check the relevant GitHub workflows for the pushed SHA" in source
     assert "do not return until they have completed successfully" in source
     assert "inspect the failed logs, fix the issue" in source
+
+
+def test_agents_requires_plain_language_release_notes() -> None:
+    """AGENTS should require end-user-friendly GitHub release notes."""
+    source = AGENTS_PATH.read_text(encoding="utf-8")
+
+    assert "plain, non-technical language" in source
+    assert "what changed, what users may notice" in source
+    assert "avoid internal jargon" in source

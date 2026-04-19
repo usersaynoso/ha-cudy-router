@@ -47,7 +47,7 @@ from .device_tracking import (
     next_options_flow_step,
     tracker_picker_options,
 )
-from .features import existing_feature
+from .features import supports_sms_feature
 from .model_names import resolve_model_name
 from .router import CudyRouter
 
@@ -264,12 +264,10 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
 
     def _supports_sms(self) -> bool:
         """Return whether this config entry supports SMS-specific options."""
-        return (
-            existing_feature(
-                self._config_entry.data.get(CONF_MODEL, "default"),
-                MODULE_SMS,
-            )
-            is True
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id)
+        return supports_sms_feature(
+            self._config_entry.data.get(CONF_MODEL),
+            getattr(coordinator, "data", None),
         )
 
     def _pending_options_state(self) -> dict[str, Any]:

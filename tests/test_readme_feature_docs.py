@@ -76,6 +76,8 @@ def test_readme_lists_emulator_backed_compatibility_models() -> None:
     assert "Only the **Cudy P5** has been tested on real hardware so far." in source
     assert "mapped but have **not** been tested on real hardware yet" in source
     assert "WR11000" in source
+    assert "P4" in source
+    assert "P5" in source
     assert "R700" in source
     assert "LT500" in source
     assert "M3000" in source
