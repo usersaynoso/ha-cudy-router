@@ -266,6 +266,21 @@ def test_tracker_allowed_macs_include_all_current_clients_when_auto_enabled() ->
     assert allowed == {"aabbccddee30", "aabbccddee31"}
 
 
+def test_tracker_allowed_macs_keep_known_offline_trackers_when_auto_enabled() -> None:
+    """Auto tracker mode should preserve existing trackers across reloads even when offline."""
+    allowed = device_tracking.tracker_allowed_macs(
+        auto_add_device_trackers=True,
+        connected_devices=[
+            _device("Office PC", "192.168.10.30", "AA:BB:CC:DD:EE:30"),
+        ],
+        tracked_device_macs=set(),
+        legacy_tracked_macs={"aabbccddee31"},
+        tracker_options_configured=True,
+    )
+
+    assert allowed == {"aabbccddee30", "aabbccddee31"}
+
+
 def test_tracker_allowed_macs_keep_selected_clients_without_auto_mode() -> None:
     """Explicit selections should keep trackers even when auto mode is off."""
     allowed = device_tracking.tracker_allowed_macs(
@@ -278,6 +293,19 @@ def test_tracker_allowed_macs_keep_selected_clients_without_auto_mode() -> None:
     )
 
     assert allowed == {"aabbccddee31"}
+
+
+def test_tracker_allowed_macs_drop_known_offline_trackers_when_auto_disabled() -> None:
+    """Disabling auto tracker mode should prune old auto-created trackers unless explicitly selected."""
+    allowed = device_tracking.tracker_allowed_macs(
+        auto_add_device_trackers=False,
+        connected_devices=[],
+        tracked_device_macs=set(),
+        legacy_tracked_macs={"aabbccddee31"},
+        tracker_options_configured=True,
+    )
+
+    assert allowed == set()
 
 
 def test_tracker_allowed_macs_preserve_legacy_trackers_until_new_options_are_saved() -> None:

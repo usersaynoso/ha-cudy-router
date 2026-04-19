@@ -250,6 +250,39 @@ def async_cleanup_stale_client_entities(
     )
 
 
+def async_cleanup_stale_client_switch_entities(
+    hass: HomeAssistant,
+    config_entry: Any,
+    active_client_features: set[tuple[str, str]],
+) -> None:
+    """Remove client switch entities for features that are no longer exposed."""
+    entity_registry = async_get_entity_registry(hass)
+    prefix = f"{config_entry.entry_id}-device-"
+    active_features = {
+        (normalize_mac(mac_address), feature_key)
+        for mac_address, feature_key in active_client_features
+        if normalize_mac(mac_address) and feature_key
+    }
+
+    for entry in list(entity_registry.entities.values()):
+        if entry.platform != DOMAIN or _entity_domain(entry) != "switch":
+            continue
+
+        unique_id = getattr(entry, "unique_id", "") or ""
+        normalized_mac = _normalized_client_mac_from_unique_id(prefix, unique_id)
+        if normalized_mac is None:
+            continue
+
+        feature_key = _client_feature_key_from_unique_id(prefix, unique_id)
+        if feature_key is None:
+            continue
+
+        if (normalized_mac, feature_key) in active_features:
+            continue
+
+        entity_registry.async_remove(entry.entity_id)
+
+
 def async_cleanup_stale_tracker_entities(
     hass: HomeAssistant,
     config_entry: Any,

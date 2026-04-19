@@ -30,6 +30,7 @@ from .const import (
 from .coordinator import CudyRouterDataUpdateCoordinator
 from .device_info import (
     async_cleanup_stale_client_entities,
+    async_cleanup_stale_client_switch_entities,
     async_cleanup_stale_mesh_entities,
     build_client_device_info,
     build_mesh_device_info,
@@ -229,6 +230,7 @@ async def async_setup_entry(
             )
 
     seen_client_features: set[tuple[str, str]] = set()
+    active_client_switch_features: set[tuple[str, str]] = set()
     if coordinator.data:
         auto_add_connected_devices = config_entry.options.get(
             OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
@@ -275,6 +277,7 @@ async def async_setup_entry(
                     continue
 
                 feature_id = (normalized_mac, feature_key)
+                active_client_switch_features.add(feature_id)
                 if feature_id in seen_client_features:
                     continue
 
@@ -289,6 +292,12 @@ async def async_setup_entry(
                         icon,
                     )
                 )
+
+        async_cleanup_stale_client_switch_entities(
+            hass,
+            config_entry,
+            active_client_switch_features,
+        )
 
     async_add_entities(entities)
 
@@ -417,15 +426,17 @@ class CudyClientFeatureSwitch(
 
     @property
     def available(self) -> bool:
-        """Report availability based on current device presence."""
+        """Report availability based on current device presence and feature visibility."""
         if not self.coordinator.data:
             return False
         devices = self.coordinator.data.get(MODULE_DEVICES, {}).get(SECTION_DEVICE_LIST, [])
-        return any(
-            normalize_mac(device.get("mac")) == self._normalized_mac
-            for device in devices
-            if isinstance(device, dict)
-        )
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            if normalize_mac(device.get("mac")) != self._normalized_mac:
+                continue
+            return device.get(self._feature_key) is not None
+        return False
 
     @property
     def is_on(self) -> bool | None:

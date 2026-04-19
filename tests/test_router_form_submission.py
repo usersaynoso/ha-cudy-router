@@ -15,6 +15,11 @@ def _response(text: str, status_code: int = 200) -> SimpleNamespace:
     return SimpleNamespace(text=text, status_code=status_code, ok=(200 <= status_code < 300))
 
 
+def _multipart_payload(files: dict[str, tuple[None, str]]) -> dict[str, str]:
+    """Flatten requests-style multipart tuples for assertions."""
+    return {key: value[1] for key, value in files.items()}
+
+
 def test_submit_form_executes_embedded_apply_workflow(monkeypatch) -> None:
     """LuCI save/apply responses should trigger the follow-up service restart."""
     router = router_module.CudyRouter(None, "https://192.168.10.1", "user", "password")
@@ -113,7 +118,7 @@ def test_set_device_access_supports_vpn_toggle(monkeypatch) -> None:
       </table>
     </form>
     """
-    posted: list[tuple[str, dict[str, str], str]] = []
+    posted: list[tuple[str, dict[str, str], dict[str, str]]] = []
 
     monkeypatch.setattr(
         router,
@@ -122,8 +127,10 @@ def test_set_device_access_supports_vpn_toggle(monkeypatch) -> None:
     )
 
     def fake_post(path: str, **kwargs):
-        posted.append((path, kwargs["data"], kwargs["headers"]["Referer"]))
-        return _response("ok")
+        posted.append((path, _multipart_payload(kwargs["files"]), kwargs["headers"]))
+        return _response(
+            page_html.replace('name="cbid.table.1.vpn" value="1"', 'name="cbid.table.1.vpn" value="0"')
+        )
 
     monkeypatch.setattr(router, "_luci_post", fake_post)
 
@@ -133,7 +140,7 @@ def test_set_device_access_supports_vpn_toggle(monkeypatch) -> None:
         False,
     )
 
-    assert result == (200, "ok")
+    assert result[0] == 200
     assert posted == [
         (
             "admin/network/devices/vpn?macaddr=74:86:E2:10:22:61&hostname=NICK&internet=1&vpn=1",
@@ -144,8 +151,131 @@ def test_set_device_access_supports_vpn_toggle(monkeypatch) -> None:
                 "cbi.cbe.table.1.vpn": "1",
                 "cbid.table.1.vpn": "0",
             },
-            "https://192.168.10.1/cgi-bin/luci/admin/network/devices/devlist",
+            {
+                "User-Agent": "Mozilla/5.0",
+                "Referer": "https://192.168.10.1/cgi-bin/luci/admin/network/devices/devlist",
+                "Origin": "https://192.168.10.1",
+                "X-Requested-With": "XMLHttpRequest",
+            },
         )
+    ]
+
+
+def test_set_device_access_accepts_prefixed_luci_toggle_urls(monkeypatch) -> None:
+    """Toggle URLs may include a path prefix before /cgi-bin/luci/."""
+    router = router_module.CudyRouter(None, "https://192.168.10.1", "user", "password")
+
+    page_html = """
+    <form class="form-horizontal" role="form" method="post"
+          action="/emulator/WR3000/cgi-bin/luci/admin/network/devices/devlist">
+      <input type="hidden" name="token" value="page-token" />
+      <table class="table table-striped">
+        <tbody>
+          <tr id="cbi-table-1">
+            <td>Jack</td>
+            <td>192.168.10.195</td>
+            <td>80:AF:CA:22:14:3C</td>
+            <td>
+              <input type="hidden" name="cbi.cbe.table.1.internet" value="1" />
+              <input type="hidden" id="cbid.table.1.internet" name="cbid.table.1.internet" value="1" />
+              <i class="fa fa-toggle-on" onclick="cbi_switch_toggle(this, true, '/emulator/WR3000/cgi-bin/luci/admin/network/devices/internet?macaddr=80:AF:CA:22:14:3C&hostname=Jack&internet=1&vpn=1&dnsfilter=1')"></i>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </form>
+    """
+    posted: list[tuple[str, dict[str, str]]] = []
+
+    monkeypatch.setattr(
+        router,
+        "get",
+        lambda path, silent=False: page_html if path == "admin/network/devices/devlist?detail=1" else "",
+    )
+
+    def fake_post(path: str, **kwargs):
+        posted.append((path, _multipart_payload(kwargs["files"])))
+        return _response(
+            page_html.replace(
+                'name="cbid.table.1.internet" value="1"',
+                'name="cbid.table.1.internet" value="0"',
+            )
+        )
+
+    monkeypatch.setattr(router, "_luci_post", fake_post)
+
+    result = router.set_device_access(
+        {"mac": "80:AF:CA:22:14:3C"},
+        "internet",
+        False,
+    )
+
+    assert result[0] == 200
+    assert posted == [
+        (
+            "admin/network/devices/internet?macaddr=80:AF:CA:22:14:3C&hostname=Jack&internet=1&vpn=1&dnsfilter=1",
+            {
+                "token": "page-token",
+                "cbi.submit": "1",
+                "cbi.toggle": "1",
+                "cbi.cbe.table.1.internet": "1",
+                "cbid.table.1.internet": "0",
+            },
+        )
+    ]
+
+
+def test_set_device_access_requires_confirmed_dnsfilter_change(monkeypatch) -> None:
+    """A 200 response alone is not enough when the devices page state does not change."""
+    router = router_module.CudyRouter(None, "https://192.168.10.1", "user", "password")
+
+    page_html = """
+    <form class="form-horizontal" role="form" method="post"
+          action="/cgi-bin/luci/admin/network/devices/devlist?detail=1">
+      <input type="hidden" name="token" value="page-token" />
+      <table class="table table-striped">
+        <tbody>
+          <tr id="cbi-table-10">
+            <td>iPhone</td>
+            <td>192.168.10.121</td>
+            <td>2A:3D:68:F8:DC:E9</td>
+            <td>
+              <input type="hidden" name="cbi.cbe.table.10.dnsfilter" value="1" />
+              <input type="hidden" id="cbid.table.10.dnsfilter" name="cbid.table.10.dnsfilter" value="1" />
+              <i class="fa fa-toggle-on" onclick="cbi_switch_toggle(this, true, '/cgi-bin/luci/admin/network/devices/dnsfilter?macaddr=2A:3D:68:F8:DC:E9&hostname=iPhone&internet=1&vpn=1&dnsfilter=1')"></i>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </form>
+    """
+    post_calls: list[str] = []
+
+    monkeypatch.setattr(
+        router,
+        "get",
+        lambda path, silent=False: page_html if path == "admin/network/devices/devlist?detail=1" else "",
+    )
+
+    def fake_post(path: str, **kwargs):
+        post_calls.append(path)
+        return _response(page_html)
+
+    monkeypatch.setattr(router, "_luci_post", fake_post)
+
+    result = router.set_device_access(
+        {"mac": "2A:3D:68:F8:DC:E9"},
+        "dnsfilter",
+        False,
+    )
+
+    assert result == (
+        0,
+        "Device dnsfilter remained 1 after posting to admin/network/devices/devlist?detail=1",
+    )
+    assert post_calls == [
+        "admin/network/devices/dnsfilter?macaddr=2A:3D:68:F8:DC:E9&hostname=iPhone&internet=1&vpn=1&dnsfilter=1",
+        "admin/network/devices/devlist?detail=1",
     ]
 
 

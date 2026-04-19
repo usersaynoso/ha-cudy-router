@@ -36,6 +36,16 @@ def _clean_cell_strings(element: Any) -> list[str]:
 
 def _hidden_input_value(element: Any, name_suffix: str) -> str | None:
     """Extract a hidden input value by trailing field name."""
+    preferred_hidden = element.find(
+        "input",
+        attrs={
+            "type": "hidden",
+            "name": re.compile(rf"^cbid\..*\.{re.escape(name_suffix)}$"),
+        },
+    )
+    if preferred_hidden is not None:
+        return preferred_hidden.get("value")
+
     hidden = element.find(
         "input",
         attrs={

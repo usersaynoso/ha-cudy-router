@@ -259,6 +259,8 @@ def tracker_allowed_macs(
 
     if auto_add_device_trackers:
         allowed_macs.update(connected_device_lookup(connected_devices))
+        if legacy_tracked_macs:
+            allowed_macs.update(legacy_tracked_macs)
 
     if not tracker_options_configured and legacy_tracked_macs:
         allowed_macs.update(legacy_tracked_macs)

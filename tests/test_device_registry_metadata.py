@@ -250,6 +250,48 @@ def test_stale_client_cleanup_keeps_shared_client_device_when_tracker_entity_rem
     assert device_registry.removed == []
 
 
+def test_cleanup_stale_client_switch_entities_prunes_missing_feature_switches() -> None:
+    """Switch cleanup should remove per-client feature entities that disappeared from the router page."""
+    registry = SimpleNamespace(
+        entities={
+            "switch.client_internet": SimpleNamespace(
+                entity_id="switch.client_internet",
+                platform="cudy_router",
+                domain="switch",
+                unique_id="entry-1-device-aabbccddee42-internet",
+            ),
+            "switch.client_dnsfilter": SimpleNamespace(
+                entity_id="switch.client_dnsfilter",
+                platform="cudy_router",
+                domain="switch",
+                unique_id="entry-1-device-aabbccddee42-dnsfilter",
+            ),
+            "switch.router_vpn": SimpleNamespace(
+                entity_id="switch.router_vpn",
+                platform="cudy_router",
+                domain="switch",
+                unique_id="entry-1-vpn_settings-enabled",
+            ),
+        },
+        removed=[],
+    )
+
+    def _remove(entity_id: str) -> None:
+        registry.removed.append(entity_id)
+        registry.entities.pop(entity_id, None)
+
+    registry.async_remove = _remove
+    device_info.async_get_entity_registry = lambda hass: registry
+
+    device_info.async_cleanup_stale_client_switch_entities(
+        object(),
+        SimpleNamespace(entry_id="entry-1"),
+        {("AA:BB:CC:DD:EE:42", "internet")},
+    )
+
+    assert registry.removed == ["switch.client_dnsfilter"]
+
+
 def test_stale_client_cleanup_falls_back_to_entity_id_when_domain_is_missing() -> None:
     """Client cleanup should still prune stale entries when the registry omits the domain field."""
     device_registry = SimpleNamespace(

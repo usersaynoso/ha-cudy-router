@@ -681,17 +681,54 @@ class CudyRouter:
         """Resolve a form action to a LuCI-relative path."""
         if not action or action == "#":
             return fallback_path
+        return self._resolve_luci_request_path(action, fallback_path)
 
-        if action.startswith(self.base_url):
-            action = action[len(self.base_url) :]
+    def _resolve_luci_request_path(self, path_or_url: str | None, fallback_path: str) -> str:
+        """Resolve a LuCI request path from a relative path, absolute path, or full URL."""
+        if not path_or_url:
+            return fallback_path
 
-        if action.startswith("/cgi-bin/luci/"):
-            return action.removeprefix("/cgi-bin/luci/")
+        candidate = path_or_url
+        if candidate.startswith(self.base_url):
+            candidate = candidate[len(self.base_url) :]
 
-        if action.startswith("/"):
-            return action.lstrip("/")
+        parsed = urllib.parse.urlsplit(candidate)
+        raw_path = parsed.path or candidate
 
-        return action
+        if "/cgi-bin/luci/" in raw_path:
+            resolved_path = raw_path.split("/cgi-bin/luci/", 1)[-1]
+        elif raw_path.startswith("/"):
+            resolved_path = raw_path.lstrip("/")
+        else:
+            resolved_path = raw_path
+
+        if parsed.query:
+            return f"{resolved_path}?{parsed.query}"
+        return resolved_path
+
+    def _find_device_row(self, html: str, mac_address: str):
+        """Locate the connected-device table row for a MAC address."""
+        soup = BeautifulSoup(html, "html.parser")
+        normalized_mac = mac_address.lower().replace("-", ":")
+        for row in soup.select("tbody tr[id^='cbi-table-']"):
+            row_text = row.get_text(" ", strip=True).lower()
+            if normalized_mac in row_text:
+                return row
+        return None
+
+    def _device_feature_value(self, html: str, mac_address: str, feature: str) -> str | None:
+        """Read the current 0/1 feature value for a device from a devices page."""
+        row = self._find_device_row(html, mac_address)
+        if row is None:
+            return None
+
+        field_input = row.find(
+            "input",
+            attrs={"name": re.compile(rf"^cbid\.table\.\d+\.{feature}$")},
+        )
+        if field_input is None:
+            return None
+        return field_input.get("value")
 
     def _extract_form_payload(
         self,
@@ -1273,17 +1310,15 @@ class CudyRouter:
         if token_input is None:
             return 0, "Missing device-list token"
 
-        matching_row = None
-        normalized_mac = mac_address.lower().replace("-", ":")
-        for row in soup.select("tbody tr[id^='cbi-table-']"):
-            row_text = row.get_text(" ", strip=True).lower()
-            if normalized_mac in row_text:
-                matching_row = row
-                break
-
+        matching_row = self._find_device_row(page_html, mac_address)
         if matching_row is None:
             return 0, f"Device row not found for {mac_address}"
 
+        form = soup.find("form")
+        action_path = self._resolve_luci_form_action(
+            form.get("action") if form is not None else None,
+            page_path,
+        )
         field_input = matching_row.find(
             "input",
             attrs={"name": re.compile(rf"^cbid\.table\.\d+\.{feature}$")},
@@ -1293,10 +1328,10 @@ class CudyRouter:
             attrs={"name": re.compile(rf"^cbi\.cbe\.table\.\d+\.{feature}$")},
         )
         toggle_button = matching_row.find(
-            attrs={"onclick": re.compile(rf"/network/devices/{feature}\?")},
+            attrs={"onclick": re.compile(rf"/network/devices/{feature}\b")},
         )
 
-        if field_input is None or toggle_flag is None or toggle_button is None:
+        if field_input is None or toggle_flag is None:
             return 0, f"Toggle metadata not found for {feature}"
 
         current_value = field_input.get("value")
@@ -1304,30 +1339,71 @@ class CudyRouter:
         if current_value == desired_value:
             return 200, "No change required"
 
-        onclick = toggle_button.get("onclick", "")
-        match = re.search(r"'(/cgi-bin/luci/[^']+)'", onclick)
-        if match is None:
-            return 0, f"Toggle URL not found for {feature}"
+        request_paths: list[str] = []
+        if toggle_button is not None:
+            onclick = toggle_button.get("onclick", "")
+            match = re.search(r"""['"]([^'"]*/cgi-bin/luci/[^'"]+)['"]""", onclick)
+            if match is not None:
+                request_paths.append(
+                    self._resolve_luci_request_path(match.group(1), action_path)
+                )
 
-        request_path = match.group(1).split("/cgi-bin/luci/", 1)[-1]
-        resp = self._luci_post(
-            request_path,
-            timeout=DEFAULT_POST_TIMEOUT,
-            headers={
-                "User-Agent": "Mozilla/5.0",
-                "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/devices/devlist",
-            },
-            data={
-                "token": token_input.get("value", ""),
-                "cbi.submit": "1",
-                "cbi.toggle": "1",
-                toggle_flag.get("name", ""): "1",
-                field_input.get("name", ""): desired_value,
-            },
-        )
-        if not resp:
-            return 0, f"Failed to toggle device {feature}"
-        return resp.status_code, resp.text[:220]
+        request_paths.append(action_path)
+
+        unique_paths: list[str] = []
+        for path in request_paths:
+            if path and path not in unique_paths:
+                unique_paths.append(path)
+
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/devices/devlist",
+            "Origin": self.base_url,
+            "X-Requested-With": "XMLHttpRequest",
+        }
+        form_data = {
+            "token": (None, token_input.get("value", "")),
+            "cbi.submit": (None, "1"),
+            "cbi.toggle": (None, "1"),
+            toggle_flag.get("name", ""): (None, "1"),
+            field_input.get("name", ""): (None, desired_value),
+        }
+
+        last_message = f"Failed to toggle device {feature}"
+        for request_path in unique_paths:
+            resp = self._luci_post(
+                request_path,
+                timeout=DEFAULT_POST_TIMEOUT,
+                headers=headers,
+                files=form_data,
+            )
+            if not resp:
+                last_message = f"Failed to toggle device {feature} via {request_path}"
+                continue
+
+            verified_value = self._device_feature_value(resp.text, mac_address, feature)
+            if verified_value is None:
+                refreshed_html = self.get(page_path, True)
+                if refreshed_html:
+                    verified_value = self._device_feature_value(
+                        refreshed_html,
+                        mac_address,
+                        feature,
+                    )
+
+            if verified_value == desired_value:
+                return resp.status_code, resp.text[:220]
+
+            if verified_value is None:
+                last_message = (
+                    f"Unable to confirm device {feature} state after posting to {request_path}"
+                )
+            else:
+                last_message = (
+                    f"Device {feature} remained {verified_value} after posting to {request_path}"
+                )
+
+        return 0, last_message
 
     def send_sms(self, phone_number: str, message: str) -> tuple[int, str]:
         """Send an SMS via the router's LuCI web interface.

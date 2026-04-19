@@ -48,6 +48,45 @@ def test_parse_devices_extracts_client_access_flags_from_modern_rows() -> None:
     assert device["online_time"] == "00:21:46"
 
 
+def test_parse_devices_prefers_cbid_state_over_toggle_flag_inputs() -> None:
+    """Per-client access parsing should read the actual cbid state, not the always-on toggle flag."""
+    html = """
+    <table class="table">
+      <tbody>
+        <tr id="cbi-table-11">
+          <td>11</td>
+          <td><p class="hidden-xs">iPhone <span>Mesh</span></p></td>
+          <td>ignore</td>
+          <td>ignore</td>
+          <td><p class="hidden-xs">192.168.10.121 <span>2A:3D:68:F8:DC:E9</span></p></td>
+          <td><p class="hidden-xs">Up: 0 Kbps Down: 0 Kbps</p></td>
+          <td><p class="hidden-xs">-62 dBm</p></td>
+          <td><p class="hidden-xs">00:16:03</p></td>
+          <td>
+            <input type="hidden" name="cbi.cbe.table.11.internet" value="1" />
+            <input type="hidden" name="cbid.table.11.internet" value="0" />
+          </td>
+          <td>
+            <input type="hidden" name="cbi.cbe.table.11.dnsfilter" value="1" />
+            <input type="hidden" name="cbid.table.11.dnsfilter" value="0" />
+          </td>
+          <td>
+            <input type="hidden" name="cbi.cbe.table.11.vpn" value="1" />
+            <input type="hidden" name="cbid.table.11.vpn" value="0" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+
+    parsed = parser.parse_devices(html, "")
+    device = parsed["device_list"][0]
+
+    assert device["internet"] is False
+    assert device["dnsfilter"] is False
+    assert device["vpn"] is False
+
+
 def test_parse_devices_merges_legacy_and_modern_views_for_same_row() -> None:
     """Legacy div parsing must not discard richer modern row fields."""
     html = """
