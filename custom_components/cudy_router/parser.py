@@ -961,13 +961,20 @@ def parse_data_size_bytes(size_str: str) -> int | None:
     if not size_str:
         return None
 
-    normalized = size_str.strip().replace(",", "")
-    match = re.match(r"([\d.]+)\s*(B|KB|MB|GB|TB)", normalized, re.IGNORECASE)
+    normalized = str(size_str).strip().replace(",", "")
+    if re.fullmatch(r"\d+", normalized):
+        return int(normalized)
+
+    match = re.match(r"([\d.]+)\s*(B|KB|KIB|MB|MIB|GB|GIB|TB|TIB|BYTES?)", normalized, re.IGNORECASE)
     if not match:
         return None
 
     value = float(match.group(1))
     unit = match.group(2).upper()
+    if unit in {"BYTE", "BYTES"}:
+        unit = "B"
+    if unit in {"KIB", "MIB", "GIB", "TIB"}:
+        unit = unit.replace("I", "")
     multipliers = {
         "B": 1,
         "KB": 1024,

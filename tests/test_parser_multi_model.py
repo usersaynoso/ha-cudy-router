@@ -190,6 +190,40 @@ def test_parse_wan_status_reads_byte_counters() -> None:
     assert parsed["bytes_sent"]["value"] == 256 * 1024**2
 
 
+def test_parse_wan_status_reads_bytes_rx_tx_label_variants() -> None:
+    """WAN byte parsing should handle newer TX/RX label wording."""
+    parsed = parser_network.parse_wan_status(
+        """
+        <table class="table">
+          <tbody>
+            <tr><td>Protocol</td><td>DHCP</td></tr>
+            <tr><td>Bytes RX</td><td>1.5 GiB</td></tr>
+            <tr><td>Bytes TX</td><td>512 MiB</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert parsed["bytes_received"]["value"] == int(1.5 * 1024**3)
+    assert parsed["bytes_sent"]["value"] == 512 * 1024**2
+
+
+def test_parse_wan_status_reads_combined_rx_tx_byte_counter() -> None:
+    """WAN byte parsing should split combined receive/transmit counters."""
+    parsed = parser_network.parse_wan_status(
+        """
+        <table class="table">
+          <tbody>
+            <tr><td>RX / TX Bytes</td><td>2 GB / 128 MB</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert parsed["bytes_received"]["value"] == 2 * 1024**3
+    assert parsed["bytes_sent"]["value"] == 128 * 1024**2
+
+
 def test_parse_vpn_status_reads_r700_pptp_fields() -> None:
     """R700 VPN status parsing should expose the PPTP protocol and tunnel IP."""
     parsed = parser_network.parse_vpn_status(_fixture_text("vpn", "vpn_r700_status.html"))
@@ -206,6 +240,59 @@ def test_parse_vpn_status_reads_connected_client_count() -> None:
     assert parsed["protocol"]["value"] == "WireGuard"
     assert parsed["vpn_clients"]["value"] == 1
     assert parsed["tunnel_ip"]["value"] == "10.8.0.2"
+
+
+def test_parse_vpn_status_reads_additional_client_count_labels() -> None:
+    """VPN count parsing should accept newer active-client labels."""
+    parsed = parser_network.parse_vpn_status(
+        """
+        <table class="table">
+          <tbody>
+            <tr><td>Protocol</td><td>OpenVPN Server</td></tr>
+            <tr><td>Active Clients</td><td>3 clients</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert parsed["vpn_clients"]["value"] == 3
+
+
+def test_parse_vpn_status_counts_connected_client_table_rows() -> None:
+    """VPN count parsing should count client rows when no summary count is present."""
+    parsed = parser_network.parse_vpn_status(
+        """
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Common Name</th>
+              <th>Real Address</th>
+              <th>Virtual Address</th>
+              <th>Bytes Received</th>
+              <th>Bytes Sent</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>phone</td>
+              <td>198.51.100.10:51820</td>
+              <td>10.8.0.2</td>
+              <td>2 MB</td>
+              <td>1 MB</td>
+            </tr>
+            <tr>
+              <td>laptop</td>
+              <td>198.51.100.20:51820</td>
+              <td>10.8.0.3</td>
+              <td>4 MB</td>
+              <td>2 MB</td>
+            </tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert parsed["vpn_clients"]["value"] == 2
 
 
 def test_parse_load_balancing_status_reads_r700_interfaces() -> None:

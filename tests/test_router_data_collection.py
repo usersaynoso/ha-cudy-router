@@ -248,6 +248,82 @@ def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypa
     assert ("admin/network/vpn/status?detail=", True) in fake_router.requests
 
 
+def test_collect_router_data_accepts_lettered_wan_headings_and_alt_iface_paths(monkeypatch) -> None:
+    """R700 WAN polling should tolerate newer WAN B/C labels and alternate iface names."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module in {const.MODULE_WAN, const.MODULE_LOAD_BALANCING},
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/mwan3/status?detail=": _fixture_text("load_balancing", "r700_status_wan2_wan3.html"),
+            "admin/network/wan/status?detail=1&iface=wan": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN1</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>DHCP</td></tr>
+                <tr><td>IP Address</td><td>192.0.2.2</td></tr>
+                <tr><td>Bytes Received</td><td>1 GB</td></tr>
+                <tr><td>Bytes Sent</td><td>128 MB</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=1&iface=wanb": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN1</h3></div>
+              <table class="table"><tr><td>Protocol</td><td>DHCP</td></tr></table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=&iface=wanb": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN B</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>PPPoE</td></tr>
+                <tr><td>Bytes RX</td><td>1.5 GiB</td></tr>
+                <tr><td>Bytes TX</td><td>512 MiB</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=1&iface=wanc": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN1</h3></div>
+              <table class="table"><tr><td>Protocol</td><td>DHCP</td></tr></table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=1&iface=wan3": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN 3</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>DHCP</td></tr>
+                <tr><td>RX / TX Bytes</td><td>512 MB / 64 MB</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/config/detail?nomodal=&iface=wan": "",
+            "admin/network/wan/config?nomodal=&iface=wan": "",
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert data[const.MODULE_WAN]["bytes_received"]["value"] == (
+        (1024**3) + int(1.5 * 1024**3) + (512 * 1024**2)
+    )
+    assert data[const.MODULE_WAN]["bytes_sent"]["value"] == (
+        (128 * 1024**2) + (512 * 1024**2) + (64 * 1024**2)
+    )
+    assert ("admin/network/wan/status?detail=&iface=wanb", True) in fake_router.requests
+    assert ("admin/network/wan/status?detail=1&iface=wan3", True) in fake_router.requests
+
+
 def test_collect_router_data_reads_auto_update_from_r700_setup_page_fallback(monkeypatch) -> None:
     """Auto-update settings should fall back to admin/setup when the legacy page is absent."""
     monkeypatch.setattr(

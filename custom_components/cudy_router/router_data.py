@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
+from .bs4_compat import BeautifulSoup
 from .const import (
     MODULE_AUTO_UPDATE_SETTINGS,
     MODULE_CELLULAR_SETTINGS,
@@ -74,12 +76,20 @@ _LOAD_BALANCING_STATUS_PATHS: tuple[str, ...] = (
     "admin/network/mwan3/status",
 )
 
-_WAN_STATUS_IFACES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("wan", ()),
-    ("wanb", ("wan2", "wanb")),
-    ("wanc", ("wan3", "wanc")),
-    ("wand", ("wan4", "wand")),
+_WAN_STATUS_PATH_FORMATS: tuple[str, ...] = (
+    "admin/network/wan/status?detail=1&iface={iface_name}",
+    "admin/network/wan/status?detail=&iface={iface_name}",
+    "admin/network/wan/status?iface={iface_name}&detail=1",
+    "admin/network/wan/status?iface={iface_name}",
 )
+
+_WAN_STATUS_IFACES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("wan", (), ("wan",)),
+    ("wanb", ("2", "b"), ("wanb", "wan2")),
+    ("wanc", ("3", "c"), ("wanc", "wan3")),
+    ("wand", ("4", "d"), ("wand", "wan4")),
+)
+_WAN_INTERFACE_REFERENCE_RE = re.compile(r"(?<![a-z0-9])wan[\s_-]*([1-4a-d])(?![a-z0-9])", re.IGNORECASE)
 
 
 def _entry_value(parsed: dict[str, Any], key: str) -> Any:
@@ -104,6 +114,46 @@ def _vpn_candidate_score(parsed: dict[str, Any]) -> tuple[int, int, int, int, in
         populated_fields,
         numeric_clients,
     )
+
+
+def _contains_wan_iface_reference(text: str, expected_suffixes: tuple[str, ...]) -> bool:
+    """Return whether text references the expected WAN number or letter."""
+    expected = {suffix.lower() for suffix in expected_suffixes}
+    for match in _WAN_INTERFACE_REFERENCE_RE.finditer(text):
+        if match.group(1).lower() in expected:
+            return True
+    return False
+
+
+def _contains_any_wan_iface_reference(text: str) -> bool:
+    """Return whether text references a specific WAN interface."""
+    return _WAN_INTERFACE_REFERENCE_RE.search(text) is not None
+
+
+def _wan_status_matches_iface(input_html: str, expected_suffixes: tuple[str, ...]) -> bool:
+    """Return whether a WAN status page appears to belong to the requested iface."""
+    if not expected_suffixes:
+        return True
+
+    soup = BeautifulSoup(input_html, "html.parser")
+    heading_texts = [
+        " ".join(element.stripped_strings)
+        for element in soup.select(".panel-title, .panel-heading, h1, h2, h3, h4, legend")
+    ]
+    heading_texts = [text for text in heading_texts if text]
+    for text in heading_texts:
+        if _contains_wan_iface_reference(text, expected_suffixes):
+            return True
+    if any(_contains_any_wan_iface_reference(text) for text in heading_texts):
+        return False
+
+    return _contains_wan_iface_reference(input_html, expected_suffixes)
+
+
+def _wan_status_paths(iface_name: str) -> tuple[str, ...]:
+    """Return WAN status endpoint candidates for an interface."""
+    return tuple(path.format(iface_name=iface_name) for path in _WAN_STATUS_PATH_FORMATS)
+
 
 async def collect_router_data(
     router: Any,
@@ -298,38 +348,51 @@ async def collect_router_data(
     if existing_feature(device_model, MODULE_WAN) is True:
         # Probe support first; some models expose a generic/empty page.
         wan_candidates: list[tuple[str, dict[str, Any]]] = []
-        for iface_name, expected_markers in _WAN_STATUS_IFACES:
+        for iface_name, expected_suffixes, query_iface_names in _WAN_STATUS_IFACES:
             if iface_name != "wan" and existing_feature(device_model, MODULE_LOAD_BALANCING) is not True:
                 continue
 
-            wan_status_html = await hass.async_add_executor_job(
-                router.get,
-                f"admin/network/wan/status?detail=1&iface={iface_name}",
-                True,
-            )
-            if not wan_status_html:
-                continue
+            for query_iface_name in query_iface_names:
+                matched_status = False
+                for wan_status_path in _wan_status_paths(query_iface_name):
+                    wan_status_html = await hass.async_add_executor_job(
+                        router.get,
+                        wan_status_path,
+                        True,
+                    )
+                    if not wan_status_html:
+                        continue
 
-            normalized_html = wan_status_html.lower()
-            if expected_markers and not any(marker in normalized_html for marker in expected_markers):
-                # Some firmware returns the default WAN1 panel for unknown iface names.
-                continue
+                    if not _wan_status_matches_iface(wan_status_html, expected_suffixes):
+                        # Some firmware returns the default WAN1 panel for unknown iface names.
+                        continue
 
-            if any(
-                marker in normalized_html
-                for marker in (
-                    "public ip",
-                    "ip address",
-                    "gateway",
-                    "subnet",
-                    "protocol",
-                    "bytes received",
-                    "bytes sent",
-                    "rx bytes",
-                    "tx bytes",
-                )
-            ):
-                wan_candidates.append((iface_name, parse_wan_status(wan_status_html)))
+                    normalized_html = wan_status_html.lower()
+                    if any(
+                        marker in normalized_html
+                        for marker in (
+                            "public ip",
+                            "ip address",
+                            "gateway",
+                            "subnet",
+                            "protocol",
+                            "bytes received",
+                            "bytes sent",
+                            "rx bytes",
+                            "tx bytes",
+                            "bytes rx",
+                            "bytes tx",
+                            "rx/tx",
+                            "rx / tx",
+                            "tx/rx",
+                            "tx / rx",
+                        )
+                    ):
+                        wan_candidates.append((iface_name, parse_wan_status(wan_status_html)))
+                        matched_status = True
+                        break
+                if matched_status:
+                    break
 
         if wan_candidates:
             wan_data = dict(wan_candidates[0][1])

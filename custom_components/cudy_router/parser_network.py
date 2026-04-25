@@ -14,6 +14,119 @@ from .parser import (
 )
 
 _LOAD_BALANCING_INTERFACE_RE = re.compile(r"\bwan\s*([1-4])\b", re.IGNORECASE)
+_DATA_SIZE_TOKEN_RE = re.compile(
+    r"\d[\d,.]*\s*(?:bytes?|[kmgt]?i?b|[kmgt]?b)",
+    re.IGNORECASE,
+)
+_WAN_BYTES_RECEIVED_LABELS = (
+    "Bytes Received",
+    "RX Bytes",
+    "Rx Bytes",
+    "Bytes RX",
+    "Bytes Rx",
+    "Received Bytes",
+    "Receive Bytes",
+    "RX",
+    "Rx",
+    "Received",
+    "Bytes In",
+    "Inbound Bytes",
+    "Incoming Bytes",
+)
+_WAN_BYTES_SENT_LABELS = (
+    "Bytes Sent",
+    "TX Bytes",
+    "Tx Bytes",
+    "Bytes TX",
+    "Bytes Tx",
+    "Sent Bytes",
+    "Transmit Bytes",
+    "Transmitted Bytes",
+    "TX",
+    "Tx",
+    "Sent",
+    "Bytes Out",
+    "Outbound Bytes",
+    "Outgoing Bytes",
+)
+_WAN_RX_TX_LABELS = (
+    "RX/TX Bytes",
+    "RX / TX Bytes",
+    "Rx/Tx Bytes",
+    "Rx / Tx Bytes",
+    "Received/Sent Bytes",
+    "Received / Sent Bytes",
+    "Receive/Transmit Bytes",
+    "Receive / Transmit Bytes",
+    "Bytes Received/Sent",
+    "Bytes Received / Sent",
+)
+_WAN_TX_RX_LABELS = (
+    "TX/RX Bytes",
+    "TX / RX Bytes",
+    "Tx/Rx Bytes",
+    "Tx / Rx Bytes",
+    "Sent/Received Bytes",
+    "Sent / Received Bytes",
+    "Transmit/Receive Bytes",
+    "Transmit / Receive Bytes",
+    "Bytes Sent/Received",
+    "Bytes Sent / Received",
+)
+_VPN_CLIENT_COUNT_LABELS = (
+    "Devices",
+    "Clients",
+    "Client",
+    "Client(s)",
+    "Connected",
+    "Connected Clients",
+    "Online Clients",
+    "Active Clients",
+    "VPN Clients",
+    "Client Count",
+    "No. of Clients",
+    "Number of Clients",
+    "Users",
+    "Connected Users",
+    "Online Users",
+    "Active Users",
+    "Peers",
+    "Peer Count",
+)
+_VPN_CLIENT_TABLE_KEYWORDS = (
+    "client",
+    "peer",
+    "common name",
+    "username",
+    "virtual",
+    "real address",
+    "endpoint",
+    "allowed ip",
+    "handshake",
+)
+_VPN_STATUS_VALUE_LABELS = {
+    "protocol",
+    "vpn protocol",
+    "devices",
+    "clients",
+    "client",
+    "client(s)",
+    "connected",
+    "connected clients",
+    "online clients",
+    "active clients",
+    "vpn clients",
+    "client count",
+    "users",
+    "connected users",
+    "online users",
+    "active users",
+    "peers",
+    "peer count",
+    "tunnel ip",
+    "tunnel address",
+    "tunnel address/ip",
+}
 
 
 def _pick_first_value(raw_data: dict[str, Any], *keys: str) -> Any:
@@ -65,6 +178,21 @@ def _clean_count(value: Any) -> int | None:
     return int(match.group(0))
 
 
+def _parse_data_size_pair(value: Any) -> tuple[int | None, int | None]:
+    """Parse the first two byte-size values from a combined counter field."""
+    cleaned = _clean_text(value)
+    if cleaned is None:
+        return None, None
+
+    tokens = _DATA_SIZE_TOKEN_RE.findall(cleaned)
+    if len(tokens) < 2 and "/" in cleaned:
+        tokens = re.findall(r"\d[\d,]*", cleaned)
+    if len(tokens) < 2:
+        return None, None
+
+    return parse_data_size_bytes(tokens[0]), parse_data_size_bytes(tokens[1])
+
+
 def _cell_strings(element: Any) -> list[str]:
     """Extract unique text chunks from a table cell."""
     parts: list[str] = []
@@ -109,25 +237,60 @@ def _contains_interface_name(values: list[str], interface: str) -> bool:
     return False
 
 
+def _vpn_client_table_count(input_html: str) -> int | None:
+    """Count VPN client rows when the status page renders a client table."""
+    soup = BeautifulSoup(input_html, "html.parser")
+    total_clients = 0
+
+    for table in soup.find_all("table"):
+        header_values: list[str] = []
+        for header in table.find_all("th"):
+            header_values.extend(_cell_strings(header))
+        header_text = " ".join(header_values).lower()
+        if not any(keyword in header_text for keyword in _VPN_CLIENT_TABLE_KEYWORDS):
+            continue
+
+        table_clients = 0
+        rows = table.select("tbody tr") or table.find_all("tr")
+        for row in rows:
+            if row.find("th") is not None:
+                continue
+            columns = row.find_all("td")
+            values = [
+                value
+                for column in columns
+                for value in (_cell_strings(column) or [column.get_text(" ", strip=True)])
+                if value
+            ]
+            if len(values) < 2:
+                continue
+
+            row_text = " ".join(values).strip().lower()
+            if any(
+                placeholder in row_text
+                for placeholder in ("no data", "no clients", "no client", "no peers", "not connected")
+            ):
+                continue
+            if len(values) == 2 and values[0].strip().lower().rstrip(":") in _VPN_STATUS_VALUE_LABELS:
+                continue
+
+            table_clients += 1
+
+        total_clients += table_clients
+
+    return total_clients if total_clients > 0 else None
+
+
 def parse_vpn_status(input_html: str) -> dict[str, Any]:
     """Parse VPN status page."""
     raw_data = parse_tables(input_html)
+    vpn_clients = _clean_count(_pick_first_value(raw_data, *_VPN_CLIENT_COUNT_LABELS))
+    if vpn_clients is None:
+        vpn_clients = _vpn_client_table_count(input_html)
 
     return {
         "protocol": {"value": _clean_text(_pick_first_value(raw_data, "Protocol", "VPN Protocol"))},
-        "vpn_clients": {
-            "value": _clean_count(
-                _pick_first_value(
-                    raw_data,
-                    "Devices",
-                    "Clients",
-                    "Connected",
-                    "Connected Clients",
-                    "Online Clients",
-                    "Peers",
-                )
-            )
-        },
+        "vpn_clients": {"value": vpn_clients},
         "tunnel_ip": {
             "value": _clean_text(_pick_first_value(raw_data, "Tunnel IP", "Tunnel Address", "Tunnel Address/IP"))
         },
@@ -223,6 +386,16 @@ def parse_wan_status(input_html: str) -> dict[str, Any]:
     connected_time: float | None = (
         get_seconds_duration(connected_time_input) if connected_time_input else None
     )
+    bytes_received = parse_data_size_bytes(_pick_first_value(raw_data, *_WAN_BYTES_RECEIVED_LABELS))
+    bytes_sent = parse_data_size_bytes(_pick_first_value(raw_data, *_WAN_BYTES_SENT_LABELS))
+    if bytes_received is None or bytes_sent is None:
+        rx_value, tx_value = _parse_data_size_pair(_pick_first_value(raw_data, *_WAN_RX_TX_LABELS))
+        bytes_received = bytes_received if bytes_received is not None else rx_value
+        bytes_sent = bytes_sent if bytes_sent is not None else tx_value
+    if bytes_received is None or bytes_sent is None:
+        tx_value, rx_value = _parse_data_size_pair(_pick_first_value(raw_data, *_WAN_TX_RX_LABELS))
+        bytes_received = bytes_received if bytes_received is not None else rx_value
+        bytes_sent = bytes_sent if bytes_sent is not None else tx_value
 
     return {
         "protocol": {
@@ -251,16 +424,8 @@ def parse_wan_status(input_html: str) -> dict[str, Any]:
         "dns": {
             "value": _clean_text(_pick_first_value(raw_data, "DNS", "Preferred DNS", "Primary DNS"))
         },
-        "bytes_received": {
-            "value": parse_data_size_bytes(
-                _pick_first_value(raw_data, "Bytes Received", "RX Bytes", "Received Bytes")
-            )
-        },
-        "bytes_sent": {
-            "value": parse_data_size_bytes(
-                _pick_first_value(raw_data, "Bytes Sent", "TX Bytes", "Sent Bytes")
-            )
-        },
+        "bytes_received": {"value": bytes_received},
+        "bytes_sent": {"value": bytes_sent},
         "session_upload": {"value": session_upload},
         "session_download": {"value": session_download},
     }
