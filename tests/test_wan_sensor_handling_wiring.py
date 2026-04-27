@@ -98,7 +98,7 @@ def test_router_data_collects_lan_subnet_and_guards_wan_subnet_fallback() -> Non
     assert '"wanc"' in source
     assert "admin/network/wan/config/detail?nomodal=&iface=wan" in source
     assert "admin/network/wan/config?nomodal=&iface=wan" in source
-    assert 'status_subnet_mask in (None, "", "255.255.255.255")' in source
+    assert 'status_subnet_mask in (None, "")' in source
     assert 'for key in ("public_ip", "wan_ip", "gateway", "dns")' in source
 
 

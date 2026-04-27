@@ -40,7 +40,16 @@ def test_debug_report_redaction_keeps_wan_counts_and_protocols() -> None:
         Cookie: sysauth=abcdef123456; token="very-secret"
         <table><tr><td>Hostname</td><td>Chris-iPhone</td></tr></table>
         WAN3 PPTP Connected Clients 1 192.168.10.42 AA:BB:CC:DD:EE:FF
+        Connected Time 8 Day 15:36:49
         """
+    )
+    redacted_data = debug_report.Redactor().data(
+        {
+            "session_download": {"value": 69.75},
+            "session_upload": {"value": 50.94},
+            "connected_time_text": "8 Day 15:36:49",
+            "session_id": "abcdef123456",
+        }
     )
 
     assert "abcdef123456" not in redacted
@@ -51,6 +60,11 @@ def test_debug_report_redaction_keeps_wan_counts_and_protocols() -> None:
     assert "WAN3" in redacted
     assert "PPTP" in redacted
     assert "Connected Clients 1" in redacted
+    assert "15:36:49" in redacted
+    assert redacted_data["session_download"]["value"] == 69.75
+    assert redacted_data["session_upload"]["value"] == 50.94
+    assert redacted_data["connected_time_text"] == "8 Day 15:36:49"
+    assert redacted_data["session_id"] == "<REDACTED>"
 
 
 def test_debug_report_endpoint_matrix_includes_r700_wan_and_vpn_variants() -> None:

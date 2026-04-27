@@ -578,6 +578,41 @@ def parse_data_size(size_str: str) -> float:
     return value
 
 
+def _pick_first_value(raw_data: dict[str, Any], *keys: str) -> Any:
+    """Return the first non-empty table value for any key."""
+    for key in keys:
+        value = raw_data.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _parse_usage_percentage(value: Any) -> float | None:
+    """Parse a percent value, or a used/total memory ratio, as a percentage."""
+    if value in (None, ""):
+        return None
+
+    text = str(value).strip()
+    percent_match = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+    if percent_match:
+        return round(float(percent_match.group(1)), 2)
+
+    if "/" in text:
+        used_text, total_text = (part.strip() for part in text.split("/", 1))
+        used = parse_data_size(used_text)
+        total = parse_data_size(total_text)
+        if used is not None and total:
+            return round((used / total) * 100, 2)
+
+    numeric_match = re.fullmatch(r"\d+(?:\.\d+)?", text)
+    if numeric_match:
+        numeric_value = float(text)
+        if 0 <= numeric_value <= 100:
+            return numeric_value
+
+    return None
+
+
 def parse_system_status(input_html: str) -> dict[str, Any]:
     """Parses system status page."""
     raw_data = parse_tables(input_html)
@@ -632,11 +667,36 @@ def parse_system_status(input_html: str) -> dict[str, Any]:
         or raw_data.get("Current Time")
         or raw_data.get("Router Time")
     )
+    cpu_usage = _parse_usage_percentage(
+        _pick_first_value(
+            raw_data,
+            "CPU Usage",
+            "CPU Load",
+            "CPU Utilization",
+            "Processor Usage",
+            "CPU Used",
+            "CPU",
+        )
+    )
+    ram_usage = _parse_usage_percentage(
+        _pick_first_value(
+            raw_data,
+            "RAM Usage",
+            "Memory Usage",
+            "Memory Utilization",
+            "Memory Used",
+            "RAM Used",
+            "RAM",
+            "Memory",
+        )
+    )
 
     return {
         "uptime": {"value": uptime_seconds},
         "local_time": {"value": local_time},
         "firmware_version": {"value": firmware},
+        "cpu_usage": {"value": cpu_usage},
+        "ram_usage": {"value": ram_usage},
     }
 
 

@@ -91,6 +91,40 @@ _WAN_STATUS_IFACES: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...
     ("wand", "wan4", ("4", "d"), ("wand", "wan4")),
 )
 _WAN_INTERFACE_REFERENCE_RE = re.compile(r"(?<![a-z0-9])wan[\s_-]*([1-4a-d])(?![a-z0-9])", re.IGNORECASE)
+_WAN_STATUS_VALUE_MARKERS: tuple[str, ...] = (
+    "public ip",
+    "ip address",
+    "gateway",
+    "subnet",
+    "protocol",
+    "bytes received",
+    "bytes sent",
+    "rx bytes",
+    "tx bytes",
+    "bytes rx",
+    "bytes tx",
+    "rx/tx",
+    "rx / tx",
+    "tx/rx",
+    "tx / rx",
+    "connected time",
+    "upload / download",
+    "upload/download",
+    "mac-address",
+    "mac address",
+)
+_WAN_RICH_STATUS_KEYS: tuple[str, ...] = (
+    "connected_time",
+    "dns",
+    "gateway",
+    "mac_address",
+    "public_ip",
+    "subnet_mask",
+    "bytes_received",
+    "bytes_sent",
+    "session_upload",
+    "session_download",
+)
 
 
 def _entry_value(parsed: dict[str, Any], key: str) -> Any:
@@ -125,6 +159,11 @@ def _apply_load_balancing_statuses(
             interface_data.setdefault("status", {"value": status})
 
 
+def _load_balancing_has_interface(load_balancing_data: dict[str, Any], interface_key: str) -> bool:
+    """Return whether load-balancing status lists an interface."""
+    return _entry_value(load_balancing_data, f"{interface_key}_status") not in (None, "")
+
+
 def _vpn_candidate_score(parsed: dict[str, Any]) -> tuple[int, int, int, int, int]:
     """Score VPN pages so richer active-session pages win over placeholder ones."""
     protocol = _entry_value(parsed, "protocol")
@@ -141,6 +180,29 @@ def _vpn_candidate_score(parsed: dict[str, Any]) -> tuple[int, int, int, int, in
     )
 
 
+def _vpn_device_client_count(data: dict[str, Any]) -> int:
+    """Count devices currently routed over VPN when VPN status pages omit that total."""
+    devices_data = data.get(MODULE_DEVICES, {})
+    if not isinstance(devices_data, dict):
+        return 0
+
+    device_list = devices_data.get("device_list", [])
+    if not isinstance(device_list, list):
+        return 0
+
+    count = 0
+    for device in device_list:
+        if not isinstance(device, dict):
+            continue
+
+        vpn_value = device.get("vpn")
+        if vpn_value is True:
+            count += 1
+        elif isinstance(vpn_value, str) and vpn_value.strip().lower() in {"1", "true", "yes", "on"}:
+            count += 1
+    return count
+
+
 def _contains_wan_iface_reference(text: str, expected_suffixes: tuple[str, ...]) -> bool:
     """Return whether text references the expected WAN number or letter."""
     expected = {suffix.lower() for suffix in expected_suffixes}
@@ -153,6 +215,30 @@ def _contains_wan_iface_reference(text: str, expected_suffixes: tuple[str, ...])
 def _contains_any_wan_iface_reference(text: str) -> bool:
     """Return whether text references a specific WAN interface."""
     return _WAN_INTERFACE_REFERENCE_RE.search(text) is not None
+
+
+def _wan_status_has_conflicting_iface_reference(input_html: str, expected_suffixes: tuple[str, ...]) -> bool:
+    """Return whether a WAN status page explicitly references a different iface."""
+    if not expected_suffixes:
+        return False
+
+    soup = BeautifulSoup(input_html, "html.parser")
+    heading_texts = [
+        " ".join(element.stripped_strings)
+        for element in soup.select(".panel-title, .panel-heading, h1, h2, h3, h4, legend")
+    ]
+    heading_texts = [text for text in heading_texts if text]
+    for text in heading_texts:
+        if _contains_any_wan_iface_reference(text) and not _contains_wan_iface_reference(
+            text,
+            expected_suffixes,
+        ):
+            return True
+
+    return _contains_any_wan_iface_reference(input_html) and not _contains_wan_iface_reference(
+        input_html,
+        expected_suffixes,
+    )
 
 
 def _wan_status_matches_iface(input_html: str, expected_suffixes: tuple[str, ...]) -> bool:
@@ -178,6 +264,26 @@ def _wan_status_matches_iface(input_html: str, expected_suffixes: tuple[str, ...
 def _wan_status_paths(iface_name: str) -> tuple[str, ...]:
     """Return WAN status endpoint candidates for an interface."""
     return tuple(path.format(iface_name=iface_name) for path in _WAN_STATUS_PATH_FORMATS)
+
+
+def _wan_status_has_values(input_html: str) -> bool:
+    """Return whether a WAN status page contains fields worth parsing."""
+    normalized_html = input_html.lower()
+    return any(marker in normalized_html for marker in _WAN_STATUS_VALUE_MARKERS)
+
+
+def _wan_status_data_score(interface_data: dict[str, Any]) -> tuple[int, int]:
+    """Score parsed WAN data so confirmed summaries can prefer earlier rich detail pages."""
+    rich_fields = sum(
+        interface_data.get(key, {}).get("value") not in (None, "")
+        for key in _WAN_RICH_STATUS_KEYS
+    )
+    populated_fields = sum(
+        entry.get("value") not in (None, "")
+        for entry in interface_data.values()
+        if isinstance(entry, dict)
+    )
+    return (rich_fields, populated_fields)
 
 
 async def collect_router_data(
@@ -337,6 +443,9 @@ async def collect_router_data(
                 vpn_client_counts.append(vpn_clients)
 
         vpn_data = dict(best_vpn_data) if best_vpn_data is not None else parse_vpn_status(vpn_status_html)
+        vpn_device_client_count = _vpn_device_client_count(data)
+        if vpn_device_client_count:
+            vpn_client_counts.append(vpn_device_client_count)
         if vpn_client_counts:
             vpn_data["vpn_clients"] = {"value": max(vpn_client_counts)}
         data[MODULE_VPN] = vpn_data
@@ -374,12 +483,22 @@ async def collect_router_data(
         # Probe support first; some models expose a generic/empty page.
         wan_candidates: list[tuple[str, str, dict[str, Any]]] = []
         wan_interfaces: dict[str, dict[str, Any]] = {}
+        load_balancing_data = data.get(MODULE_LOAD_BALANCING, {})
         for iface_name, interface_key, expected_suffixes, query_iface_names in _WAN_STATUS_IFACES:
             if iface_name != "wan" and existing_feature(device_model, MODULE_LOAD_BALANCING) is not True:
+                continue
+            if (
+                iface_name != "wan"
+                and isinstance(load_balancing_data, dict)
+                and load_balancing_data
+                and not _load_balancing_has_interface(load_balancing_data, interface_key)
+            ):
                 continue
 
             for query_iface_name in query_iface_names:
                 matched_status = False
+                provisional_status: dict[str, Any] | None = None
+                provisional_score = (-1, -1)
                 for wan_status_path in _wan_status_paths(query_iface_name):
                     wan_status_html = await hass.async_add_executor_job(
                         router.get,
@@ -389,44 +508,39 @@ async def collect_router_data(
                     if not wan_status_html:
                         continue
 
-                    if not _wan_status_matches_iface(wan_status_html, expected_suffixes):
-                        # Some firmware returns the default WAN1 panel for unknown iface names.
+                    if not _wan_status_has_values(wan_status_html):
                         continue
 
-                    normalized_html = wan_status_html.lower()
-                    if any(
-                        marker in normalized_html
-                        for marker in (
-                            "public ip",
-                            "ip address",
-                            "gateway",
-                            "subnet",
-                            "protocol",
-                            "bytes received",
-                            "bytes sent",
-                            "rx bytes",
-                            "tx bytes",
-                            "bytes rx",
-                            "bytes tx",
-                            "rx/tx",
-                            "rx / tx",
-                            "tx/rx",
-                            "tx / rx",
-                        )
-                    ):
-                        parsed_wan_status = parse_wan_status(wan_status_html)
-                        interface_data = _non_empty_entries(parsed_wan_status)
-                        if interface_data:
-                            wan_candidates.append((iface_name, interface_key, interface_data))
-                            wan_interfaces[interface_key] = dict(interface_data)
+                    parsed_wan_status = parse_wan_status(wan_status_html)
+                    interface_data = _non_empty_entries(parsed_wan_status)
+                    if not interface_data:
+                        continue
+
+                    if _wan_status_matches_iface(wan_status_html, expected_suffixes):
+                        if provisional_status is not None and provisional_score > _wan_status_data_score(
+                            interface_data
+                        ):
+                            interface_data = provisional_status
+                        wan_candidates.append((iface_name, interface_key, interface_data))
+                        wan_interfaces[interface_key] = dict(interface_data)
                         matched_status = True
                         break
+
+                    # Some R700 detail endpoints for wanb/wanc contain the right
+                    # rich data but no WAN label. Keep it until a later summary
+                    # endpoint confirms the iface, while still rejecting default
+                    # WAN1 fallback pages for unknown names.
+                    if not _wan_status_has_conflicting_iface_reference(wan_status_html, expected_suffixes):
+                        candidate_score = _wan_status_data_score(interface_data)
+                        if candidate_score > provisional_score:
+                            provisional_status = dict(interface_data)
+                            provisional_score = candidate_score
                 if matched_status:
                     break
 
         _apply_load_balancing_statuses(
             wan_interfaces,
-            data.get(MODULE_LOAD_BALANCING, {}),
+            load_balancing_data,
         )
 
         if wan_candidates:
@@ -459,13 +573,12 @@ async def collect_router_data(
                     wan_data.get(key, {}).get("value") not in (None, "")
                     for key in ("public_ip", "wan_ip", "gateway", "dns")
                 )
-                # Some models report a DHCP /32 mask on the live status page even when the
-                # router UI shows the configured subnet. Only trust the config fallback when
-                # the WAN is otherwise live so disconnected interfaces do not invent values.
+                # PPPoE WAN status can legitimately report a /32 mask. Only use the
+                # config fallback when the live status page omits the mask entirely.
                 if (
                     has_live_wan_addressing
                     and config_subnet_mask not in (None, "")
-                    and status_subnet_mask in (None, "", "255.255.255.255")
+                    and status_subnet_mask in (None, "")
                 ):
                     wan_data["subnet_mask"] = {"value": config_subnet_mask}
                     if "wan1" in wan_interfaces:

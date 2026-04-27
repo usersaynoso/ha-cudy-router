@@ -75,7 +75,7 @@ _HTML_NAME_VALUE_RE = re.compile(
     r"SSID)\s*<[^>]*>\s*<[^>]+[^>]*>)([^<]+)",
 )
 _SECRET_KEY_RE = re.compile(
-    r"(password|passwd|pwd|token|csrf|salt|sysauth|cookie|session|secret|auth)",
+    r"(password|passwd|pwd|token|csrf|salt|sysauth|cookie|session[_-]?id|secret|auth)",
     re.IGNORECASE,
 )
 _NAME_KEY_RE = re.compile(
@@ -120,7 +120,12 @@ class Redactor:
         )
         redacted = _MAC_RE.sub(lambda match: self._placeholder("MAC", match.group(0)), redacted)
         redacted = _IPV4_RE.sub(lambda match: self._placeholder("IP", match.group(0)), redacted)
-        redacted = _IPV6_RE.sub(lambda match: self._placeholder("IPV6", match.group(0)), redacted)
+        redacted = _IPV6_RE.sub(
+            lambda match: self._placeholder("IPV6", match.group(0))
+            if "::" in match.group(0) or match.group(0).count(":") >= 4
+            else match.group(0),
+            redacted,
+        )
         return redacted
 
     def keyed_value(self, key: Any, value: Any) -> Any:

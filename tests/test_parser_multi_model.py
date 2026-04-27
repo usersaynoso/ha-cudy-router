@@ -56,6 +56,8 @@ def test_parse_system_status_supports_alternate_labels() -> None:
     assert parsed["firmware_version"]["value"] == "2.3.4-beta1"
     assert parsed["local_time"]["value"] == "2026-03-26 12:15:00"
     assert parsed["uptime"]["value"] == pytest.approx(97276.0)
+    assert parsed["cpu_usage"]["value"] == 18.5
+    assert parsed["ram_usage"]["value"] == 50.0
 
 
 def test_parse_sms_status_and_inbox_rows_from_p5_layout() -> None:

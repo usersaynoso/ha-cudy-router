@@ -262,6 +262,65 @@ def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypa
     assert ("admin/network/vpn/status?detail=", True) in fake_router.requests
 
 
+def test_collect_router_data_counts_vpn_routed_devices_when_status_reports_server_zero(
+    monkeypatch,
+) -> None:
+    """WireGuard client pages may omit routed-device count while server pages report zero."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module in {const.MODULE_DEVICES, const.MODULE_VPN},
+    )
+    monkeypatch.setattr(
+        router_data,
+        "parse_devices",
+        lambda html, device_list: {
+            const.SECTION_DEVICE_LIST: [
+                {"hostname": "media", "vpn": True},
+                {"hostname": "phone", "vpn": False},
+            ],
+            "device_count": {"value": 2},
+        },
+    )
+    monkeypatch.setattr(router_data, "parse_devices_status", lambda html: {})
+    monkeypatch.setattr(router_data, "parse_arp_status", lambda html, interface: {})
+
+    fake_router = _FakeRouter(
+        {
+            "admin/network/devices/devlist?detail=1": "",
+            "admin/network/devices/status?detail=1": "",
+            "admin/panel": "",
+            "admin/system/status/arp": "",
+            "admin/network/vpn/wireguard/status?detail=": """
+            <table class="table">
+              <tr><td>Protocol</td><td>WireGuard Client</td></tr>
+              <tr><td>Tunnel IP</td><td>10.10.10.2</td></tr>
+            </table>
+            """,
+            "admin/network/vpn/openvpns/status?status=": """
+            <table class="table">
+              <tr><td>Protocol</td><td>OpenVPN Server</td></tr>
+              <tr><td>Devices</td><td>0</td></tr>
+            </table>
+            """,
+            "admin/network/vpn/config": "",
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert data[const.MODULE_VPN]["protocol"]["value"] == "WireGuard Client"
+    assert data[const.MODULE_VPN]["tunnel_ip"]["value"] == "10.10.10.2"
+    assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 1
+
+
 def test_collect_router_data_keeps_load_balancing_only_wan_statuses_separate(monkeypatch) -> None:
     """WAN interface status entities should appear even when detail pages are absent."""
     monkeypatch.setattr(
@@ -369,6 +428,128 @@ def test_collect_router_data_accepts_lettered_wan_headings_and_alt_iface_paths(m
     assert data[const.MODULE_WAN_INTERFACES]["wan3"]["bytes_sent"]["value"] == 64 * 1024**2
     assert ("admin/network/wan/status?detail=&iface=wanb", True) in fake_router.requests
     assert ("admin/network/wan/status?detail=1&iface=wan3", True) in fake_router.requests
+
+
+def test_collect_router_data_prefers_unlabeled_lettered_wan_details_after_summary_match(
+    monkeypatch,
+) -> None:
+    """R700 wanb/wanc detail pages can be rich but unlabeled; summaries confirm ownership."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module
+        in {const.MODULE_WAN, const.MODULE_WAN_INTERFACES, const.MODULE_LOAD_BALANCING},
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/mwan3/status?detail=": """
+            <table class="table">
+              <tr><td>WAN1</td><td>Online</td></tr>
+              <tr><td>WAN2</td><td>Online</td></tr>
+              <tr><td>WAN3</td><td>Online</td></tr>
+            </table>
+            """,
+            "admin/network/wan/status?detail=1&iface=wan": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN1</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>PPPoE</td></tr>
+                <tr><td>IP Address</td><td>203.0.113.2</td></tr>
+                <tr><td>Public IP</td><td>203.0.113.2 *</td></tr>
+                <tr><td>Subnet Mask</td><td>255.255.255.255</td></tr>
+                <tr><td>Gateway</td><td>10.64.0.1</td></tr>
+                <tr><td>DNS</td><td>1.1.1.1/8.8.8.8</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=1&iface=wanb": """
+            <div>
+              <table class="table table-striped">
+                <tr><td>Protocol</td><td>PPPoE</td></tr>
+                <tr><td>Connected Time</td><td>8 Day 15:36:49</td></tr>
+                <tr><td>Upload / Download</td><td>50.94 MB / 69.75 MB</td></tr>
+                <tr><td>IP Address</td><td>198.51.100.2</td></tr>
+                <tr><td>Public IP</td><td>198.51.100.2</td></tr>
+                <tr><td>Subnet Mask</td><td>255.255.255.255</td></tr>
+                <tr><td>Gateway</td><td>10.65.0.1</td></tr>
+                <tr><td>DNS</td><td>9.9.9.9/149.112.112.112</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?iface=wanb": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN2</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>PPPoE</td></tr>
+                <tr><td>IP Address</td><td>198.51.100.2</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=1&iface=wanc": """
+            <div>
+              <table class="table table-striped">
+                <tr><td>Protocol</td><td>DHCP client</td></tr>
+                <tr><td>Connected Time</td><td>5 Day 21:44:42</td></tr>
+                <tr><td>Upload / Download</td><td>5.19 MB / 53.61 MB</td></tr>
+                <tr><td>MAC-Address</td><td>AA:BB:CC:DD:EE:FF</td></tr>
+                <tr><td>IP Address</td><td>192.0.2.67</td></tr>
+                <tr><td>Public IP</td><td>192.0.2.72 *</td></tr>
+                <tr><td>Subnet Mask</td><td>255.255.255.0</td></tr>
+                <tr><td>Gateway</td><td>192.0.2.1</td></tr>
+                <tr><td>DNS</td><td>192.0.2.1</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?iface=wanc": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN3</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>DHCP client</td></tr>
+                <tr><td>IP Address</td><td>192.0.2.67</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=1&iface=wand": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN4</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>DHCP client</td></tr>
+                <tr><td>Status</td><td>-</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/config/detail?nomodal=&iface=wan": """
+            <form>
+              <select name="cbid.network.wan.netmask">
+                <option value="255.255.255.0" selected="selected">255.255.255.0</option>
+              </select>
+            </form>
+            """,
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    wan_interfaces = data[const.MODULE_WAN_INTERFACES]
+    assert wan_interfaces["wan1"]["subnet_mask"]["value"] == "255.255.255.255"
+    assert wan_interfaces["wan2"]["gateway"]["value"] == "10.65.0.1"
+    assert wan_interfaces["wan2"]["dns"]["value"] == "9.9.9.9/149.112.112.112"
+    assert wan_interfaces["wan2"]["subnet_mask"]["value"] == "255.255.255.255"
+    assert wan_interfaces["wan2"]["connected_time"]["value"] is not None
+    assert wan_interfaces["wan3"]["mac_address"]["value"] == "AA:BB:CC:DD:EE:FF"
+    assert wan_interfaces["wan3"]["gateway"]["value"] == "192.0.2.1"
+    assert "wan4" not in wan_interfaces
+    assert data[const.MODULE_WAN]["subnet_mask"]["value"] == "255.255.255.255"
+    assert ("admin/network/wan/status?iface=wanb", True) in fake_router.requests
+    assert ("admin/network/wan/status?iface=wanc", True) in fake_router.requests
+    assert ("admin/network/wan/status?detail=1&iface=wand", True) not in fake_router.requests
 
 
 def test_collect_router_data_reads_auto_update_from_r700_setup_page_fallback(monkeypatch) -> None:

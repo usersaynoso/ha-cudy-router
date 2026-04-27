@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 from tests.module_loader import load_cudy_module
@@ -80,3 +81,76 @@ def test_wan_interface_sensor_returns_none_when_interface_disappears() -> None:
     assert entity._attr_name == "WAN2 status"
     assert entity.native_value is None
     assert entity.extra_state_attributes == {}
+
+
+def test_sensor_setup_removes_stale_wan_interface_registry_entries(monkeypatch) -> None:
+    """Setup should remove per-WAN sensors for interfaces no longer in coordinator data."""
+    config_entry = SimpleNamespace(
+        entry_id="entry123",
+        data={"model": "R700"},
+        options={},
+        title="R700",
+        async_on_unload=lambda unload: None,
+    )
+    coordinator = SimpleNamespace(
+        config_entry=config_entry,
+        data={
+            const.MODULE_WAN_INTERFACES: {
+                "wan2": {
+                    "status": {"value": "Online"},
+                },
+            },
+        },
+        async_add_listener=lambda listener: (lambda: None),
+    )
+    hass = SimpleNamespace(data={const.DOMAIN: {"entry123": coordinator}})
+
+    class _Registry:
+        def __init__(self) -> None:
+            self.entities = {
+                "sensor.r700_wan2_status": SimpleNamespace(
+                    domain="sensor",
+                    platform=const.DOMAIN,
+                    entity_id="sensor.r700_wan2_status",
+                    unique_id="entry123-wan_interfaces-wan2-status",
+                ),
+                "sensor.r700_wan4_protocol": SimpleNamespace(
+                    domain="sensor",
+                    platform=const.DOMAIN,
+                    entity_id="sensor.r700_wan4_protocol",
+                    unique_id="entry123-wan_interfaces-wan4-protocol",
+                ),
+            }
+            self.removed: list[str] = []
+
+        def async_get_entity_id(self, domain: str, platform: str, unique_id: str):
+            for entity in self.entities.values():
+                if entity.domain == domain and entity.platform == platform and entity.unique_id == unique_id:
+                    return entity.entity_id
+            return None
+
+        def async_remove(self, entity_id: str) -> None:
+            self.removed.append(entity_id)
+            self.entities.pop(entity_id, None)
+
+    registry = _Registry()
+    added_entities = []
+
+    monkeypatch.setattr(sensor, "async_get_entity_registry", lambda hass: registry)
+    monkeypatch.setattr(
+        sensor,
+        "existing_feature",
+        lambda device_model, module, feature=None: module == const.MODULE_WAN_INTERFACES,
+    )
+
+    asyncio.run(
+        sensor.async_setup_entry(
+            hass,
+            config_entry,
+            lambda entities: added_entities.extend(entities),
+        )
+    )
+
+    assert registry.removed == ["sensor.r700_wan4_protocol"]
+    assert "sensor.r700_wan2_status" in registry.entities
+    assert [entity.unique_id for entity in added_entities] == ["entry123-wan_interfaces-wan2-status"]

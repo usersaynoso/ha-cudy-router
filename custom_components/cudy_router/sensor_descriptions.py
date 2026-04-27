@@ -415,6 +415,24 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         icon="mdi:label",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    ("system", "cpu_usage"): CudyRouterSensorEntityDescription(
+        key="cpu_usage",
+        module="system",
+        name_suffix="CPU usage",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:cpu-64-bit",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    ("system", "ram_usage"): CudyRouterSensorEntityDescription(
+        key="ram_usage",
+        module="system",
+        name_suffix="RAM usage",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:memory",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
     # Data usage sensors
     ("data_usage", "current_traffic"): CudyRouterSensorEntityDescription(
         key="current_traffic",

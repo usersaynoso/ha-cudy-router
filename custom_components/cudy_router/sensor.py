@@ -156,6 +156,37 @@ async def async_setup_entry(
             if unique_id.endswith(("-mac", "-hostname", "-up_speed", "-down_speed")):
                 entity_registry.async_remove(entity_entry.entity_id)
 
+    def _active_wan_interface_sensor_unique_ids() -> set[str]:
+        """Return per-WAN sensor unique IDs that still have live coordinator values."""
+        if existing_feature(device_model, MODULE_WAN_INTERFACES) is False:
+            return set()
+
+        active_unique_ids: set[str] = set()
+        for interface_key, interface_data in _wan_interfaces(coordinator).items():
+            for description in WAN_INTERFACE_SENSOR_TYPES:
+                data_entry = interface_data.get(description.key)
+                if not isinstance(data_entry, dict) or data_entry.get("value") in (None, ""):
+                    continue
+                active_unique_ids.add(
+                    f"{config_entry.entry_id}-{MODULE_WAN_INTERFACES}-{interface_key}-{description.key}"
+                )
+        return active_unique_ids
+
+    def _remove_stale_wan_interface_sensors() -> None:
+        """Remove per-WAN sensors for interfaces or values no longer reported."""
+        active_unique_ids = _active_wan_interface_sensor_unique_ids()
+        unique_id_prefix = f"{config_entry.entry_id}-{MODULE_WAN_INTERFACES}-"
+        for entity_entry in list(entity_registry.entities.values()):
+            unique_id = getattr(entity_entry, "unique_id", "") or ""
+            if (
+                getattr(entity_entry, "platform", None) != DOMAIN
+                or getattr(entity_entry, "domain", None) != "sensor"
+                or not unique_id.startswith(unique_id_prefix)
+                or unique_id in active_unique_ids
+            ):
+                continue
+            entity_registry.async_remove(entity_entry.entity_id)
+
     def _append_entity(entity: SensorEntity) -> None:
         """Append entity once per unique ID."""
         unique_id = entity.unique_id
@@ -209,6 +240,7 @@ async def async_setup_entry(
             if load_balancing_data.get(sensor_key, {}).get("value") in (None, ""):
                 _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_LOAD_BALANCING}-{sensor_key}")
     _remove_legacy_manual_device_sensors()
+    _remove_stale_wan_interface_sensors()
 
     # Add sensors based on available data from coordinator
     if coordinator.data:
