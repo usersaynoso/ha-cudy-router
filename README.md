@@ -114,6 +114,8 @@ Network, Signal strength, SIM slot, Connected time, Cell information, RSRP, RSRQ
 
 Protocol, Connected time, Public IP, WAN IP, WAN Subnet mask, Gateway, DNS, WAN bytes received, WAN bytes sent, Session upload, Session download.
 
+R700 and other multi-WAN routers can also expose per-interface WAN sensors when the router reports them: WAN1/WAN2/WAN3/WAN4 status, protocol, IP, gateway, DNS, bytes received/sent, and session upload/download.
+
 When both modem and WAN modules are present, duplicate fields (connected time, public IP, WAN IP, session upload/download) are suppressed from the WAN module to avoid redundant entities.
 
 ### Data Usage
@@ -147,6 +149,10 @@ VPN protocol, VPN clients, VPN tunnel IP.
 ### Load Balancing
 
 Load balancing WAN1, Load balancing WAN2, Load balancing WAN3, Load balancing WAN4 (only for WANs currently shown by the router).
+
+### Debug Report
+
+For router-specific WAN or VPN issues, run the `cudy_router.generate_debug_report` action from Home Assistant Developer Tools. It returns a redacted Markdown report and also writes the same report to the Home Assistant log between `CUDY_ROUTER_DEBUG_REPORT_START` and `CUDY_ROUTER_DEBUG_REPORT_END`.
 
 ### Connected Device Summary
 

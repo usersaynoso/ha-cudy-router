@@ -22,6 +22,7 @@ from .const import (
     MODULE_VPN,
     MODULE_VPN_SETTINGS,
     MODULE_WAN,
+    MODULE_WAN_INTERFACES,
     MODULE_WIRELESS_SETTINGS,
     MODULE_WIFI_2G,
     MODULE_WIFI_5G,
@@ -83,11 +84,11 @@ _WAN_STATUS_PATH_FORMATS: tuple[str, ...] = (
     "admin/network/wan/status?iface={iface_name}",
 )
 
-_WAN_STATUS_IFACES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
-    ("wan", (), ("wan",)),
-    ("wanb", ("2", "b"), ("wanb", "wan2")),
-    ("wanc", ("3", "c"), ("wanc", "wan3")),
-    ("wand", ("4", "d"), ("wand", "wan4")),
+_WAN_STATUS_IFACES: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("wan", "wan1", (), ("wan", "wan1")),
+    ("wanb", "wan2", ("2", "b"), ("wanb", "wan2")),
+    ("wanc", "wan3", ("3", "c"), ("wanc", "wan3")),
+    ("wand", "wan4", ("4", "d"), ("wand", "wan4")),
 )
 _WAN_INTERFACE_REFERENCE_RE = re.compile(r"(?<![a-z0-9])wan[\s_-]*([1-4a-d])(?![a-z0-9])", re.IGNORECASE)
 
@@ -98,6 +99,30 @@ def _entry_value(parsed: dict[str, Any], key: str) -> Any:
     if isinstance(entry, dict):
         return entry.get("value")
     return None
+
+
+def _non_empty_entries(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Return parsed entries that contain live values."""
+    return {
+        key: entry
+        for key, entry in parsed.items()
+        if isinstance(entry, dict) and entry.get("value") not in (None, "")
+    }
+
+
+def _apply_load_balancing_statuses(
+    wan_interfaces: dict[str, dict[str, Any]],
+    load_balancing_data: dict[str, Any],
+) -> None:
+    """Copy load-balancing WAN statuses into per-interface WAN data."""
+    if not isinstance(load_balancing_data, dict):
+        return
+
+    for interface_number in range(1, 5):
+        status = _entry_value(load_balancing_data, f"wan{interface_number}_status")
+        if status not in (None, ""):
+            interface_data = wan_interfaces.setdefault(f"wan{interface_number}", {})
+            interface_data.setdefault("status", {"value": status})
 
 
 def _vpn_candidate_score(parsed: dict[str, Any]) -> tuple[int, int, int, int, int]:
@@ -347,8 +372,9 @@ async def collect_router_data(
     # WAN status
     if existing_feature(device_model, MODULE_WAN) is True:
         # Probe support first; some models expose a generic/empty page.
-        wan_candidates: list[tuple[str, dict[str, Any]]] = []
-        for iface_name, expected_suffixes, query_iface_names in _WAN_STATUS_IFACES:
+        wan_candidates: list[tuple[str, str, dict[str, Any]]] = []
+        wan_interfaces: dict[str, dict[str, Any]] = {}
+        for iface_name, interface_key, expected_suffixes, query_iface_names in _WAN_STATUS_IFACES:
             if iface_name != "wan" and existing_feature(device_model, MODULE_LOAD_BALANCING) is not True:
                 continue
 
@@ -388,18 +414,27 @@ async def collect_router_data(
                             "tx / rx",
                         )
                     ):
-                        wan_candidates.append((iface_name, parse_wan_status(wan_status_html)))
+                        parsed_wan_status = parse_wan_status(wan_status_html)
+                        interface_data = _non_empty_entries(parsed_wan_status)
+                        if interface_data:
+                            wan_candidates.append((iface_name, interface_key, interface_data))
+                            wan_interfaces[interface_key] = dict(interface_data)
                         matched_status = True
                         break
                 if matched_status:
                     break
 
+        _apply_load_balancing_statuses(
+            wan_interfaces,
+            data.get(MODULE_LOAD_BALANCING, {}),
+        )
+
         if wan_candidates:
-            wan_data = dict(wan_candidates[0][1])
+            wan_data = dict(wan_candidates[0][2])
             for byte_key in ("bytes_received", "bytes_sent"):
                 byte_values = [
                     entry.get(byte_key, {}).get("value")
-                    for _, entry in wan_candidates
+                    for _, _, entry in wan_candidates
                     if entry.get(byte_key, {}).get("value") is not None
                 ]
                 if byte_values:
@@ -433,6 +468,8 @@ async def collect_router_data(
                     and status_subnet_mask in (None, "", "255.255.255.255")
                 ):
                     wan_data["subnet_mask"] = {"value": config_subnet_mask}
+                    if "wan1" in wan_interfaces:
+                        wan_interfaces["wan1"]["subnet_mask"] = {"value": config_subnet_mask}
                 if wan_settings:
                     break
 
@@ -442,8 +479,12 @@ async def collect_router_data(
             dhcp_dns = dhcp_data.get("dhcp_prefered_dns", {}).get("value")
             if wan_data.get("gateway", {}).get("value") in (None, "") and dhcp_gateway not in (None, ""):
                 wan_data["gateway"] = {"value": dhcp_gateway}
+                if "wan1" in wan_interfaces:
+                    wan_interfaces["wan1"].setdefault("gateway", {"value": dhcp_gateway})
             if wan_data.get("dns", {}).get("value") in (None, "") and dhcp_dns not in (None, ""):
                 wan_data["dns"] = {"value": dhcp_dns}
+                if "wan1" in wan_interfaces:
+                    wan_interfaces["wan1"].setdefault("dns", {"value": dhcp_dns})
 
             # If modem metrics exist, avoid duplicate WAN entities for the same values.
             if MODULE_MODEM in data:
@@ -464,6 +505,13 @@ async def collect_router_data(
             }
             if wan_data:
                 data[MODULE_WAN] = wan_data
+
+        if wan_interfaces and existing_feature(device_model, MODULE_WAN_INTERFACES) is True:
+            data[MODULE_WAN_INTERFACES] = {
+                interface_key: interface_data
+                for interface_key, interface_data in wan_interfaces.items()
+                if interface_data
+            }
 
     if existing_feature(device_model, MODULE_WIRELESS_SETTINGS) is True:
         wireless_combo_html = await hass.async_add_executor_job(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Final
+from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -15,6 +15,10 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant, ServiceCall
+try:
+    from homeassistant.core import SupportsResponse
+except ImportError:  # pragma: no cover - older Home Assistant versions
+    SupportsResponse = None  # type: ignore[assignment]
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
@@ -38,6 +42,7 @@ from .device_info import (
     known_client_devices,
     known_tracker_clients,
 )
+from .debug_report import async_generate_debug_report, log_debug_report
 from .frontend import async_refresh_frontend
 from .device_tracking import (
     configured_device_ids,
@@ -68,12 +73,15 @@ SERVICE_RESTART_5G: Final = "restart_5g_connection"
 SERVICE_SWITCH_BAND: Final = "switch_5g_band"
 SERVICE_SEND_SMS: Final = "send_sms"
 SERVICE_SEND_AT_COMMAND: Final = "send_at_command"
+SERVICE_GENERATE_DEBUG_REPORT: Final = "generate_debug_report"
 
 ATTR_ENTRY_ID: Final = "entry_id"
 ATTR_BAND: Final = "band"
 ATTR_PHONE_NUMBER: Final = "phone_number"
 ATTR_MESSAGE: Final = "message"
 ATTR_COMMAND: Final = "command"
+ATTR_INCLUDE_HTML: Final = "include_html"
+ATTR_MAX_HTML_CHARS: Final = "max_html_chars"
 
 # Service schemas
 SERVICE_REBOOT_SCHEMA: Final = vol.Schema(
@@ -107,6 +115,17 @@ SERVICE_SEND_AT_COMMAND_SCHEMA: Final = vol.Schema(
     {
         vol.Optional(ATTR_ENTRY_ID): cv.string,
         vol.Required(ATTR_COMMAND): cv.string,
+    }
+)
+
+SERVICE_GENERATE_DEBUG_REPORT_SCHEMA: Final = vol.Schema(
+    {
+        vol.Optional(ATTR_ENTRY_ID): cv.string,
+        vol.Optional(ATTR_INCLUDE_HTML, default=True): cv.boolean,
+        vol.Optional(ATTR_MAX_HTML_CHARS, default=3000): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=0, max=20000),
+        ),
     }
 )
 
@@ -334,37 +353,71 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
         )
         _LOGGER.info("AT command '%s' result: %s", command, result)
 
-    # Only register services if not already registered
-    if hass.services.has_service(DOMAIN, SERVICE_REBOOT):
-        return
+    async def handle_generate_debug_report(call: ServiceCall) -> dict[str, str]:
+        """Handle the generate debug report service call."""
+        coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
+        if not coordinator:
+            raise HomeAssistantError("No Cudy Router coordinator found")
 
-    hass.services.async_register(
-        DOMAIN, SERVICE_REBOOT, handle_reboot, schema=SERVICE_REBOOT_SCHEMA
+        report = await async_generate_debug_report(
+            hass,
+            coordinator,
+            include_html=call.data.get(ATTR_INCLUDE_HTML, True),
+            max_html_chars=call.data.get(ATTR_MAX_HTML_CHARS, 3000),
+        )
+        log_debug_report(report)
+        return {"report": report}
+
+    def _register_service_once(
+        service: str,
+        handler,
+        schema: vol.Schema,
+        *,
+        supports_response=None,
+    ) -> None:
+        """Register a service only when it is not already present."""
+        if hass.services.has_service(DOMAIN, service):
+            return
+        kwargs: dict[str, Any] = {"schema": schema}
+        if supports_response is not None and SupportsResponse is not None:
+            kwargs["supports_response"] = supports_response
+        hass.services.async_register(DOMAIN, service, handler, **kwargs)
+
+    _register_service_once(
+        SERVICE_REBOOT,
+        handle_reboot,
+        SERVICE_REBOOT_SCHEMA,
     )
 
-    hass.services.async_register(
-        DOMAIN,
+    _register_service_once(
         SERVICE_RESTART_5G,
         handle_restart_5g,
-        schema=SERVICE_RESTART_5G_SCHEMA,
+        SERVICE_RESTART_5G_SCHEMA,
     )
 
-    hass.services.async_register(
-        DOMAIN,
+    _register_service_once(
         SERVICE_SWITCH_BAND,
         handle_switch_band,
-        schema=SERVICE_SWITCH_BAND_SCHEMA,
+        SERVICE_SWITCH_BAND_SCHEMA,
     )
 
-    hass.services.async_register(
-        DOMAIN, SERVICE_SEND_SMS, handle_send_sms, schema=SERVICE_SEND_SMS_SCHEMA
+    _register_service_once(
+        SERVICE_SEND_SMS,
+        handle_send_sms,
+        SERVICE_SEND_SMS_SCHEMA,
     )
 
-    hass.services.async_register(
-        DOMAIN,
+    _register_service_once(
         SERVICE_SEND_AT_COMMAND,
         handle_send_at_command,
-        schema=SERVICE_SEND_AT_COMMAND_SCHEMA,
+        SERVICE_SEND_AT_COMMAND_SCHEMA,
+    )
+
+    _register_service_once(
+        SERVICE_GENERATE_DEBUG_REPORT,
+        handle_generate_debug_report,
+        SERVICE_GENERATE_DEBUG_REPORT_SCHEMA,
+        supports_response=SupportsResponse.ONLY if SupportsResponse is not None else None,
     )
 
 
@@ -382,6 +435,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_SWITCH_BAND,
                 SERVICE_SEND_SMS,
                 SERVICE_SEND_AT_COMMAND,
+                SERVICE_GENERATE_DEBUG_REPORT,
             ):
                 hass.services.async_remove(DOMAIN, service)
     return unload_ok

@@ -18,7 +18,15 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import MODULE_DHCP, MODULE_LAN, MODULE_LOAD_BALANCING, MODULE_VPN, MODULE_WAN
+from .const import (
+    MODULE_DHCP,
+    MODULE_LAN,
+    MODULE_LOAD_BALANCING,
+    MODULE_VPN,
+    MODULE_WAN,
+    MODULE_WAN_INTERFACES,
+)
+
 
 @dataclass(frozen=True, kw_only=True)
 class CudyRouterSensorEntityDescription(SensorEntityDescription):
@@ -39,6 +47,91 @@ NETWORK_SENSOR = CudyRouterSensorEntityDescription(
     key="network",
     module="modem",
     name_suffix="Network",
+)
+
+WAN_INTERFACE_SENSOR_TYPES: tuple[CudyRouterSensorEntityDescription, ...] = (
+    CudyRouterSensorEntityDescription(
+        key="status",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="status",
+        icon="mdi:wan",
+    ),
+    CudyRouterSensorEntityDescription(
+        key="protocol",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="protocol",
+        icon="mdi:protocol",
+    ),
+    CudyRouterSensorEntityDescription(
+        key="connected_time",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="connected time",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    CudyRouterSensorEntityDescription(
+        key="public_ip",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="public IP",
+        icon="mdi:ip",
+    ),
+    CudyRouterSensorEntityDescription(
+        key="wan_ip",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="IP",
+        icon="mdi:ip",
+    ),
+    CudyRouterSensorEntityDescription(
+        key="subnet_mask",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="subnet mask",
+        icon="mdi:ip",
+    ),
+    CudyRouterSensorEntityDescription(
+        key="gateway",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="gateway",
+        icon="mdi:router-network",
+    ),
+    CudyRouterSensorEntityDescription(
+        key="dns",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="DNS",
+        icon="mdi:dns",
+    ),
+    CudyRouterSensorEntityDescription(
+        key="bytes_received",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="bytes received",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    CudyRouterSensorEntityDescription(
+        key="bytes_sent",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="bytes sent",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    CudyRouterSensorEntityDescription(
+        key="session_upload",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="session upload",
+        native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    CudyRouterSensorEntityDescription(
+        key="session_download",
+        module=MODULE_WAN_INTERFACES,
+        name_suffix="session download",
+        native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
 )
 
 SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {

@@ -73,6 +73,7 @@ def test_r700_emulator_does_not_expose_mesh_only_features() -> None:
     """R700 should not inherit mesh/LED support from the permissive unknown-model profile."""
     assert features.existing_feature("R700 V1.0", const.MODULE_MESH) is False
     assert features.existing_feature("R700", const.MODULE_WAN) is True
+    assert features.existing_feature("R700", const.MODULE_WAN_INTERFACES) is True
     assert features.existing_feature("R700", const.MODULE_DHCP) is True
     assert features.existing_feature("R700", const.MODULE_LOAD_BALANCING) is True
     assert features.existing_feature("R700", const.MODULE_AUTO_UPDATE_SETTINGS) is True

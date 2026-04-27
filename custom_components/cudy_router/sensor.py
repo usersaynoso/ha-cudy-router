@@ -21,6 +21,7 @@ from .const import (
     MODULE_MESH,
     MODULE_MODEM,
     MODULE_WAN,
+    MODULE_WAN_INTERFACES,
     OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
     OPTIONS_DEVICELIST,
     SECTION_DEVICE_LIST,
@@ -60,6 +61,7 @@ from .sensor_descriptions import (
     NETWORK_SENSOR,
     SENSOR_TYPES,
     SIGNAL_SENSOR,
+    WAN_INTERFACE_SENSOR_TYPES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,6 +88,30 @@ def _connected_devices(coordinator: CudyRouterDataUpdateCoordinator) -> list[dic
 
     devices = coordinator.data.get(MODULE_DEVICES, {}).get(SECTION_DEVICE_LIST, [])
     return [device for device in devices if isinstance(device, dict)]
+
+
+def _wan_interfaces(coordinator: CudyRouterDataUpdateCoordinator) -> dict[str, dict[str, Any]]:
+    """Return parsed per-WAN interface data."""
+    if not coordinator.data:
+        return {}
+
+    interfaces = coordinator.data.get(MODULE_WAN_INTERFACES, {})
+    if not isinstance(interfaces, dict):
+        return {}
+
+    return {
+        interface_key: interface_data
+        for interface_key, interface_data in interfaces.items()
+        if isinstance(interface_key, str) and isinstance(interface_data, dict)
+    }
+
+
+def _wan_interface_label(interface_key: str) -> str:
+    """Return a display label for an internal WAN interface key."""
+    suffix = interface_key.removeprefix("wan")
+    if suffix and suffix.isdigit():
+        return f"WAN{suffix}"
+    return interface_key.upper()
 
 
 async def async_setup_entry(
@@ -139,6 +165,33 @@ async def async_setup_entry(
             seen_unique_ids.add(unique_id)
         entities.append(entity)
 
+    def _wan_interface_sensor_entities() -> list[SensorEntity]:
+        """Build newly discovered per-WAN sensors."""
+        if existing_feature(device_model, MODULE_WAN_INTERFACES) is False:
+            return []
+
+        new_entities: list[SensorEntity] = []
+        for interface_key in sorted(_wan_interfaces(coordinator)):
+            interface_data = _wan_interfaces(coordinator)[interface_key]
+            for description in WAN_INTERFACE_SENSOR_TYPES:
+                data_entry = interface_data.get(description.key)
+                if not isinstance(data_entry, dict) or data_entry.get("value") in (None, ""):
+                    continue
+
+                entity = CudyRouterWanInterfaceSensor(
+                    coordinator,
+                    interface_key,
+                    description,
+                )
+                unique_id = entity.unique_id
+                if unique_id and unique_id in seen_unique_ids:
+                    continue
+                if unique_id:
+                    seen_unique_ids.add(unique_id)
+                new_entities.append(entity)
+
+        return new_entities
+
     # Clean up stale WAN entities that are known duplicates or have no value.
     wan_data = coordinator.data.get(MODULE_WAN, {}) if coordinator.data else {}
     for sensor_key in _WAN_REMOVED_SENSOR_KEYS:
@@ -161,6 +214,8 @@ async def async_setup_entry(
     if coordinator.data:
         for module, sensors in coordinator.data.items():
             if not isinstance(sensors, dict):
+                continue
+            if module == MODULE_WAN_INTERFACES:
                 continue
 
             for sensor_label in sensors:
@@ -187,6 +242,8 @@ async def async_setup_entry(
                             sensor_description,
                         )
                     )
+
+    entities.extend(_wan_interface_sensor_entities())
 
     # Always add signal and network sensors
     if existing_feature(device_model, "modem", "signal") is True:
@@ -331,7 +388,58 @@ async def async_setup_entry(
                 )
             )
 
+    @callback
+    def _add_new_wan_interface_sensors() -> None:
+        """Add per-WAN sensors if a later refresh discovers another interface."""
+        new_entities = _wan_interface_sensor_entities()
+        if new_entities:
+            async_add_entities(new_entities)
+
+    config_entry.async_on_unload(coordinator.async_add_listener(_add_new_wan_interface_sensors))
     async_add_entities(entities)
+
+
+class CudyRouterWanInterfaceSensor(
+    CoordinatorEntity[CudyRouterDataUpdateCoordinator], SensorEntity
+):
+    """Sensor backed by a specific WAN interface payload."""
+
+    _attr_has_entity_name = True
+    entity_description: CudyRouterSensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: CudyRouterDataUpdateCoordinator,
+        interface_key: str,
+        description: CudyRouterSensorEntityDescription,
+    ) -> None:
+        """Initialize the per-WAN sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._interface_key = interface_key
+        self._attr_name = f"{_wan_interface_label(interface_key)} {description.name_suffix}"
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}-{MODULE_WAN_INTERFACES}-{interface_key}-{description.key}"
+        )
+        self._attr_device_info = build_router_device_info(coordinator)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the state of the sensor."""
+        interface_data = _wan_interfaces(self.coordinator).get(self._interface_key, {})
+        data_entry = interface_data.get(self.entity_description.key)
+        if not isinstance(data_entry, dict):
+            return None
+        return data_entry.get("value")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the state attributes."""
+        interface_data = _wan_interfaces(self.coordinator).get(self._interface_key, {})
+        data_entry = interface_data.get(self.entity_description.key)
+        if not isinstance(data_entry, dict):
+            return {}
+        return data_entry.get("attributes", {})
 
 
 class CudyRouterConnectedDeviceSensor(

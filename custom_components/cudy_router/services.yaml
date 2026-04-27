@@ -86,3 +86,32 @@ send_at_command:
       example: "abcd1234"
       selector:
         text:
+
+generate_debug_report:
+  name: Generate debug report
+  description: Create a redacted Cudy Router debug report for troubleshooting WAN and VPN entity issues.
+  fields:
+    entry_id:
+      name: Config entry ID
+      description: Optional config entry id to target a specific router instance
+      required: false
+      example: "abcd1234"
+      selector:
+        text:
+    include_html:
+      name: Include HTML
+      description: Include redacted HTML snippets from each tested router page.
+      required: false
+      default: true
+      selector:
+        boolean:
+    max_html_chars:
+      name: Maximum HTML characters
+      description: Maximum redacted HTML characters to include for each tested router page.
+      required: false
+      default: 3000
+      selector:
+        number:
+          min: 0
+          max: 20000
+          mode: box

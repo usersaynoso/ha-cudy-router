@@ -24,6 +24,8 @@ def test_readme_documents_new_settings_entities() -> None:
     assert "Load balancing WAN3" in source
     assert "Load balancing WAN4" in source
     assert "WAN bytes received" in source
+    assert "WAN1/WAN2/WAN3/WAN4 status" in source
+    assert "cudy_router.generate_debug_report" in source
     assert "LAN ARP entries" in source
     assert "Auto update time" in source
     assert "internet access switch" in source.lower()

@@ -677,6 +677,34 @@ class CudyRouter:
             _LOGGER.debug("Failed to retrieve data from %s (status=%s)", url, status)
         return ""
 
+    def debug_get(self, path: str) -> dict[str, Any]:
+        """Fetch a LuCI path and return transport details for diagnostics."""
+        response = self._luci_get(
+            path,
+            timeout=DEFAULT_PAGE_TIMEOUT,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": f"{self.base_url}/cgi-bin/luci/admin",
+            },
+            silent=True,
+        )
+        if response is None:
+            return {
+                "path": path,
+                "status_code": None,
+                "ok": False,
+                "url": self._luci_url(path),
+                "text": "",
+            }
+
+        return {
+            "path": path,
+            "status_code": response.status_code,
+            "ok": bool(response.ok),
+            "url": getattr(response, "url", self._luci_url(path)),
+            "text": response.text or "",
+        }
+
     def _resolve_luci_form_action(self, action: str | None, fallback_path: str) -> str:
         """Resolve a form action to a LuCI-relative path."""
         if not action or action == "#":

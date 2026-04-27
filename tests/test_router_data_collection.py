@@ -112,7 +112,8 @@ def test_collect_router_data_skips_duplicate_multi_wan_page_and_aggregates_valid
     monkeypatch.setattr(
         router_data,
         "existing_feature",
-        lambda device_model, module: module in {const.MODULE_WAN, const.MODULE_LOAD_BALANCING},
+        lambda device_model, module: module
+        in {const.MODULE_WAN, const.MODULE_WAN_INTERFACES, const.MODULE_LOAD_BALANCING},
     )
     fake_router = _FakeRouter(
         {
@@ -145,6 +146,12 @@ def test_collect_router_data_skips_duplicate_multi_wan_page_and_aggregates_valid
     assert data[const.MODULE_WAN]["wan_ip"]["value"] == "192.0.2.2"
     assert data[const.MODULE_WAN]["bytes_received"]["value"] == (1024**3) + (2 * 1024**3)
     assert data[const.MODULE_WAN]["bytes_sent"]["value"] == (128 * 1024**2) + (256 * 1024**2)
+    assert data[const.MODULE_WAN_INTERFACES]["wan1"]["wan_ip"]["value"] == "192.0.2.2"
+    assert data[const.MODULE_WAN_INTERFACES]["wan1"]["bytes_received"]["value"] == 1024**3
+    assert data[const.MODULE_WAN_INTERFACES]["wan4"]["bytes_received"]["value"] == 2 * 1024**3
+    assert data[const.MODULE_WAN_INTERFACES]["wan4"]["bytes_sent"]["value"] == 256 * 1024**2
+    assert data[const.MODULE_WAN_INTERFACES]["wan1"]["status"]["value"] == "Online"
+    assert data[const.MODULE_WAN_INTERFACES]["wan4"]["status"]["value"] == "Online"
     assert set(data[const.MODULE_LOAD_BALANCING]) == {"wan1_status", "wan4_status"}
     assert data[const.MODULE_LOAD_BALANCING]["wan1_status"]["value"] == "Online"
     assert data[const.MODULE_LOAD_BALANCING]["wan4_status"]["value"] == "Online"
@@ -159,6 +166,7 @@ def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypa
         in {
             const.MODULE_VPN,
             const.MODULE_WAN,
+            const.MODULE_WAN_INTERFACES,
             const.MODULE_LOAD_BALANCING,
         },
     )
@@ -240,6 +248,12 @@ def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypa
     assert data[const.MODULE_LOAD_BALANCING]["wan3_status"]["value"] == "Offline"
     assert data[const.MODULE_WAN]["bytes_received"]["value"] == (1024**3) + (2 * 1024**3) + (512 * 1024**2)
     assert data[const.MODULE_WAN]["bytes_sent"]["value"] == (128 * 1024**2) + (256 * 1024**2) + (64 * 1024**2)
+    assert data[const.MODULE_WAN_INTERFACES]["wan1"]["bytes_received"]["value"] == 1024**3
+    assert data[const.MODULE_WAN_INTERFACES]["wan2"]["bytes_received"]["value"] == 2 * 1024**3
+    assert data[const.MODULE_WAN_INTERFACES]["wan3"]["bytes_received"]["value"] == 512 * 1024**2
+    assert data[const.MODULE_WAN_INTERFACES]["wan2"]["status"]["value"] == "Online"
+    assert data[const.MODULE_WAN_INTERFACES]["wan3"]["status"]["value"] == "Offline"
+    assert "wan4" not in data[const.MODULE_WAN_INTERFACES]
     assert ("admin/network/mwan3/status?detail=", True) in fake_router.requests
     assert ("admin/network/wan/status?detail=1&iface=wanb", True) in fake_router.requests
     assert ("admin/network/wan/status?detail=1&iface=wanc", True) in fake_router.requests
@@ -248,12 +262,41 @@ def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypa
     assert ("admin/network/vpn/status?detail=", True) in fake_router.requests
 
 
+def test_collect_router_data_keeps_load_balancing_only_wan_statuses_separate(monkeypatch) -> None:
+    """WAN interface status entities should appear even when detail pages are absent."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module
+        in {const.MODULE_WAN, const.MODULE_WAN_INTERFACES, const.MODULE_LOAD_BALANCING},
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/mwan3/status?detail=": _fixture_text("load_balancing", "r700_status_wan2_wan3.html"),
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert const.MODULE_WAN not in data
+    assert data[const.MODULE_WAN_INTERFACES]["wan2"]["status"]["value"] == "Online"
+    assert data[const.MODULE_WAN_INTERFACES]["wan3"]["status"]["value"] == "Offline"
+
+
 def test_collect_router_data_accepts_lettered_wan_headings_and_alt_iface_paths(monkeypatch) -> None:
     """R700 WAN polling should tolerate newer WAN B/C labels and alternate iface names."""
     monkeypatch.setattr(
         router_data,
         "existing_feature",
-        lambda device_model, module: module in {const.MODULE_WAN, const.MODULE_LOAD_BALANCING},
+        lambda device_model, module: module
+        in {const.MODULE_WAN, const.MODULE_WAN_INTERFACES, const.MODULE_LOAD_BALANCING},
     )
     fake_router = _FakeRouter(
         {
@@ -320,6 +363,10 @@ def test_collect_router_data_accepts_lettered_wan_headings_and_alt_iface_paths(m
     assert data[const.MODULE_WAN]["bytes_sent"]["value"] == (
         (128 * 1024**2) + (512 * 1024**2) + (64 * 1024**2)
     )
+    assert data[const.MODULE_WAN_INTERFACES]["wan2"]["protocol"]["value"] == "PPPoE"
+    assert data[const.MODULE_WAN_INTERFACES]["wan3"]["protocol"]["value"] == "DHCP"
+    assert data[const.MODULE_WAN_INTERFACES]["wan2"]["bytes_received"]["value"] == int(1.5 * 1024**3)
+    assert data[const.MODULE_WAN_INTERFACES]["wan3"]["bytes_sent"]["value"] == 64 * 1024**2
     assert ("admin/network/wan/status?detail=&iface=wanb", True) in fake_router.requests
     assert ("admin/network/wan/status?detail=1&iface=wan3", True) in fake_router.requests
 
