@@ -420,7 +420,7 @@ async def collect_router_data(
         vpn_status_html = ""
         best_vpn_data: dict[str, Any] | None = None
         best_vpn_score = (-1, -1, -1, -1, -1)
-        vpn_client_counts: list[int] = []
+        vpn_status_client_counts: list[int] = []
         for vpn_status_path in _VPN_STATUS_PATHS:
             candidate_html = await hass.async_add_executor_job(
                 router.get,
@@ -441,11 +441,11 @@ async def collect_router_data(
 
             vpn_clients = _entry_value(parsed_candidate, "vpn_clients")
             if isinstance(vpn_clients, int):
-                vpn_client_counts.append(vpn_clients)
+                vpn_status_client_counts.append(vpn_clients)
 
         vpn_data = dict(best_vpn_data) if best_vpn_data is not None else parse_vpn_status(vpn_status_html)
-        vpn_device_client_count = _vpn_device_client_count(data)
-        if vpn_device_client_count:
+        vpn_client_counts = vpn_status_client_counts
+        if not vpn_client_counts and (vpn_device_client_count := _vpn_device_client_count(data)):
             vpn_client_counts.append(vpn_device_client_count)
         if vpn_client_counts:
             vpn_data["vpn_clients"] = {"value": max(vpn_client_counts)}

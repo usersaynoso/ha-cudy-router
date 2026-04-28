@@ -244,6 +244,16 @@ def test_parse_vpn_status_reads_connected_client_count() -> None:
     assert parsed["tunnel_ip"]["value"] == "10.8.0.2"
 
 
+def test_parse_vpn_status_reads_zero_device_count() -> None:
+    """VPN parsing should preserve explicit zero connected-device counts."""
+    parsed = parser_network.parse_vpn_status(
+        _fixture_text("vpn", "vpn_wr3000s_openvpn_server_zero.html")
+    )
+
+    assert parsed["protocol"]["value"] == "OpenVPN Server"
+    assert parsed["vpn_clients"]["value"] == 0
+
+
 def test_parse_vpn_status_reads_additional_client_count_labels() -> None:
     """VPN count parsing should accept newer active-client labels."""
     parsed = parser_network.parse_vpn_status(

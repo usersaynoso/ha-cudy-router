@@ -264,10 +264,10 @@ def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypa
     assert ("admin/network/vpn?mvpn=", True) in fake_router.requests
 
 
-def test_collect_router_data_counts_vpn_routed_devices_when_status_reports_server_zero(
+def test_collect_router_data_counts_vpn_routed_devices_when_status_omits_client_count(
     monkeypatch,
 ) -> None:
-    """WireGuard client pages may omit routed-device count while server pages report zero."""
+    """VPN client pages may omit routed-device counts and need the device-list fallback."""
     monkeypatch.setattr(
         router_data,
         "existing_feature",
@@ -302,7 +302,6 @@ def test_collect_router_data_counts_vpn_routed_devices_when_status_reports_serve
             "admin/network/vpn/openvpns/status?status=": """
             <table class="table">
               <tr><td>Protocol</td><td>OpenVPN Server</td></tr>
-              <tr><td>Devices</td><td>0</td></tr>
             </table>
             """,
             "admin/network/vpn/config": "",
@@ -321,6 +320,58 @@ def test_collect_router_data_counts_vpn_routed_devices_when_status_reports_serve
     assert data[const.MODULE_VPN]["protocol"]["value"] == "WireGuard Client"
     assert data[const.MODULE_VPN]["tunnel_ip"]["value"] == "10.10.10.2"
     assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 1
+
+
+def test_collect_router_data_keeps_explicit_zero_vpn_count_over_device_toggle_count(
+    monkeypatch,
+) -> None:
+    """Router VPN status counts should beat per-device VPN access toggle counts."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module in {const.MODULE_DEVICES, const.MODULE_VPN},
+    )
+    monkeypatch.setattr(
+        router_data,
+        "parse_devices",
+        lambda html, device_list: {
+            const.SECTION_DEVICE_LIST: [
+                {"hostname": f"device-{index}", "vpn": True}
+                for index in range(6)
+            ],
+            "device_count": {"value": 6},
+        },
+    )
+    monkeypatch.setattr(router_data, "parse_devices_status", lambda html: {})
+    monkeypatch.setattr(router_data, "parse_arp_status", lambda html, interface: {})
+
+    fake_router = _FakeRouter(
+        {
+            "admin/network/devices/devlist?detail=1": "",
+            "admin/network/devices/status?detail=1": "",
+            "admin/panel": "",
+            "admin/system/status/arp": "",
+            "admin/network/vpn/openvpns/status?status=": _fixture_text(
+                "vpn",
+                "vpn_wr3000s_openvpn_server_zero.html",
+            ),
+            "admin/network/vpn/pptp/status?detail=": _fixture_text("vpn", "vpn_r700_status.html"),
+            "admin/network/vpn/config": "",
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "WR3000S V1.0",
+        )
+    )
+
+    assert data[const.MODULE_VPN]["protocol"]["value"] == "PPTP Client"
+    assert data[const.MODULE_VPN]["tunnel_ip"]["value"] == "192.168.2.20"
+    assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 0
 
 
 def test_collect_router_data_uses_mvpn_page_for_vpn_client_count(monkeypatch) -> None:
