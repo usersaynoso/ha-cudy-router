@@ -99,6 +99,10 @@ def test_bug_report_issue_template_requests_diagnostics_attachment() -> None:
     assert "name: Bug report" in bug_report_template
     assert "Report a problem with the Cudy Router integration" in bug_report_template
     assert "Download diagnostics from Home Assistant" in bug_report_template
+    assert "Settings > Devices & services" in bug_report_template
+    assert "Open the **Cudy Router** integration" in bug_report_template
+    assert "three-dot menu on the affected Cudy Router entry" in bug_report_template
+    assert "Choose **Download diagnostics**" in bug_report_template
     assert "drag and drop the diagnostics file into this issue" in bug_report_template
     assert "I have attached the Home Assistant diagnostics file" in bug_report_template
     assert "Integration version" in bug_report_template
@@ -117,6 +121,8 @@ def test_readme_links_directly_to_bug_report_issue_form() -> None:
 
     assert "https://github.com/usersaynoso/ha-cudy-router/issues/new?template=bug_report.yml" in readme
     assert "attach the Home Assistant diagnostics file" in readme
+    assert "Settings > Devices & services > Cudy Router" in readme
+    assert "Download diagnostics" in readme
 
 
 def test_local_brand_assets_exist() -> None:

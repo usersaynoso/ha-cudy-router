@@ -158,6 +158,8 @@ For router-specific WAN or VPN issues, run the `cudy_router.generate_debug_repor
 
 Please use the [bug report form](https://github.com/usersaynoso/ha-cudy-router/issues/new?template=bug_report.yml) and attach the Home Assistant diagnostics file for the Cudy Router integration.
 
+To download diagnostics, open Home Assistant and go to **Settings > Devices & services > Cudy Router**, use the three-dot menu on the affected Cudy Router entry, then choose **Download diagnostics**.
+
 ### Connected Device Summary
 
 Device count, LAN ARP entries, WiFi 2.4G clients, WiFi 5G clients, Wired clients, Total clients, Top downloader speed, Top downloader MAC, Top downloader hostname, Top uploader speed, Top uploader MAC, Top uploader hostname, Total download speed, Total upload speed, Mesh devices connected.

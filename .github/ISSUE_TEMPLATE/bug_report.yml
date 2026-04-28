@@ -10,6 +10,14 @@ body:
 
         Please attach Home Assistant diagnostics for the Cudy Router integration. Diagnostics usually contain the router page shapes needed to fix model-specific issues.
 
+        Download diagnostics from Home Assistant:
+
+        1. In Home Assistant, go to **Settings > Devices & services**.
+        2. Open the **Cudy Router** integration.
+        3. Use the three-dot menu on the affected Cudy Router entry.
+        4. Choose **Download diagnostics**.
+        5. Drag and drop the downloaded diagnostics file into this issue.
+
   - type: input
     id: summary
     attributes:
@@ -78,7 +86,7 @@ body:
     id: diagnostics-confirmation
     attributes:
       label: Diagnostics
-      description: Download diagnostics from Home Assistant, then drag and drop the diagnostics file into this issue before submitting.
+      description: In Home Assistant, go to Settings > Devices & services > Cudy Router, open the three-dot menu on the affected entry, choose Download diagnostics, then drag and drop the diagnostics file into this issue before submitting.
       options:
         - label: I have attached the Home Assistant diagnostics file, or I have explained below why I cannot provide it.
           required: true
