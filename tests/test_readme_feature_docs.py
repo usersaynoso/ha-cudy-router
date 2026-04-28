@@ -59,6 +59,8 @@ def test_readme_has_direct_hacs_my_home_assistant_button() -> None:
 
     assert "https://my.home-assistant.io/badges/hacs_repository.svg" in source
     assert HACS_REPOSITORY_URL in source
+    assert 'target="_blank"' in source
+    assert 'rel="noopener noreferrer"' in source
     assert "owner=usersaynoso" in source
     assert "repository=ha-cudy-router" in source
     assert "category=integration" in source

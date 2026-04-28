@@ -4,7 +4,9 @@
 [![Version](https://img.shields.io/github/v/release/usersaynoso/ha-cudy-router?label=version)](https://github.com/usersaynoso/ha-cudy-router/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE.md)
 
-[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=usersaynoso&repository=ha-cudy-router&category=integration)
+<a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=usersaynoso&repository=ha-cudy-router&category=integration" target="_blank" rel="noopener noreferrer">
+  <img alt="Open your Home Assistant instance and open this repository in HACS" src="https://my.home-assistant.io/badges/hacs_repository.svg">
+</a>
 
 `cudy_router` is a community-built Home Assistant integration for Cudy routers that expose a LuCI-based web interface.
 
