@@ -1,8 +1,10 @@
 # Cudy Router for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-blue.svg)](https://github.com/usersaynoso/ha-cudy-router)
-[![Version](https://img.shields.io/badge/version-1.3.10-blue.svg)](https://github.com/usersaynoso/ha-cudy-router/releases)
+[![Version](https://img.shields.io/github/v/release/usersaynoso/ha-cudy-router?label=version)](https://github.com/usersaynoso/ha-cudy-router/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE.md)
+
+[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=usersaynoso&repository=ha-cudy-router&category=integration)
 
 `cudy_router` is a community-built Home Assistant integration for Cudy routers that expose a LuCI-based web interface.
 
@@ -13,35 +15,31 @@ This project is not endorsed, maintained, or supported by Cudy.
 
 ## Highlights
 
-- Local polling integration with config flow and options flow
-- Router-wide sensors for modem, WAN, LAN, DHCP, VPN, load balancing, Wi-Fi, SMS, traffic, and system status
-- Writable router configuration exposed as Home Assistant `switch` and `select` entities
-- Main router reboot button and service calls for advanced actions (SMS, AT commands, band switching)
-- Mesh node support with separate Home Assistant devices, per-node LED control, and reboot
-- Connected client support with separate Home Assistant devices
-- Per-client control switches for internet access, DNS filter, and VPN
-- Optional connected-client tracking with `device_tracker` entities
-- Clean Home Assistant device registry layout with router, mesh, and client devices split apart
-- Automatic config entry migration from older versions
+- Local polling integration with Home Assistant config flow and options flow.
+- Router-wide sensors for modem/cellular, WAN, LAN, DHCP, VPN, load balancing, Wi-Fi, SMS, traffic, and system status.
+- Writable router settings exposed as Home Assistant `switch` and `select` entities when the router supports them.
+- Reboot buttons and services for SMS, AT commands, 5G connection restart, and band switching.
+- Mesh node support with separate Home Assistant devices, per-node LED control, and per-node reboot.
+- Connected client devices, per-client controls, and optional `device_tracker` entities.
+- Automatic config entry migration from older versions.
 
 
 ## Current Status
 
 Only the **Cudy P5** has been tested on real hardware so far.
 
-The integration includes an explicit model capability map so unsupported module families stay hidden instead of showing dead or non-functional entities. Unknown Cudy models fall back to best-effort dynamic detection.
+The integration includes a model capability map so unsupported module families stay hidden instead of showing dead or non-functional entities. Unknown Cudy models fall back to best-effort dynamic detection.
 
-The following devices are mapped but have **not** been tested on real hardware yet:
-
-- **Routers:** WR11000, WR6500, WR3600H, TR3000, WR3000E, WR3000, WR1500, WR1300V4.0, WR1300E, WR1300EV2, TR1200, WR1200, WR300S, R700
-- **4G/5G routers:** P2, P4, P5, LT15E, LT700E, LT500, LT400E, LT300V3, LT700-Outdoor, LT400-Outdoor, IR02
-- **Mesh Wi-Fi:** M11000, M3000, M1500, M1200
-- **Extenders:** RE3600, RE1500, RE1200, RE1200-Outdoor
+Several additional routers, 4G/5G routers, mesh devices, and extenders are mapped from emulator or firmware page behavior but have **not** been tested on real hardware yet. See the [supported routers and compatibility guide](https://github.com/usersaynoso/ha-cudy-router/wiki/Supported-Routers-and-Compatibility) for the full list.
 
 
 ## Installation
 
-### HACS (recommended)
+### HACS
+
+Use the button above to open this repository directly in HACS, then download **Cudy Router** and restart Home Assistant.
+
+If the button does not work:
 
 1. Open **HACS** in Home Assistant.
 2. Open the menu in the top-right corner.
@@ -65,326 +63,57 @@ The following devices are mapped but have **not** been tested on real hardware y
 The integration normalizes the host automatically. If you enter `192.168.10.1`, it will probe the router and store the working scheme as either `http://192.168.10.1` or `https://192.168.10.1`.
 
 
-## Home Assistant Device Model
-
-The integration is structured around three device classes.
-
-### Main Router
-
-The main router device is the parent device for the integration. Router-wide sensors, configuration entities, reboot actions, and router-level diagnostics live here.
-
-Examples: modem and WAN status, traffic and SMS counters, DHCP and VPN sensors, Wi-Fi status sensors, writable router settings, main router LED control, and the reboot button.
-
-### Mesh Nodes
-
-Each detected mesh satellite is exposed as its own Home Assistant device under the main router.
-
-Mesh node devices can expose: node name, model, MAC, IP, firmware, hardware, status, backhaul, connected-device count, a per-node LED switch, and a per-node reboot button.
-
-### Connected Client Devices
-
-Connected clients can also be exposed as separate Home Assistant devices under the main router.
-
-Client devices can expose: IP address, connection type, signal, online time, internet access switch, DNS filter switch, and VPN switch.
-
-
-## Entity Categories
-
-The integration uses Home Assistant entity categories intentionally:
-
-- Writable router settings live under **Configuration**.
-- Technical read-only values live under **Diagnostic**.
-- Operational controls like reboot buttons or per-client access switches remain normal control entities.
-
-
-## Platforms
+## What It Creates
 
 The integration creates entities on these Home Assistant platforms: `sensor`, `switch`, `select`, `button`, and `device_tracker`.
 
-
-## Sensors
-
 Entity availability depends on the router model and firmware. Not every router exposes every page or field.
 
-### Modem / Cellular
-
-Network, Signal strength, SIM slot, Connected time, Cell information, RSRP, RSRQ, SINR, RSSI, Band, Public IP, WAN IP, IMEI, IMSI, ICCID, Mode, Bandwidth, Session upload, Session download.
-
-### WAN
-
-Protocol, Connected time, Public IP, WAN IP, WAN Subnet mask, Gateway, DNS, WAN bytes received, WAN bytes sent, Session upload, Session download.
-
-R700 and other multi-WAN routers can also expose per-interface WAN sensors when the router reports them: WAN1/WAN2/WAN3/WAN4 status, protocol, IP, gateway, DNS, bytes received/sent, and session upload/download.
-
-When both modem and WAN modules are present, duplicate fields (connected time, public IP, WAN IP, session upload/download) are suppressed from the WAN module to avoid redundant entities.
-
-### Data Usage
-
-Current session traffic, Monthly traffic, Total traffic.
-
-### System
-
-Uptime, Local time, Firmware version.
-
-### SMS
-
-SMS inbox, SMS outbox, SMS unread.
-
-### Wi-Fi
-
-WiFi 2.4G SSID, WiFi 2.4G channel, WiFi 5G SSID, WiFi 5G channel.
-
-### LAN
-
-LAN IP, Subnet mask, LAN MAC, Bytes received, Bytes sent.
-
-### DHCP
-
-IP Start, IP End, Preferred DNS, Default Gateway, Leasetime.
-
-### VPN
-
-VPN protocol, VPN clients, VPN tunnel IP.
-
-### Load Balancing
-
-Load balancing WAN1, Load balancing WAN2, Load balancing WAN3, Load balancing WAN4 (only for WANs currently shown by the router).
-
-### Debug Report
-
-For router-specific entity, WAN, VPN, SMS, mesh, or settings issues, run the `cudy_router.generate_debug_report` action from Home Assistant Developer Tools. It returns a redacted Markdown report and also writes the same report to the Home Assistant log between `CUDY_ROUTER_DEBUG_REPORT_START` and `CUDY_ROUTER_DEBUG_REPORT_END`.
-
-Diagnostics include an entity catalog that lists created entities, live supported entities that should be available, and blocked entities with reasons such as unsupported model, missing router page, empty parsed value, or disabled option. Unsupported entities are reported for troubleshooting but are not created in Home Assistant unless the model map or live parsed router data proves support.
-
-Maintainers can compare Cudy's public emulator pages with the integration capability map by running `scripts/cudy_emulator_catalog.py`. This is an offline maintenance tool and is not used by Home Assistant diagnostics at runtime.
-
-### Reporting Issues
-
-Please use the [bug report form](https://github.com/usersaynoso/ha-cudy-router/issues/new?template=bug_report.yml) and attach the Home Assistant diagnostics file for the Cudy Router integration.
-
-To download diagnostics, open Home Assistant and go to **Settings > Devices & services > Cudy Router**, use the three-dot menu on the affected Cudy Router entry, then choose **Download diagnostics**.
-
-### Connected Device Summary
-
-Device count, LAN ARP entries, WiFi 2.4G clients, WiFi 5G clients, Wired clients, Total clients, Top downloader speed, Top downloader MAC, Top downloader hostname, Top uploader speed, Top uploader MAC, Top uploader hostname, Total download speed, Total upload speed, Mesh devices connected.
-
-### Connected Client Detail Sensors
-
-When client devices are enabled, each matched connected client can expose: IP address, Connection type, Signal, Online time.
-
-### Mesh Node Sensors
-
-Each mesh node can expose: Name, Model, MAC address, Firmware, Status, IP address, Connected devices, Hardware, Backhaul.
-
-
-## Switches
-
-### Router Configuration Switches
-
-Cellular enabled, Data roaming, Smart Connect, WiFi 2.4G enabled, WiFi 5G enabled, WiFi 2.4G hidden network, WiFi 5G hidden network, WiFi 2.4G separate clients, WiFi 5G separate clients, VPN enabled, VPN site-to-site, Auto update, LED (on mesh-capable firmware).
-
-### Mesh Node Switches
-
-LED (per node).
-
-### Per-Client Switches
-
-Internet access, DNS filter, VPN.
-
-
-## Selects
-
-SIM slot, Network mode, Network search, APN profile, PDP type, WiFi 2.4G mode, WiFi 2.4G channel width, WiFi 2.4G channel, WiFi 2.4G transmit power, WiFi 5G mode, WiFi 5G channel width, WiFi 5G channel, WiFi 5G transmit power, VPN protocol, VPN default rule, VPN client access, VPN policy, Auto update time.
-
-Settings like the SIM slot can be changed directly from Home Assistant, for example switching between `Sim 1` and `Sim 2`.
-
-
-## Buttons
-
-### Main Router
-
-Reboot.
-
-### Mesh Nodes
-
-Reboot (per node).
-
-
-## Device Trackers
-
-The integration supports opt-in `device_tracker` entities for connected clients.
-
-Important behavior:
-
-- `device_tracker` entities are controlled separately from automatic client-device creation.
-- **Automatically Add Device Trackers For Connected Devices** creates trackers for every currently connected client with a MAC address.
-- **Tracked Devices** keeps individual `device_tracker` entities for selected clients, even after reloads or when those clients are currently offline.
-- Live client sensors and switches still use entity availability from the router's current connected-device list.
-- **Manually Add Connected Devices** is a picker for client devices and live client entities when automatic connected-device discovery is turned off.
-
-
-## Integration Options
-
-### Automatically Add Connected Devices
-
-Disabled by default for new integrations.
-
-When enabled, the integration creates client devices and live per-client entities for every currently connected device reported by the router.
-
-These live client entities use availability to show whether the client is currently connected. This option does not control `device_tracker` creation.
-
-### Manually Add Connected Devices
-
-A picker of connected clients.
-
-When **Automatically Add Connected Devices** is turned off, client devices and live client entities are only created for devices selected in this picker.
-
-Selected manual client devices stay in Home Assistant when they go offline and their client sensors and switches become unavailable until the client reconnects.
-
-Legacy text-based values using MAC addresses, hostnames, and IP addresses are still honored until you save the picker.
-
-### Automatically Add Device Trackers For Connected Devices
-
-Disabled by default.
-
-When enabled, the integration creates `device_tracker` entities for every currently connected device with a MAC address.
-
-### Tracked Devices
-
-A picker of connected clients that should always keep a `device_tracker` entity.
-
-Selected trackers persist across reloads and report `not_home` when the client is offline. When automatic connected-device discovery is turned off, this picker shows the manual connected devices selected in the previous step, or all live connected clients when no manual connected devices are selected.
-
-### Update Interval
-
-Controls how often the router is polled for new data. The default is **60 seconds**. Accepted range is 15 to 3600 seconds, in steps of 5.
-
-
-## SMS Panel
-
-SMS-capable routers expose an admin-only sidebar panel at `/cudy-router-sms`.
-
-The **Cudy SMS** panel provides:
-
-- A router selector for multi-router setups
-- Inbox and outbox browsing with full message bodies
-- Reply prefill from a selected message
-- An SMS compose form for sending messages through the router modem
-
-On SMS-capable routers, **Configure Cudy Router** also includes a **Show Cudy SMS in sidebar** option. Turning it off hides the sidebar link while keeping the panel available by direct URL.
-
-The device page still keeps `SMS inbox`, `SMS outbox`, and `SMS unread` as standard count entities. Clicking those entities uses the normal Home Assistant more-info dialog and does not open the SMS browser.
+- **Main router device:** modem/cellular, WAN, traffic, system, SMS, Wi-Fi, LAN, DHCP, VPN, load balancing, Mesh devices connected, settings, diagnostics, and reboot controls.
+- **Mesh node devices:** node identity, firmware, status, IP address, backhaul, connected-device count, LED control, and reboot controls.
+- **Connected client devices:** IP address, connection type, signal, online time, internet access, DNS filter, VPN control, and optional tracking.
+- **SMS panel:** SMS-capable routers expose an admin-only sidebar panel at `/cudy-router-sms` for inbox, outbox, replies, and composing SMS messages.
 
 
 ## Services
 
-### `cudy_router.reboot_router`
+The integration provides these Home Assistant services:
 
-Reboots the router.
+- `cudy_router.reboot_router`
+- `cudy_router.restart_5g_connection`
+- `cudy_router.switch_5g_band`
+- `cudy_router.send_sms`
+- `cudy_router.send_at_command`
 
-Optional fields: `entry_id`.
-
-### `cudy_router.restart_5g_connection`
-
-Restarts the router's cellular connection by triggering a modem reset.
-
-Optional fields: `entry_id`.
-
-### `cudy_router.switch_5g_band`
-
-Changes the modem band/network-mode preference.
-
-Fields: `band` (required), `entry_id` (optional).
-
-The `band` field accepts shorthand values that are mapped to the firmware's network-mode selector: `auto`, `5g-only`, `lte-only`, `5g-nsa`. Any other value is passed through directly.
-
-### `cudy_router.send_sms`
-
-Sends an SMS through the router's modem.
-
-Fields: `phone_number` (required), `message` (required), `entry_id` (optional).
-
-### `cudy_router.send_at_command`
-
-Sends a raw AT command to the modem and logs the result.
-
-Fields: `command` (required), `entry_id` (optional).
+Use the optional `entry_id` field to target a specific router when you have multiple Cudy Router entries.
 
 
-## Example Service Calls
+## Full Documentation
 
-```yaml
-service: cudy_router.reboot_router
-data: {}
-```
+The detailed user guide lives in the [GitHub wiki](https://github.com/usersaynoso/ha-cudy-router/wiki):
 
-```yaml
-service: cudy_router.send_sms
-data:
-  phone_number: "+441234567890"
-  message: "Hello from Home Assistant"
-```
-
-```yaml
-service: cudy_router.send_at_command
-data:
-  command: "AT+CSQ"
-```
-
-```yaml
-service: cudy_router.switch_5g_band
-data:
-  band: "auto"
-```
-
-
-## What the Integration Reads
-
-Depending on the detected router model and available pages, the integration reads and parses data from: modem/cellular status, connected device lists, system status, data-usage pages, SMS status, Wi-Fi status, LAN status, VPN status, DHCP status, WAN status, cellular configuration, wireless configuration, VPN configuration, auto-update configuration, and mesh status.
-
-
-## Client Device Behavior
-
-Client device creation is intentionally separate from router-level summary sensors.
-
-Summary sensors like total clients and top uploader/downloader remain on the main router device. Per-client IP, signal, online time, internet access, and DNS filter entities live on client devices. Mesh node entities live on mesh devices. Router settings stay on the main router device.
-
-
-## Limitations and Notes
-
-- Feature coverage varies by router model and firmware.
-- Some mesh values may be unavailable or reported as unknown if the router firmware does not expose them.
-- Service calls such as band switching and raw AT commands are advanced operations and should be used carefully.
-- The integration polls the router web UI. If the router is busy, rebooting, unreachable, or returns a different page layout, entities may be temporarily unavailable.
-- If the router password changes, reauthentication is handled through the config entry.
-- SSL certificate verification is disabled because Cudy routers use self-signed certificates.
-- The integration supports multiple router instances. Use the optional `entry_id` field on service calls to target a specific one.
+- **Getting started:** [Installation and Setup](https://github.com/usersaynoso/ha-cudy-router/wiki/Installation-and-Setup), [First Run Checklist](https://github.com/usersaynoso/ha-cudy-router/wiki/First-Run-Checklist), [Updating, Removing, and Reinstalling](https://github.com/usersaynoso/ha-cudy-router/wiki/Updating-Removing-and-Reinstalling)
+- **Daily use:** [Entities and Device Model](https://github.com/usersaynoso/ha-cudy-router/wiki/Entities-and-Device-Model), [Entity Naming and Finding Entities](https://github.com/usersaynoso/ha-cudy-router/wiki/Entity-Naming-and-Finding-Entities), [Options and Device Trackers](https://github.com/usersaynoso/ha-cudy-router/wiki/Options-and-Device-Trackers), [Connected Devices Explained](https://github.com/usersaynoso/ha-cudy-router/wiki/Connected-Devices-Explained), [Services and Example Calls](https://github.com/usersaynoso/ha-cudy-router/wiki/Services-and-Example-Calls), [Common Automations](https://github.com/usersaynoso/ha-cudy-router/wiki/Common-Automations), [Dashboard Examples](https://github.com/usersaynoso/ha-cudy-router/wiki/Dashboard-Examples), [SMS Panel](https://github.com/usersaynoso/ha-cudy-router/wiki/SMS-Panel)
+- **Support:** [Troubleshooting and Diagnostics](https://github.com/usersaynoso/ha-cudy-router/wiki/Troubleshooting-and-Diagnostics), [Troubleshooting by Symptom](https://github.com/usersaynoso/ha-cudy-router/wiki/Troubleshooting-by-Symptom), [Error Messages and Repairs](https://github.com/usersaynoso/ha-cudy-router/wiki/Error-Messages-and-Repairs), [FAQ](https://github.com/usersaynoso/ha-cudy-router/wiki/FAQ), [Known Limitations and Firmware Quirks](https://github.com/usersaynoso/ha-cudy-router/wiki/Known-Limitations-and-Firmware-Quirks), [Privacy and Security](https://github.com/usersaynoso/ha-cudy-router/wiki/Privacy-and-Security)
+- **Compatibility and releases:** [Supported Model Matrix](https://github.com/usersaynoso/ha-cudy-router/wiki/Supported-Model-Matrix), [Supported Routers and Compatibility](https://github.com/usersaynoso/ha-cudy-router/wiki/Supported-Routers-and-Compatibility), [Router Compatibility Reports](https://github.com/usersaynoso/ha-cudy-router/wiki/Router-Compatibility-Reports), [Network Setup Examples](https://github.com/usersaynoso/ha-cudy-router/wiki/Network-Setup-Examples), [Release Notes and Upgrade Guide](https://github.com/usersaynoso/ha-cudy-router/wiki/Release-Notes-and-Upgrade-Guide), [Maintainer and Contributor Guide](https://github.com/usersaynoso/ha-cudy-router/wiki/Maintainer-and-Contributor-Guide)
 
 
 ## Troubleshooting
 
-### Entities Missing
+If entities are missing, check that your router model exposes the relevant page or control and that the integration options for automatic or manual client creation are set correctly.
 
-Check that the router model actually exposes the relevant page or control, that the integration options for automatic or manual client creation are set correctly, and that Home Assistant has been restarted after updating the custom component.
+For router-specific entity, WAN, VPN, SMS, mesh, or settings issues, run the `cudy_router.generate_debug_report` action from Home Assistant Developer Tools. It returns a redacted Markdown report and writes the same report to the Home Assistant log between `CUDY_ROUTER_DEBUG_REPORT_START` and `CUDY_ROUTER_DEBUG_REPORT_END`.
 
-### Too Many Client Devices
+Please use the [bug report form](https://github.com/usersaynoso/ha-cudy-router/issues/new?template=bug_report.yml) and attach the Home Assistant diagnostics file for the Cudy Router integration.
 
-Turn off **Automatically Add Connected Devices** and use **Manually Add Connected Devices** instead.
-
-### Client Device Did Not Match
-
-Open the manual connected-device picker while the client is online and select it from the list. Legacy text-based values using MAC addresses, hostnames, and IP addresses are still read until you save the picker.
-
-### Router Cannot Connect
-
-Check the router IP address, username, and password, and confirm that Home Assistant can reach the router over the local network.
+To download diagnostics, open Home Assistant and go to **Settings > Devices & services > Cudy Router**, use the three-dot menu on the affected Cudy Router entry, then choose **Download diagnostics**.
 
 
 ## Contributing
 
 Issues and pull requests are welcome at [github.com/usersaynoso/ha-cudy-router](https://github.com/usersaynoso/ha-cudy-router).
 
-When changing behavior, update the tests and keep the README in sync with the actual entity surface, options flow, and service list.
+When changing behavior, update the tests and keep the README or wiki in sync with the actual entity surface, options flow, and service list.
 
 
 ## License

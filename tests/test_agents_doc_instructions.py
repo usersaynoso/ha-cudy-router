@@ -72,3 +72,16 @@ def test_agents_requires_hacs_rest_release_list_verification() -> None:
     assert '{"draft":false,"prerelease":false,"make_latest":"true"}' in source
     assert "HACS \"Update information\"" in source
     assert "do not manually edit `/config/.storage/hacs.repositories`" in source
+
+
+def test_agents_requires_wiki_updates_for_release_work() -> None:
+    """AGENTS should require wiki review and publishing for release-bearing tasks."""
+    source = AGENTS_PATH.read_text(encoding="utf-8")
+
+    assert "### Wiki Documentation During Releases" in source
+    assert "update `/Users/chris/Git Local/ha-cudy-router.wiki` before reporting the release complete" in source
+    assert "Always update `Release-Notes-and-Upgrade-Guide.md`" in source
+    assert "affected user docs, compatibility pages, model matrix, troubleshooting pages, and dashboard/automation examples" in source
+    assert "`Last reviewed for version <manifest_version>`" in source
+    assert "`Supported-Model-Matrix.md` and `Router-Compatibility-Reports.md`" in source
+    assert "wiki update has been committed and pushed" in source

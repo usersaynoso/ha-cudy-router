@@ -58,5 +58,14 @@
 - For HACS-visible releases, do not rely only on `gh release list`, `gh release view`, the GitHub web UI, GraphQL, or `/releases/latest`. HACS reads GitHub's REST releases list, so also verify `gh api 'repos/usersaynoso/ha-cudy-router/releases?per_page=10'` includes the new `v<manifest_version>` release, normally first in the list. If `/releases/latest` shows the new version but `/releases?per_page=10` omits it, HACS can stay stuck on the previous version.
 - If GitHub's REST releases list omits the new public release, repair the GitHub release publication before touching HACS or making another code release. A verified repair is to PATCH the release with a JSON body to draft it, then PATCH it back to published/latest, for example `printf '%s' '{"draft":true}' | gh api --method PATCH repos/usersaynoso/ha-cudy-router/releases/<release_id> --input -` followed by `printf '%s' '{"draft":false,"prerelease":false,"make_latest":"true"}' | gh api --method PATCH repos/usersaynoso/ha-cudy-router/releases/<release_id> --input -`, then recheck the REST releases list locally and from `ssh ha` when available.
 - If HACS still shows the old latest version after GitHub's REST releases list is correct, treat it as HACS local cache. Use HACS "Update information" or an authenticated HACS repository refresh; do not manually edit `/config/.storage/hacs.repositories` while Home Assistant is running.
+
+### Wiki Documentation During Releases
+
+- For any release-bearing task, update `/Users/chris/Git Local/ha-cudy-router.wiki` before reporting the release complete.
+- Always update `Release-Notes-and-Upgrade-Guide.md` for the manifest version being released.
+- When release behavior changes, update affected user docs, compatibility pages, model matrix, troubleshooting pages, and dashboard/automation examples.
+- Add or update `Last reviewed for version <manifest_version>` on touched wiki pages during release work.
+- If a release includes model or router compatibility changes, update `Supported-Model-Matrix.md` and `Router-Compatibility-Reports.md`.
+- Do not treat GitHub release publication as complete until the wiki update has been committed and pushed, unless the user explicitly asks not to publish wiki changes.
 - When this repo has a local virtualenv, prefer `.venv/bin/python -m pytest` and `.venv/bin/python -m compileall custom_components tests` over assuming system `python3` has the required tooling installed.
 - Keep running the repository checks required by this repo before the final push: update relevant tests, run pytest, and run compile checks for `custom_components` and `tests`.
