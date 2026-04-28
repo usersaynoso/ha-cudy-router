@@ -154,6 +154,10 @@ Load balancing WAN1, Load balancing WAN2, Load balancing WAN3, Load balancing WA
 
 For router-specific WAN or VPN issues, run the `cudy_router.generate_debug_report` action from Home Assistant Developer Tools. It returns a redacted Markdown report and also writes the same report to the Home Assistant log between `CUDY_ROUTER_DEBUG_REPORT_START` and `CUDY_ROUTER_DEBUG_REPORT_END`.
 
+### Reporting Issues
+
+Please use the [bug report form](https://github.com/usersaynoso/ha-cudy-router/issues/new?template=bug_report.yml) and attach the Home Assistant diagnostics file for the Cudy Router integration.
+
 ### Connected Device Summary
 
 Device count, LAN ARP entries, WiFi 2.4G clients, WiFi 5G clients, Wired clients, Total clients, Top downloader speed, Top downloader MAC, Top downloader hostname, Top uploader speed, Top uploader MAC, Top uploader hostname, Total download speed, Total upload speed, Mesh devices connected.

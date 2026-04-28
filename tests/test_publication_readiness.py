@@ -11,11 +11,14 @@ MANIFEST_PATH = ROOT / "custom_components" / "cudy_router" / "manifest.json"
 HACS_JSON_PATH = ROOT / "hacs.json"
 STRINGS_PATH = ROOT / "custom_components" / "cudy_router" / "strings.json"
 TRANSLATIONS_PATH = ROOT / "custom_components" / "cudy_router" / "translations" / "en.json"
+README_PATH = ROOT / "README.md"
 BRAND_ICON_PATH = ROOT / "custom_components" / "cudy_router" / "brand" / "icon.png"
 BRAND_LOGO_PATH = ROOT / "custom_components" / "cudy_router" / "brand" / "logo.png"
 HACS_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "validate.yaml"
 HASSFEST_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "hassfest.yaml"
 RELEASE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "release.yaml"
+BUG_REPORT_TEMPLATE_PATH = ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml"
+ISSUE_TEMPLATE_CONFIG_PATH = ROOT / ".github" / "ISSUE_TEMPLATE" / "config.yml"
 
 
 def test_manifest_has_required_hacs_fields() -> None:
@@ -86,6 +89,34 @@ def test_release_workflow_creates_github_releases_from_version_tags() -> None:
     assert "waiting for visibility" in release_workflow
     assert 'was created concurrently; leaving it unchanged.' in release_workflow
     assert 'Failed to publish release $RELEASE_TAG.' in release_workflow
+
+
+def test_bug_report_issue_template_requests_diagnostics_attachment() -> None:
+    """Bug reports should ask users to attach Home Assistant diagnostics."""
+    bug_report_template = BUG_REPORT_TEMPLATE_PATH.read_text(encoding="utf-8")
+    issue_template_config = ISSUE_TEMPLATE_CONFIG_PATH.read_text(encoding="utf-8")
+
+    assert "name: Bug report" in bug_report_template
+    assert "Report a problem with the Cudy Router integration" in bug_report_template
+    assert "Download diagnostics from Home Assistant" in bug_report_template
+    assert "drag and drop the diagnostics file into this issue" in bug_report_template
+    assert "I have attached the Home Assistant diagnostics file" in bug_report_template
+    assert "Integration version" in bug_report_template
+    assert "Home Assistant version" in bug_report_template
+    assert "Router model and firmware" in bug_report_template
+    assert "Expected behavior" in bug_report_template
+    assert "Actual behavior" in bug_report_template
+    assert "Steps to reproduce" in bug_report_template
+    assert "cudy_router.generate_debug_report" not in bug_report_template
+    assert "blank_issues_enabled: false" in issue_template_config
+
+
+def test_readme_links_directly_to_bug_report_issue_form() -> None:
+    """README should send users straight to the diagnostics-aware bug form."""
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    assert "https://github.com/usersaynoso/ha-cudy-router/issues/new?template=bug_report.yml" in readme
+    assert "attach the Home Assistant diagnostics file" in readme
 
 
 def test_local_brand_assets_exist() -> None:
