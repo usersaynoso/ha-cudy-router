@@ -139,8 +139,8 @@ def test_sensor_setup_removes_stale_wan_interface_registry_entries(monkeypatch) 
     monkeypatch.setattr(sensor, "async_get_entity_registry", lambda hass: registry)
     monkeypatch.setattr(
         sensor,
-        "existing_feature",
-        lambda device_model, module, feature=None: module == const.MODULE_WAN_INTERFACES,
+        "module_available",
+        lambda device_model, module, data=None: module == const.MODULE_WAN_INTERFACES,
     )
 
     asyncio.run(
@@ -154,3 +154,51 @@ def test_sensor_setup_removes_stale_wan_interface_registry_entries(monkeypatch) 
     assert registry.removed == ["sensor.r700_wan4_protocol"]
     assert "sensor.r700_wan2_status" in registry.entities
     assert [entity.unique_id for entity in added_entities] == ["entry123-wan_interfaces-wan2-status"]
+
+
+def test_sensor_setup_uses_live_wan_data_without_creating_unrelated_entities(monkeypatch) -> None:
+    """Live parsed data should create only the entity with a real value."""
+    config_entry = SimpleNamespace(
+        entry_id="entry123",
+        data={"model": "RE1500"},
+        options={},
+        title="RE1500",
+        async_on_unload=lambda unload: None,
+    )
+    coordinator = SimpleNamespace(
+        config_entry=config_entry,
+        data={
+            const.MODULE_WAN: {
+                "protocol": {"value": "DHCP"},
+                "gateway": {"value": None},
+            },
+        },
+        async_add_listener=lambda listener: (lambda: None),
+    )
+    hass = SimpleNamespace(data={const.DOMAIN: {"entry123": coordinator}})
+
+    class _Registry:
+        entities = {}
+
+        def async_get_entity_id(self, domain: str, platform: str, unique_id: str):
+            return None
+
+        def async_remove(self, entity_id: str) -> None:
+            raise AssertionError(f"Unexpected removal: {entity_id}")
+
+    added_entities = []
+
+    monkeypatch.setattr(sensor, "async_get_entity_registry", lambda hass: _Registry())
+
+    asyncio.run(
+        sensor.async_setup_entry(
+            hass,
+            config_entry,
+            lambda entities: added_entities.extend(entities),
+        )
+    )
+
+    unique_ids = [entity.unique_id for entity in added_entities]
+    assert "entry123-wan-protocol" in unique_ids
+    assert "entry123-wan-gateway" not in unique_ids
+    assert all("-wifi_2g-" not in unique_id for unique_id in unique_ids)

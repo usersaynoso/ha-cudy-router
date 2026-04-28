@@ -95,6 +95,58 @@ def _ensure_homeassistant_stub() -> None:
         sensor_module.SensorStateClass = SensorStateClass
         sys.modules["homeassistant.components.sensor"] = sensor_module
 
+    switch_module = sys.modules.get("homeassistant.components.switch")
+    if switch_module is None:
+        switch_module = types.ModuleType("homeassistant.components.switch")
+
+        @dataclass(frozen=True, kw_only=True)
+        class SwitchEntityDescription:
+            key: str
+            device_class: object | None = None
+            entity_category: object | None = None
+            icon: str | None = None
+
+        class SwitchEntity:
+            @property
+            def unique_id(self):
+                return getattr(self, "_attr_unique_id", None)
+
+        switch_module.SwitchEntity = SwitchEntity
+        switch_module.SwitchEntityDescription = SwitchEntityDescription
+        sys.modules["homeassistant.components.switch"] = switch_module
+
+    select_module = sys.modules.get("homeassistant.components.select")
+    if select_module is None:
+        select_module = types.ModuleType("homeassistant.components.select")
+
+        @dataclass(frozen=True, kw_only=True)
+        class SelectEntityDescription:
+            key: str
+            device_class: object | None = None
+            entity_category: object | None = None
+            icon: str | None = None
+
+        class SelectEntity:
+            @property
+            def unique_id(self):
+                return getattr(self, "_attr_unique_id", None)
+
+        select_module.SelectEntity = SelectEntity
+        select_module.SelectEntityDescription = SelectEntityDescription
+        sys.modules["homeassistant.components.select"] = select_module
+
+    button_module = sys.modules.get("homeassistant.components.button")
+    if button_module is None:
+        button_module = types.ModuleType("homeassistant.components.button")
+
+        class ButtonEntity:
+            @property
+            def unique_id(self):
+                return getattr(self, "_attr_unique_id", None)
+
+        button_module.ButtonEntity = ButtonEntity
+        sys.modules["homeassistant.components.button"] = button_module
+
     config_entries_module = sys.modules.get("homeassistant.config_entries")
     if config_entries_module is None:
         config_entries_module = types.ModuleType("homeassistant.config_entries")
@@ -131,6 +183,7 @@ def _ensure_homeassistant_stub() -> None:
         entity_module = types.ModuleType("homeassistant.helpers.entity")
 
         class EntityCategory:
+            CONFIG = "config"
             DIAGNOSTIC = "diagnostic"
 
         entity_module.EntityCategory = EntityCategory

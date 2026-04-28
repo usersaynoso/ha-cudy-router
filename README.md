@@ -152,7 +152,11 @@ Load balancing WAN1, Load balancing WAN2, Load balancing WAN3, Load balancing WA
 
 ### Debug Report
 
-For router-specific WAN or VPN issues, run the `cudy_router.generate_debug_report` action from Home Assistant Developer Tools. It returns a redacted Markdown report and also writes the same report to the Home Assistant log between `CUDY_ROUTER_DEBUG_REPORT_START` and `CUDY_ROUTER_DEBUG_REPORT_END`.
+For router-specific entity, WAN, VPN, SMS, mesh, or settings issues, run the `cudy_router.generate_debug_report` action from Home Assistant Developer Tools. It returns a redacted Markdown report and also writes the same report to the Home Assistant log between `CUDY_ROUTER_DEBUG_REPORT_START` and `CUDY_ROUTER_DEBUG_REPORT_END`.
+
+Diagnostics include an entity catalog that lists created entities, live supported entities that should be available, and blocked entities with reasons such as unsupported model, missing router page, empty parsed value, or disabled option. Unsupported entities are reported for troubleshooting but are not created in Home Assistant unless the model map or live parsed router data proves support.
+
+Maintainers can compare Cudy's public emulator pages with the integration capability map by running `scripts/cudy_emulator_catalog.py`. This is an offline maintenance tool and is not used by Home Assistant diagnostics at runtime.
 
 ### Reporting Issues
 

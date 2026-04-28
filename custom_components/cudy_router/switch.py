@@ -45,7 +45,7 @@ from .device_tracking import (
     manual_allowed_client_macs,
     normalize_mac,
 )
-from .features import existing_feature
+from .features import module_available
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ async def async_setup_entry(
 
     for description in ROUTER_SETTING_SWITCHES:
         supported = (
-            existing_feature(device_model, description.module)
+            module_available(device_model, description.module, coordinator.data)
             and coordinator.data
             and coordinator.data.get(description.module, {}).get(description.key)
             is not None
@@ -195,7 +195,7 @@ async def async_setup_entry(
 
     mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
     main_router_led_supported = (
-        existing_feature(device_model, MODULE_MESH)
+        module_available(device_model, MODULE_MESH, coordinator.data)
         and mesh_data.get("main_router_led_status") is not None
     )
     if main_router_led_supported:
@@ -209,7 +209,7 @@ async def async_setup_entry(
         _remove_main_router_led_entity()
 
     # Add mesh device switches
-    if coordinator.data and existing_feature(device_model, MODULE_MESH):
+    if coordinator.data and module_available(device_model, MODULE_MESH, coordinator.data):
         mesh_devices = mesh_data.get("mesh_devices", {})
         async_cleanup_stale_mesh_entities(
             hass,
@@ -217,7 +217,7 @@ async def async_setup_entry(
             "switch",
             set(mesh_devices),
         )
-        
+
         for mesh_mac, mesh_device in mesh_devices.items():
             # Add LED switch for each mesh device
             entities.append(

@@ -68,7 +68,7 @@ def test_switch_and_select_platforms_cover_router_settings() -> None:
     assert "CudyClientFeatureSwitch" in switch_source
     assert '"site_to_site"' in switch_source
     assert '("vpn", "VPN", "mdi:vpn")' in switch_source
-    assert "existing_feature(device_model, MODULE_MESH)" in switch_source
+    assert "module_available(device_model, MODULE_MESH, coordinator.data)" in switch_source
     assert 'mesh_data.get("main_router_led_status") is not None' in switch_source
     assert 'entity_registry.async_get_entity_id("switch", DOMAIN, unique_id)' in switch_source
     assert "entity_registry.async_remove(entity_id)" in switch_source

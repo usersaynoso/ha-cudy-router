@@ -12,13 +12,34 @@ from typing import Any
 
 from .bs4_compat import BeautifulSoup
 from .const import DOMAIN
-from .parser import parse_tables
+from .entity_catalog import build_entity_catalog
+from .parser import (
+    parse_data_usage,
+    parse_devices,
+    parse_devices_status,
+    parse_lan_status,
+    parse_mesh_devices,
+    parse_modem_info,
+    parse_sms_status,
+    parse_system_status,
+    parse_tables,
+    parse_wifi_status,
+)
 from .parser_network import (
+    parse_arp_status,
+    parse_dhcp_status,
     parse_load_balancing_status,
     parse_vpn_status,
     parse_wan_status,
 )
-from .parser_settings import parse_wan_settings
+from .parser_settings import (
+    parse_auto_update_settings,
+    parse_cellular_settings,
+    parse_lan_settings,
+    parse_vpn_settings,
+    parse_wan_settings,
+    parse_wireless_settings,
+)
 from .router_data import (
     _LOAD_BALANCING_STATUS_PATHS,
     _VPN_STATUS_PATHS,
@@ -58,8 +79,57 @@ _VPN_DEBUG_EXTRA_PATHS: tuple[str, ...] = (
     "admin/network/vpn/status?status=",
     "admin/network/vpn/status?detail=1",
 )
+_MODULE_DEBUG_PATHS: dict[str, tuple[str, ...]] = {
+    "system": (
+        "admin/system/status",
+        "admin/status/overview",
+        "admin/system/system",
+        "admin/panel",
+    ),
+    "devices": (
+        "admin/network/devices/devlist?detail=1",
+        "admin/network/devices/status?detail=1",
+        "admin/system/status/arp",
+    ),
+    "modem": (
+        "admin/network/gcom/status",
+        "admin/network/gcom/status?detail=1&iface=4g",
+    ),
+    "data_usage": ("admin/network/gcom/statistics?iface=4g",),
+    "sms": ("admin/network/gcom/sms/status",),
+    "wifi": (
+        "admin/network/wireless/status?iface=wlan00",
+        "admin/network/wireless/status?iface=wlan10",
+    ),
+    "lan": (
+        "admin/network/lan/status?detail=1",
+        "admin/network/lan/status",
+        "admin/network/lan/config?nomodal=",
+        "admin/network/lan/config/detail?nomodal=",
+    ),
+    "dhcp": ("admin/services/dhcp/status?detail=1",),
+    "mesh": (
+        "admin/network/mesh/status",
+        "admin/network/mesh",
+        "admin/network/mesh/topology",
+        "admin/network/mesh/nodes",
+        "admin/easymesh/status",
+        "admin/easymesh",
+        "admin/network/mesh/clients?clients=all",
+    ),
+    "settings": (
+        "admin/network/gcom/config/apn",
+        "admin/network/wireless/config/combo",
+        "admin/network/wireless/config/combine",
+        "admin/network/wireless/config/uncombine",
+        "admin/network/vpn/config",
+        "admin/system/autoupgrade",
+        "admin/setup",
+    ),
+}
 
 _MAC_RE = re.compile(r"\b(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}\b")
+_COMPACT_MAC_RE = re.compile(r"(?<![0-9a-fA-F])(?:[0-9a-fA-F]{12})(?![0-9a-fA-F])")
 _IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _IPV6_RE = re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4}\b")
 _INPUT_SECRET_RE = re.compile(
@@ -119,6 +189,7 @@ class Redactor:
             redacted,
         )
         redacted = _MAC_RE.sub(lambda match: self._placeholder("MAC", match.group(0)), redacted)
+        redacted = _COMPACT_MAC_RE.sub(lambda match: self._placeholder("MAC", match.group(0)), redacted)
         redacted = _IPV4_RE.sub(lambda match: self._placeholder("IP", match.group(0)), redacted)
         redacted = _IPV6_RE.sub(
             lambda match: self._placeholder("IPV6", match.group(0))
@@ -180,6 +251,11 @@ def wan_debug_paths() -> list[str]:
 def vpn_debug_paths() -> list[str]:
     """Return the VPN endpoint matrix used by diagnostics."""
     return _unique([*_VPN_STATUS_PATHS, *_VPN_DEBUG_EXTRA_PATHS])
+
+
+def module_debug_paths() -> dict[str, list[str]]:
+    """Return non-WAN/VPN module endpoint paths used by diagnostics."""
+    return {group: _unique(paths) for group, paths in _MODULE_DEBUG_PATHS.items()}
 
 
 def _unique(values: list[str] | tuple[str, ...]) -> list[str]:
@@ -292,6 +368,40 @@ def _parser_output(path: str, html: str, redactor: Redactor) -> dict[str, Any]:
         return {}
 
     try:
+        if path == "admin/network/devices/devlist?detail=1":
+            return redactor.data(parse_devices(html, None))
+        if path == "admin/network/devices/status?detail=1":
+            return redactor.data(parse_devices_status(html))
+        if path == "admin/system/status/arp":
+            return redactor.data(parse_arp_status(html, "br-lan"))
+        if path.startswith("admin/network/gcom/status"):
+            return redactor.data(parse_modem_info(html))
+        if path == "admin/network/gcom/statistics?iface=4g":
+            return redactor.data(parse_data_usage(html))
+        if path == "admin/network/gcom/sms/status":
+            return redactor.data(parse_sms_status(html) or {})
+        if path.startswith("admin/network/wireless/status"):
+            return redactor.data(parse_wifi_status(html))
+        if path.startswith("admin/network/lan/status"):
+            return redactor.data(parse_lan_status(html))
+        if path.startswith("admin/network/lan/config"):
+            return redactor.data(parse_lan_settings(html))
+        if path == "admin/services/dhcp/status?detail=1":
+            return redactor.data(parse_dhcp_status(html))
+        if path.startswith("admin/network/mesh") or path.startswith("admin/easymesh"):
+            return redactor.data(parse_mesh_devices(html))
+        if path == "admin/network/gcom/config/apn":
+            return redactor.data(parse_cellular_settings(html))
+        if path.startswith("admin/network/wireless/config"):
+            return redactor.data(parse_wireless_settings(html, "", ""))
+        if path == "admin/network/vpn/config":
+            return redactor.data(parse_vpn_settings(html))
+        if path in {"admin/system/autoupgrade", "admin/setup"}:
+            auto_update_settings = parse_auto_update_settings(html)
+            if auto_update_settings:
+                return redactor.data(auto_update_settings)
+        if path in {"admin/system/status", "admin/status/overview", "admin/system/system", "admin/panel"}:
+            return redactor.data(parse_system_status(html))
         if "admin/network/mwan3/" in path:
             return redactor.data(parse_load_balancing_status(html))
         if path.startswith("admin/network/vpn"):
@@ -357,6 +467,7 @@ async def async_build_debug_payload(
     config_entry = coordinator.config_entry
     wan_paths = wan_debug_paths()
     vpn_paths = vpn_debug_paths()
+    extra_paths = module_debug_paths()
 
     payload: dict[str, Any] = {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -371,12 +482,22 @@ async def async_build_debug_payload(
             "data": redactor.data(getattr(coordinator, "data", {}) or {}),
         },
         "entity_registry": _entity_registry_entries(hass, config_entry, redactor),
+        "entity_catalog": redactor.data(
+            build_entity_catalog(
+                hass,
+                config_entry,
+                coordinator,
+                value_transform=redactor.keyed_value,
+            )
+        ),
         "endpoint_matrix": {
+            **extra_paths,
             "load_balancing": list(_LOAD_BALANCING_STATUS_PATHS),
             "wan": wan_paths,
             "vpn": vpn_paths,
         },
         "probes": {
+            **{group: [] for group in extra_paths},
             "load_balancing": [],
             "wan": [],
             "vpn": [],
@@ -384,6 +505,18 @@ async def async_build_debug_payload(
     }
 
     api = coordinator.api
+    for group, paths in extra_paths.items():
+        for path in paths:
+            payload["probes"][group].append(
+                await _async_probe_path(
+                    hass,
+                    api,
+                    path,
+                    redactor,
+                    include_html=include_html,
+                    max_html_chars=max_html_chars,
+                )
+            )
     for path in _LOAD_BALANCING_STATUS_PATHS:
         payload["probes"]["load_balancing"].append(
             await _async_probe_path(
@@ -434,8 +567,9 @@ def format_debug_report(payload: dict[str, Any]) -> str:
         f"- Configured model: {integration.get('configured_model')}\n"
         f"- Config entry: {config_entry.get('entry_id')}\n"
         f"- Coordinator modules: {', '.join(coordinator.get('modules', []))}\n\n"
-        "Paste this whole report into the GitHub issue. It is redacted, but it keeps the table "
-        "labels, WAN numbers, VPN counts, and page shapes needed to fix parser differences.\n\n"
+        "Paste this whole report into the GitHub issue. It is redacted, but it keeps the entity "
+        "catalog, table labels, WAN numbers, VPN counts, and page shapes needed to fix parser "
+        "differences.\n\n"
         "```json\n"
         f"{json_payload}\n"
         "```\n"

@@ -96,3 +96,24 @@ def test_unknown_models_keep_best_effort_default_profile() -> None:
     """Unknown models should still fall back to the permissive compatibility profile."""
     assert features.existing_feature("Some Future Model V1.0", const.MODULE_MODEM) is True
     assert features.existing_feature("Some Future Model V1.0", const.MODULE_WIRELESS_SETTINGS) is True
+
+
+def test_module_available_allows_only_live_detected_data_for_unmapped_features() -> None:
+    """Runtime gates should stay hidden unless parsed data proves support."""
+    assert features.module_available("RE1500", const.MODULE_VPN, {}) is False
+    assert (
+        features.module_available(
+            "RE1500",
+            const.MODULE_WAN,
+            {const.MODULE_WAN: {"protocol": {"value": "DHCP"}}},
+        )
+        is True
+    )
+    assert (
+        features.module_available(
+            "RE1500",
+            const.MODULE_WAN,
+            {const.MODULE_WAN: {"protocol": {"value": None}}},
+        )
+        is False
+    )

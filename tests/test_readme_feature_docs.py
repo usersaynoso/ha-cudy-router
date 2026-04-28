@@ -26,6 +26,8 @@ def test_readme_documents_new_settings_entities() -> None:
     assert "WAN bytes received" in source
     assert "WAN1/WAN2/WAN3/WAN4 status" in source
     assert "cudy_router.generate_debug_report" in source
+    assert "entity catalog" in source
+    assert "scripts/cudy_emulator_catalog.py" in source
     assert "LAN ARP entries" in source
     assert "Auto update time" in source
     assert "internet access switch" in source.lower()

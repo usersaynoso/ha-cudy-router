@@ -24,7 +24,7 @@ from .const import (
 )
 from .coordinator import CudyRouterDataUpdateCoordinator
 from .device_info import build_router_device_info
-from .features import existing_feature
+from .features import module_available
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -180,9 +180,10 @@ async def async_setup_entry(
     entities = []
     for description in ROUTER_SELECTS:
         supported = (
-            existing_feature(device_model, description.module)
+            module_available(device_model, description.module, coordinator.data)
             and coordinator.data
             and coordinator.data.get(description.module, {}).get(description.key)
+            is not None
         )
         if supported:
             entities.append(CudyRouterSettingSelect(coordinator, description))

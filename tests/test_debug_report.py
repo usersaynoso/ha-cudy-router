@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 
 from tests.module_loader import load_cudy_module
@@ -118,7 +119,23 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     coordinator = SimpleNamespace(
         config_entry=config_entry,
         api=_FakeApi(pages),
-        data={"wan_interfaces": {"wan3": {"wan_ip": {"value": "192.168.10.42"}}}},
+        data={
+            "devices": {
+                "device_list": [
+                    {
+                        "hostname": "Chris-iPhone",
+                        "mac": "AA:BB:CC:DD:EE:FF",
+                        "ip": "192.168.10.99",
+                    }
+                ]
+            },
+            "system": {
+                "uptime": {"value": 60},
+                "cpu_usage": {"value": None},
+                "ram_usage": {"value": None},
+            },
+            "wan_interfaces": {"wan3": {"wan_ip": {"value": "192.168.10.42"}}},
+        },
     )
 
     payload = asyncio.run(
@@ -147,6 +164,20 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     )
 
     assert payload["config_entry"]["data"]["password"] == "<REDACTED>"
+    assert "entity_catalog" in payload
+    assert payload["entity_catalog"]["summary"]["by_status"]["blocked"] >= 1
+    assert any(
+        entry["key"] == "cpu_usage"
+        and entry["status"] == "blocked"
+        and entry["reason"] == "empty_value"
+        for entry in payload["entity_catalog"]["entities"]
+    )
+    payload_text = json.dumps(payload)
+    assert "aabbccddeeff" not in payload_text.lower()
+    assert "AA:BB:CC:DD:EE:FF" not in payload_text
+    assert "<MAC_" in payload_text
+    assert "admin/network/devices/devlist?detail=1" in payload["endpoint_matrix"]["devices"]
+    assert "admin/network/gcom/status?detail=1&iface=4g" in payload["endpoint_matrix"]["modem"]
     assert "192.168.10.42" not in wan3_probe["html_excerpt"]
     assert wan3_probe["headings"] == ["WAN3"]
     assert wan3_probe["table_data"]["IP Address"].startswith("<IP_")

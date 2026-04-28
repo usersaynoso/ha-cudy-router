@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Final
 
 from .const import (
@@ -177,6 +178,31 @@ def supports_sms_feature(
     return known_feature(device_model, MODULE_SMS) or (
         isinstance(data, dict) and MODULE_SMS in data
     )
+
+
+def has_live_module_data(module_data: Any) -> bool:
+    """Return whether parsed module data contains a real non-empty value."""
+    if isinstance(module_data, Mapping):
+        for value in module_data.values():
+            if has_live_module_data(value):
+                return True
+        return False
+    if isinstance(module_data, list | tuple | set):
+        return any(has_live_module_data(value) for value in module_data)
+    return module_data not in (None, "")
+
+
+def module_available(
+    device_model: str | None,
+    module: str,
+    data: dict[str, Any] | None = None,
+) -> bool:
+    """Return whether a module is supported by model mapping or live parsed data."""
+    if existing_feature(device_model or "default", module):
+        return True
+    if not isinstance(data, dict) or module not in data:
+        return False
+    return has_live_module_data(data.get(module))
 
 
 def existing_feature(device_model: str, key_entity: str, model_entity: str = "") -> bool:

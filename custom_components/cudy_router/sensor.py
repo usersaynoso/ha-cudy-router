@@ -42,7 +42,7 @@ from .device_tracking import (
     connected_device_lookup,
     manual_allowed_client_macs,
 )
-from .features import existing_feature
+from .features import module_available
 from .sensor_descriptions import (
     CudyRouterSensorEntityDescription,
     DEVICE_CONNECTION_TYPE_SENSOR,
@@ -158,7 +158,7 @@ async def async_setup_entry(
 
     def _active_wan_interface_sensor_unique_ids() -> set[str]:
         """Return per-WAN sensor unique IDs that still have live coordinator values."""
-        if existing_feature(device_model, MODULE_WAN_INTERFACES) is False:
+        if module_available(device_model, MODULE_WAN_INTERFACES, coordinator.data) is False:
             return set()
 
         active_unique_ids: set[str] = set()
@@ -198,7 +198,7 @@ async def async_setup_entry(
 
     def _wan_interface_sensor_entities() -> list[SensorEntity]:
         """Build newly discovered per-WAN sensors."""
-        if existing_feature(device_model, MODULE_WAN_INTERFACES) is False:
+        if module_available(device_model, MODULE_WAN_INTERFACES, coordinator.data) is False:
             return []
 
         new_entities: list[SensorEntity] = []
@@ -251,7 +251,7 @@ async def async_setup_entry(
                 continue
 
             for sensor_label in sensors:
-                if existing_feature(device_model, module) is False:
+                if module_available(device_model, module, coordinator.data) is False:
                     continue
 
                 data_entry = sensors.get(sensor_label)
@@ -278,10 +278,19 @@ async def async_setup_entry(
     entities.extend(_wan_interface_sensor_entities())
 
     # Always add signal and network sensors
-    if existing_feature(device_model, "modem", "signal") is True:
+    modem_data = coordinator.data.get(MODULE_MODEM, {}) if coordinator.data else {}
+    signal_value = modem_data.get("signal", {}).get("value") if isinstance(modem_data, dict) else None
+    network_value = modem_data.get("network", {}).get("value") if isinstance(modem_data, dict) else None
+    if (
+        module_available(device_model, MODULE_MODEM, coordinator.data) is True
+        and signal_value not in (None, "")
+    ):
         _append_entity(CudyRouterSignalSensor(coordinator, router_name, "signal", SIGNAL_SENSOR))
 
-    if existing_feature(device_model, "modem", "network") is True:
+    if (
+        module_available(device_model, MODULE_MODEM, coordinator.data) is True
+        and network_value not in (None, "")
+    ):
         _append_entity(CudyRouterSignalSensor(coordinator, router_name, "network", NETWORK_SENSOR))
 
     # Add device-specific sensors based on options
@@ -330,7 +339,7 @@ async def async_setup_entry(
     # Add mesh device sensors
     # NOTE: Satellite mesh devices often only have name and status available.
     # Firmware, IP, and model may show as Unknown due to Cudy router limitations.
-    if coordinator.data and existing_feature(device_model, MODULE_MESH) is True:
+    if coordinator.data and module_available(device_model, MODULE_MESH, coordinator.data) is True:
         mesh_data = coordinator.data.get(MODULE_MESH, {})
         _LOGGER.debug("Mesh data for sensors: %s", mesh_data)
         mesh_devices = mesh_data.get("mesh_devices", {})
