@@ -260,6 +260,32 @@ def test_parse_vpn_status_reads_additional_client_count_labels() -> None:
     assert parsed["vpn_clients"]["value"] == 3
 
 
+def test_parse_vpn_status_reads_singular_vpn_client_count_labels() -> None:
+    """VPN count parsing should accept singular VPN client labels."""
+    parsed = parser_network.parse_vpn_status(
+        """
+        <table class="table">
+          <tbody>
+            <tr><td>Protocol</td><td>WireGuard Client</td></tr>
+            <tr><td>VPN Client</td><td>1</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+    alternate = parser_network.parse_vpn_status(
+        """
+        <table class="table">
+          <tbody>
+            <tr><td>VPN Client(s)</td><td>2 clients</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert parsed["vpn_clients"]["value"] == 1
+    assert alternate["vpn_clients"]["value"] == 2
+
+
 def test_parse_vpn_status_counts_connected_client_table_rows() -> None:
     """VPN count parsing should count client rows when no summary count is present."""
     parsed = parser_network.parse_vpn_status(

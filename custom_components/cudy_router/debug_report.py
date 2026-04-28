@@ -294,7 +294,7 @@ def _parser_output(path: str, html: str, redactor: Redactor) -> dict[str, Any]:
     try:
         if "admin/network/mwan3/" in path:
             return redactor.data(parse_load_balancing_status(html))
-        if "admin/network/vpn/" in path:
+        if path.startswith("admin/network/vpn"):
             return redactor.data(parse_vpn_status(html))
         if "admin/network/wan/config" in path:
             return redactor.data(parse_wan_settings(html))

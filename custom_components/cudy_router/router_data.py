@@ -66,6 +66,7 @@ if TYPE_CHECKING:
 _VPN_STATUS_PATHS: tuple[str, ...] = (
     "admin/network/vpn/wireguard/status?detail=",
     "admin/network/vpn/openvpns/status?status=",
+    "admin/network/vpn?mvpn=",
     "admin/network/vpn/pptp/status?detail=",
     "admin/network/vpn/status?detail=",
     "admin/network/vpn/pptp/status",

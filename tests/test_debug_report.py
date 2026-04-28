@@ -80,6 +80,7 @@ def test_debug_report_endpoint_matrix_includes_r700_wan_and_vpn_variants() -> No
     assert "admin/network/wan/iface/wand/config" in wan_paths
     assert "admin/network/vpn/wireguard/status?detail=" in vpn_paths
     assert "admin/network/vpn/openvpns/status?status=" in vpn_paths
+    assert "admin/network/vpn?mvpn=" in vpn_paths
     assert "admin/network/vpn/openvpnc/status?detail=" in vpn_paths
     assert "admin/network/vpn/pptp/status?status=" in vpn_paths
 
@@ -101,6 +102,9 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
         """,
         "admin/network/vpn/status?detail=": """
         <table><tr><td>Connected Clients</td><td>1 client</td></tr></table>
+        """,
+        "admin/network/vpn?mvpn=": """
+        <table><tr><td>VPN Client</td><td>1</td></tr></table>
         """,
     }
     config_entry = SimpleNamespace(
@@ -136,6 +140,11 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
         for probe in payload["probes"]["vpn"]
         if probe["path"] == "admin/network/vpn/status?detail="
     )
+    mvpn_probe = next(
+        probe
+        for probe in payload["probes"]["vpn"]
+        if probe["path"] == "admin/network/vpn?mvpn="
+    )
 
     assert payload["config_entry"]["data"]["password"] == "<REDACTED>"
     assert "192.168.10.42" not in wan3_probe["html_excerpt"]
@@ -144,3 +153,4 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     assert wan3_probe["parser_output"]["protocol"]["value"] == "DHCP"
     assert wan3_probe["parser_output"]["bytes_received"]["value"] == 512 * 1024**2
     assert vpn_probe["parser_output"]["vpn_clients"]["value"] == 1
+    assert mvpn_probe["parser_output"]["vpn_clients"]["value"] == 1

@@ -179,6 +179,7 @@ def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypa
               <tr><td>Clients</td><td>0</td></tr>
             </table>
             """,
+            "admin/network/vpn?mvpn=": "",
             "admin/network/vpn/pptp/status?detail=": _fixture_text("vpn", "vpn_r700_status.html"),
             "admin/network/vpn/status?detail=": """
             <table class="table">
@@ -260,6 +261,7 @@ def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypa
     assert ("admin/network/vpn/wireguard/status?detail=", True) in fake_router.requests
     assert ("admin/network/vpn/pptp/status?detail=", True) in fake_router.requests
     assert ("admin/network/vpn/status?detail=", True) in fake_router.requests
+    assert ("admin/network/vpn?mvpn=", True) in fake_router.requests
 
 
 def test_collect_router_data_counts_vpn_routed_devices_when_status_reports_server_zero(
@@ -319,6 +321,52 @@ def test_collect_router_data_counts_vpn_routed_devices_when_status_reports_serve
     assert data[const.MODULE_VPN]["protocol"]["value"] == "WireGuard Client"
     assert data[const.MODULE_VPN]["tunnel_ip"]["value"] == "10.10.10.2"
     assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 1
+
+
+def test_collect_router_data_uses_mvpn_page_for_vpn_client_count(monkeypatch) -> None:
+    """The main VPN page may expose client counts absent from status endpoints."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_VPN,
+    )
+
+    fake_router = _FakeRouter(
+        {
+            "admin/network/vpn/wireguard/status?detail=": """
+            <table class="table">
+              <tr><td>Protocol</td><td>WireGuard Client</td></tr>
+              <tr><td>Tunnel IP</td><td>10.10.10.2</td></tr>
+            </table>
+            """,
+            "admin/network/vpn/openvpns/status?status=": """
+            <table class="table">
+              <tr><td>Protocol</td><td>OpenVPN Server</td></tr>
+              <tr><td>Devices</td><td>0</td></tr>
+            </table>
+            """,
+            "admin/network/vpn?mvpn=": """
+            <table class="table">
+              <tr><td>VPN Client</td><td>1</td></tr>
+            </table>
+            """,
+            "admin/network/vpn/config": "",
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert data[const.MODULE_VPN]["protocol"]["value"] == "WireGuard Client"
+    assert data[const.MODULE_VPN]["tunnel_ip"]["value"] == "10.10.10.2"
+    assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 1
+    assert ("admin/network/vpn?mvpn=", True) in fake_router.requests
 
 
 def test_collect_router_data_keeps_load_balancing_only_wan_statuses_separate(monkeypatch) -> None:

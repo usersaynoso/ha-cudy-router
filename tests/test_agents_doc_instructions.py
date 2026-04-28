@@ -59,3 +59,16 @@ def test_agents_requires_plain_language_release_notes() -> None:
     assert "plain, non-technical language" in source
     assert "what changed, what users may notice" in source
     assert "avoid internal jargon" in source
+
+
+def test_agents_requires_hacs_rest_release_list_verification() -> None:
+    """AGENTS should capture the HACS-visible GitHub release verification path."""
+    source = AGENTS_PATH.read_text(encoding="utf-8")
+
+    assert "HACS reads GitHub's REST releases list" in source
+    assert "repos/usersaynoso/ha-cudy-router/releases?per_page=10" in source
+    assert "`/releases/latest` shows the new version but `/releases?per_page=10` omits it" in source
+    assert '{"draft":true}' in source
+    assert '{"draft":false,"prerelease":false,"make_latest":"true"}' in source
+    assert "HACS \"Update information\"" in source
+    assert "do not manually edit `/config/.storage/hacs.repositories`" in source
