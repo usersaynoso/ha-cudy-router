@@ -72,6 +72,12 @@ _VPN_STATUS_PATHS: tuple[str, ...] = (
     "admin/network/vpn/pptp/status",
     "admin/network/vpn/status",
 )
+_VPN_STATUS_PATH_PROTOCOLS: dict[str, frozenset[str]] = {
+    "admin/network/vpn/wireguard/status?detail=": frozenset({"wireguard", "wireguards"}),
+    "admin/network/vpn/openvpns/status?status=": frozenset({"openvpns"}),
+    "admin/network/vpn/pptp/status?detail=": frozenset({"pptp", "pptps"}),
+    "admin/network/vpn/pptp/status": frozenset({"pptp", "pptps"}),
+}
 
 _LOAD_BALANCING_STATUS_PATHS: tuple[str, ...] = (
     "admin/network/mwan3/status?detail=",
@@ -202,6 +208,50 @@ def _vpn_device_client_count(data: dict[str, Any]) -> int:
         elif isinstance(vpn_value, str) and vpn_value.strip().lower() in {"1", "true", "yes", "on"}:
             count += 1
     return count
+
+
+def _vpn_active_protocol(vpn_settings: dict[str, Any]) -> str | None:
+    """Return the selected VPN protocol key when VPN settings expose one."""
+    if _entry_value(vpn_settings, "enabled") is False:
+        return None
+
+    protocol = _entry_value(vpn_settings, "protocol")
+    if not isinstance(protocol, str) or not protocol.strip():
+        return None
+    return protocol.strip()
+
+
+def _vpn_protocol_label(vpn_settings: dict[str, Any], protocol: str | None) -> str | None:
+    """Return the display label for a VPN protocol setting value."""
+    if not protocol:
+        return None
+
+    protocol_entry = vpn_settings.get("protocol", {})
+    if not isinstance(protocol_entry, dict):
+        return None
+
+    options = protocol_entry.get("options", {})
+    if not isinstance(options, dict):
+        return None
+
+    label = options.get(protocol)
+    if not isinstance(label, str) or not label.strip():
+        return None
+    return label.strip()
+
+
+def _vpn_status_path_matches_protocol(path: str, active_protocol: str | None) -> bool:
+    """Return whether a VPN status endpoint belongs to the selected protocol."""
+    if active_protocol is None:
+        return True
+
+    path_protocols = _VPN_STATUS_PATH_PROTOCOLS.get(path)
+    return path_protocols is None or active_protocol in path_protocols
+
+
+def _vpn_status_path_is_protocol_specific(path: str) -> bool:
+    """Return whether a VPN status endpoint belongs to a named protocol."""
+    return path in _VPN_STATUS_PATH_PROTOCOLS
 
 
 def _contains_wan_iface_reference(text: str, expected_suffixes: tuple[str, ...]) -> bool:
@@ -417,10 +467,28 @@ async def collect_router_data(
 
     # VPN status
     if existing_feature(device_model, MODULE_VPN) is True:
+        vpn_settings: dict[str, Any] = {}
+        vpn_settings_html = await hass.async_add_executor_job(
+            router.get,
+            "admin/network/vpn/config",
+            True,
+        )
+        if vpn_settings_html:
+            vpn_settings = parse_vpn_settings(vpn_settings_html)
+            if vpn_settings:
+                data[MODULE_VPN_SETTINGS] = vpn_settings
+
+        active_vpn_protocol = _vpn_active_protocol(vpn_settings)
+        active_vpn_protocol_label = _vpn_protocol_label(vpn_settings, active_vpn_protocol)
         vpn_status_html = ""
         best_vpn_data: dict[str, Any] | None = None
         best_vpn_score = (-1, -1, -1, -1, -1)
+        best_specific_vpn_data: dict[str, Any] | None = None
+        best_specific_vpn_score = (-1, -1, -1, -1, -1)
+        fallback_vpn_data: dict[str, Any] | None = None
+        fallback_vpn_score = (-1, -1, -1, -1, -1)
         vpn_status_client_counts: list[int] = []
+        vpn_specific_client_counts: list[int] = []
         for vpn_status_path in _VPN_STATUS_PATHS:
             candidate_html = await hass.async_add_executor_job(
                 router.get,
@@ -435,30 +503,50 @@ async def collect_router_data(
 
             parsed_candidate = parse_vpn_status(candidate_html)
             candidate_score = _vpn_candidate_score(parsed_candidate)
+            if candidate_score > fallback_vpn_score:
+                fallback_vpn_data = parsed_candidate
+                fallback_vpn_score = candidate_score
+
+            if not _vpn_status_path_matches_protocol(vpn_status_path, active_vpn_protocol):
+                continue
+
             if candidate_score > best_vpn_score:
                 best_vpn_data = parsed_candidate
                 best_vpn_score = candidate_score
+            if (
+                active_vpn_protocol is not None
+                and _vpn_status_path_is_protocol_specific(vpn_status_path)
+                and candidate_score > best_specific_vpn_score
+            ):
+                best_specific_vpn_data = parsed_candidate
+                best_specific_vpn_score = candidate_score
 
             vpn_clients = _entry_value(parsed_candidate, "vpn_clients")
             if isinstance(vpn_clients, int):
-                vpn_status_client_counts.append(vpn_clients)
+                if active_vpn_protocol is not None and _vpn_status_path_is_protocol_specific(vpn_status_path):
+                    vpn_specific_client_counts.append(vpn_clients)
+                else:
+                    vpn_status_client_counts.append(vpn_clients)
 
-        vpn_data = dict(best_vpn_data) if best_vpn_data is not None else parse_vpn_status(vpn_status_html)
-        vpn_client_counts = vpn_status_client_counts
+        if best_specific_vpn_data is not None:
+            selected_vpn_data = best_specific_vpn_data
+        elif best_vpn_data is not None:
+            selected_vpn_data = best_vpn_data
+        elif fallback_vpn_data is not None:
+            selected_vpn_data = fallback_vpn_data
+        else:
+            selected_vpn_data = parse_vpn_status(vpn_status_html)
+
+        vpn_data = dict(selected_vpn_data)
+        if active_vpn_protocol_label is not None:
+            vpn_data["protocol"] = {"value": active_vpn_protocol_label}
+
+        vpn_client_counts = vpn_specific_client_counts or vpn_status_client_counts
         if not vpn_client_counts and (vpn_device_client_count := _vpn_device_client_count(data)):
             vpn_client_counts.append(vpn_device_client_count)
         if vpn_client_counts:
             vpn_data["vpn_clients"] = {"value": max(vpn_client_counts)}
         data[MODULE_VPN] = vpn_data
-        vpn_settings_html = await hass.async_add_executor_job(
-            router.get,
-            "admin/network/vpn/config",
-            True,
-        )
-        if vpn_settings_html:
-            vpn_settings = parse_vpn_settings(vpn_settings_html)
-            if vpn_settings:
-                data[MODULE_VPN_SETTINGS] = vpn_settings
 
     # DHCP status
     if existing_feature(device_model, MODULE_DHCP) is True:

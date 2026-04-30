@@ -18,6 +18,28 @@ def _fixture_text(*parts: str) -> str:
     return FIXTURES.joinpath(*parts).read_text(encoding="utf-8")
 
 
+def _vpn_config_html(selected_protocol: str, *, enabled: bool = True) -> str:
+    options = {
+        "pptp": "PPTP Client",
+        "pptps": "PPTP Server",
+        "openvpn": "OpenVPN Client",
+        "openvpns": "OpenVPN Server",
+        "wireguard": "WireGuard Client",
+        "wireguards": "WireGuard Server",
+    }
+    option_html = "\n".join(
+        f'<option value="{value}"{" selected" if value == selected_protocol else ""}>{label}</option>'
+        for value, label in options.items()
+    )
+    enabled_value = "1" if enabled else "0"
+    return f"""
+    <input type="hidden" name="cbid.vpn.config.enabled" value="{enabled_value}" />
+    <select name="cbid.vpn.config._proto">
+      {option_html}
+    </select>
+    """
+
+
 class _FakeHass:
     async def async_add_executor_job(self, func, *args):
         return func(*args)
@@ -302,9 +324,10 @@ def test_collect_router_data_counts_vpn_routed_devices_when_status_omits_client_
             "admin/network/vpn/openvpns/status?status=": """
             <table class="table">
               <tr><td>Protocol</td><td>OpenVPN Server</td></tr>
+              <tr><td>Devices</td><td>0</td></tr>
             </table>
             """,
-            "admin/network/vpn/config": "",
+            "admin/network/vpn/config": _vpn_config_html("wireguard"),
         }
     )
 
@@ -322,10 +345,61 @@ def test_collect_router_data_counts_vpn_routed_devices_when_status_omits_client_
     assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 1
 
 
-def test_collect_router_data_keeps_explicit_zero_vpn_count_over_device_toggle_count(
+def test_collect_router_data_ignores_inactive_vpn_zero_for_r700_device_fallback(
     monkeypatch,
 ) -> None:
-    """Router VPN status counts should beat per-device VPN access toggle counts."""
+    """Inactive protocol counts should not suppress R700 device-count fallback."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module in {const.MODULE_DEVICES, const.MODULE_VPN},
+    )
+    monkeypatch.setattr(
+        router_data,
+        "parse_devices",
+        lambda html, device_list: {
+            const.SECTION_DEVICE_LIST: [
+                {"hostname": "vpn-client", "vpn": True},
+            ],
+            "device_count": {"value": 1},
+        },
+    )
+    monkeypatch.setattr(router_data, "parse_devices_status", lambda html: {})
+    monkeypatch.setattr(router_data, "parse_arp_status", lambda html, interface: {})
+
+    fake_router = _FakeRouter(
+        {
+            "admin/network/devices/devlist?detail=1": "",
+            "admin/network/devices/status?detail=1": "",
+            "admin/panel": "",
+            "admin/system/status/arp": "",
+            "admin/network/vpn/openvpns/status?status=": _fixture_text(
+                "vpn",
+                "vpn_wr3000s_openvpn_server_zero.html",
+            ),
+            "admin/network/vpn/pptp/status?detail=": _fixture_text("vpn", "vpn_r700_status.html"),
+            "admin/network/vpn/config": _vpn_config_html("pptp"),
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert data[const.MODULE_VPN]["protocol"]["value"] == "PPTP Client"
+    assert data[const.MODULE_VPN]["tunnel_ip"]["value"] == "192.168.2.20"
+    assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 1
+
+
+def test_collect_router_data_uses_active_vpn_protocol_and_keeps_zero_count(
+    monkeypatch,
+) -> None:
+    """Router VPN settings should choose the active status page and preserve its count."""
     monkeypatch.setattr(
         router_data,
         "existing_feature",
@@ -355,8 +429,13 @@ def test_collect_router_data_keeps_explicit_zero_vpn_count_over_device_toggle_co
                 "vpn",
                 "vpn_wr3000s_openvpn_server_zero.html",
             ),
+            "admin/network/vpn?mvpn=": """
+            <table class="table">
+              <tr><td>VPN Client</td><td>6</td></tr>
+            </table>
+            """,
             "admin/network/vpn/pptp/status?detail=": _fixture_text("vpn", "vpn_r700_status.html"),
-            "admin/network/vpn/config": "",
+            "admin/network/vpn/config": _vpn_config_html("openvpns"),
         }
     )
 
@@ -369,8 +448,8 @@ def test_collect_router_data_keeps_explicit_zero_vpn_count_over_device_toggle_co
         )
     )
 
-    assert data[const.MODULE_VPN]["protocol"]["value"] == "PPTP Client"
-    assert data[const.MODULE_VPN]["tunnel_ip"]["value"] == "192.168.2.20"
+    assert data[const.MODULE_VPN]["protocol"]["value"] == "OpenVPN Server"
+    assert data[const.MODULE_VPN]["tunnel_ip"]["value"] is None
     assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 0
 
 
