@@ -151,6 +151,14 @@ def _non_empty_entries(parsed: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _module_entry_has_value(data: dict[str, Any], module: str, key: str) -> bool:
+    """Return whether a parsed module entry has a live value."""
+    module_data = data.get(module)
+    if not isinstance(module_data, dict):
+        return False
+    return _entry_value(module_data, key) not in (None, "")
+
+
 def _apply_load_balancing_statuses(
     wan_interfaces: dict[str, dict[str, Any]],
     load_balancing_data: dict[str, Any],
@@ -689,14 +697,14 @@ async def collect_router_data(
                     wan_interfaces["wan1"].setdefault("dns", {"value": dhcp_dns})
 
             # If modem metrics exist, avoid duplicate WAN entities for the same values.
-            if MODULE_MODEM in data:
-                for duplicated_key in (
-                    "connected_time",
-                    "public_ip",
-                    "session_upload",
-                    "session_download",
-                    "wan_ip",
-                ):
+            for duplicated_key in (
+                "connected_time",
+                "public_ip",
+                "session_upload",
+                "session_download",
+                "wan_ip",
+            ):
+                if _module_entry_has_value(data, MODULE_MODEM, duplicated_key):
                     wan_data.pop(duplicated_key, None)
 
             # Skip empty WAN sensors to avoid persistent Unknown entities.

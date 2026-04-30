@@ -106,6 +106,19 @@ def _wan_interfaces(coordinator: CudyRouterDataUpdateCoordinator) -> dict[str, d
     }
 
 
+def _module_entry_has_value(data: dict[str, Any] | None, module: str, key: str) -> bool:
+    """Return whether a coordinator module entry has a live value."""
+    if not isinstance(data, dict):
+        return False
+    module_data = data.get(module)
+    if not isinstance(module_data, dict):
+        return False
+    data_entry = module_data.get(key)
+    if not isinstance(data_entry, dict):
+        return False
+    return data_entry.get("value") not in (None, "")
+
+
 def _wan_interface_label(interface_key: str) -> str:
     """Return a display label for an internal WAN interface key."""
     suffix = interface_key.removeprefix("wan")
@@ -229,7 +242,7 @@ async def async_setup_entry(
         _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
     _remove_sensor_by_unique_id(f"{config_entry.entry_id}-sms-messages")
     for sensor_key in _WAN_DUPLICATE_MODEM_KEYS:
-        if coordinator.data and MODULE_MODEM in coordinator.data:
+        if _module_entry_has_value(coordinator.data, MODULE_MODEM, sensor_key):
             _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
     for sensor_key in ("subnet_mask", "gateway", "dns"):
         if isinstance(wan_data, dict) and wan_data.get(sensor_key, {}).get("value") in (None, ""):
@@ -258,7 +271,7 @@ async def async_setup_entry(
                 if (
                     module == MODULE_WAN
                     and sensor_label in _WAN_DUPLICATE_MODEM_KEYS
-                    and MODULE_MODEM in coordinator.data
+                    and _module_entry_has_value(coordinator.data, MODULE_MODEM, sensor_label)
                 ):
                     continue
                 if isinstance(data_entry, dict) and data_entry.get("value") in (None, ""):

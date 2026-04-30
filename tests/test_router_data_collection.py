@@ -179,6 +179,33 @@ def test_collect_router_data_skips_duplicate_multi_wan_page_and_aggregates_valid
     assert data[const.MODULE_LOAD_BALANCING]["wan4_status"]["value"] == "Online"
 
 
+def test_collect_router_data_keeps_wr3000s_wan_metrics_with_empty_modem_fallback() -> None:
+    """Empty modem probes on unmapped routers must not hide real WAN detail fields."""
+    fake_router = _FakeRouter(
+        {
+            "admin/network/wan/status?detail=1&iface=wan": _fixture_text("wan", "wan_wr3000s_detail.html"),
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "Some Future Router V1.0",
+        )
+    )
+
+    wan_data = data[const.MODULE_WAN]
+    assert round(wan_data["connected_time"]["value"]) == 6153152
+    assert wan_data["public_ip"]["value"] == "203.0.113.35"
+    assert wan_data["wan_ip"]["value"] == "198.51.100.36"
+    assert wan_data["session_upload"]["value"] == 1077145.6
+    assert wan_data["session_download"]["value"] == 2502942.72
+    assert ("admin/network/gcom/status", False) in fake_router.requests
+    assert ("admin/network/wan/status?detail=1&iface=wan", True) in fake_router.requests
+
+
 def test_collect_router_data_uses_detailed_r700_vpn_and_multi_wan_paths(monkeypatch) -> None:
     """R700 polling should use detail pages and include wanb/wanc interfaces."""
     monkeypatch.setattr(

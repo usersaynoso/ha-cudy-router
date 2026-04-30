@@ -202,3 +202,60 @@ def test_sensor_setup_uses_live_wan_data_without_creating_unrelated_entities(mon
     assert "entry123-wan-protocol" in unique_ids
     assert "entry123-wan-gateway" not in unique_ids
     assert all("-wifi_2g-" not in unique_id for unique_id in unique_ids)
+
+
+def test_sensor_setup_keeps_wan_metrics_when_modem_values_are_empty(monkeypatch) -> None:
+    """An empty modem bucket from fallback probing should not suppress WAN sensors."""
+    config_entry = SimpleNamespace(
+        entry_id="entry123",
+        data={"model": "Some Future Router V1.0"},
+        options={},
+        title="Router",
+        async_on_unload=lambda unload: None,
+    )
+    coordinator = SimpleNamespace(
+        config_entry=config_entry,
+        data={
+            const.MODULE_MODEM: {
+                "connected_time": {"value": None},
+                "public_ip": {"value": None},
+                "session_upload": {"value": None},
+                "session_download": {"value": None},
+                "wan_ip": {"value": ""},
+            },
+            const.MODULE_WAN: {
+                "connected_time": {"value": 6153152},
+                "public_ip": {"value": "203.0.113.35"},
+                "session_upload": {"value": 1077145.6},
+                "session_download": {"value": 2502942.72},
+                "wan_ip": {"value": "198.51.100.36"},
+            },
+        },
+        async_add_listener=lambda listener: (lambda: None),
+    )
+    hass = SimpleNamespace(data={const.DOMAIN: {"entry123": coordinator}})
+
+    class _Registry:
+        entities = {}
+
+        def async_get_entity_id(self, domain: str, platform: str, unique_id: str):
+            return None
+
+        def async_remove(self, entity_id: str) -> None:
+            raise AssertionError(f"Unexpected removal: {entity_id}")
+
+    added_entities = []
+
+    monkeypatch.setattr(sensor, "async_get_entity_registry", lambda hass: _Registry())
+
+    asyncio.run(
+        sensor.async_setup_entry(
+            hass,
+            config_entry,
+            lambda entities: added_entities.extend(entities),
+        )
+    )
+
+    unique_ids = {entity.unique_id for entity in added_entities}
+    for key in ("connected_time", "public_ip", "session_upload", "session_download", "wan_ip"):
+        assert f"entry123-wan-{key}" in unique_ids

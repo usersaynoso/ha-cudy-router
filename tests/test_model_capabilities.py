@@ -54,6 +54,14 @@ def test_mesh_wifi_models_keep_mesh_capabilities_without_sms() -> None:
         assert features.existing_feature(model, const.MODULE_SMS) is False
 
 
+def test_wr3000s_uses_standard_router_capabilities() -> None:
+    """WR3000S should not fall through to the cellular fallback profile."""
+    assert features.existing_feature("WR3000S V1.0", const.MODULE_WAN) is True
+    assert features.existing_feature("WR3000S V1.0", const.MODULE_MODEM) is False
+    assert features.existing_feature("WR3000S V1.0", const.MODULE_SMS) is False
+    assert features.existing_feature("WR3000S V1.0", const.MODULE_MESH) is True
+
+
 def test_extender_capabilities_hide_router_only_families() -> None:
     """Extenders should not create WAN, DHCP, VPN, or mesh entities."""
     assert features.existing_feature("RE1500 V1.0", const.MODULE_WAN) is False

@@ -13,16 +13,17 @@ SENSOR_DESCRIPTIONS_PATH = ROOT / "custom_components" / "cudy_router" / "sensor_
 
 
 def test_sensor_setup_skips_duplicate_wan_modem_metrics() -> None:
-    """Sensor setup should avoid duplicate WAN entities for modem metrics."""
+    """Sensor setup should avoid duplicate WAN entities for live modem metrics."""
     source = SENSOR_PATH.read_text(encoding="utf-8")
 
     assert "_WAN_DUPLICATE_MODEM_KEYS" in source
     for key in ("connected_time", "public_ip", "session_upload", "session_download", "wan_ip"):
         assert f'"{key}"' in source
 
+    assert "_module_entry_has_value" in source
     assert "module == MODULE_WAN" in source
     assert "sensor_label in _WAN_DUPLICATE_MODEM_KEYS" in source
-    assert "MODULE_MODEM in coordinator.data" in source
+    assert "_module_entry_has_value(coordinator.data, MODULE_MODEM, sensor_label)" in source
 
 
 def test_sensor_setup_removes_stale_wan_mac_entity() -> None:
@@ -80,6 +81,7 @@ def test_router_data_uses_dhcp_fallbacks_and_filters_empty_wan_values() -> None:
 
     assert 'dhcp_data.get("dhcp_default_gateway", {}).get("value")' in source
     assert 'dhcp_data.get("dhcp_prefered_dns", {}).get("value")' in source
+    assert "_module_entry_has_value(data, MODULE_MODEM, duplicated_key)" in source
     assert 'wan_data.pop(duplicated_key, None)' in source
     assert '"wan_ip"' in source
     assert 'if entry.get("value") not in (None, "")' in source

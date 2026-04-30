@@ -100,6 +100,30 @@ def test_entity_catalog_allows_live_data_without_enabling_unrelated_modules() ->
     )
 
 
+def test_entity_catalog_keeps_wan_metric_when_modem_value_is_empty() -> None:
+    """Diagnostics should not mark WAN fields superseded by empty modem entries."""
+    catalog = _catalog(
+        {
+            const.MODULE_MODEM: {
+                "public_ip": {"value": None},
+            },
+            const.MODULE_WAN: {
+                "public_ip": {"value": "203.0.113.35"},
+            },
+        },
+        model="Some Future Router V1.0",
+    )
+
+    entries = catalog["entities"]
+    public_ip = next(
+        entry
+        for entry in entries
+        if entry["module"] == const.MODULE_WAN and entry["key"] == "public_ip"
+    )
+    assert public_ip["status"] in {"available", "created"}
+    assert public_ip["reason"] is None
+
+
 def test_entity_catalog_reports_created_registry_entries(monkeypatch) -> None:
     """Created registry entities should be marked as created in the catalog."""
     monkeypatch.setattr(

@@ -124,6 +124,17 @@ def test_parse_wan_status_supports_alternate_labels() -> None:
     assert parsed["session_download"]["value"] == 368.07
 
 
+def test_parse_wan_status_reads_wr3000s_detail_fixture() -> None:
+    """WAN parser should read the WR3000S detail table reported in diagnostics."""
+    parsed = parser_network.parse_wan_status(_fixture_text("wan", "wan_wr3000s_detail.html"))
+
+    assert round(parsed["connected_time"]["value"]) == 6153152
+    assert parsed["public_ip"]["value"] == "203.0.113.35"
+    assert parsed["wan_ip"]["value"] == "198.51.100.36"
+    assert parsed["session_upload"]["value"] == 1077145.6
+    assert parsed["session_download"]["value"] == 2502942.72
+
+
 def test_parse_arp_status_counts_br_lan_entries() -> None:
     """ARP parsing should count only the requested interface rows."""
     parsed = parser_network.parse_arp_status(_fixture_text("devices", "r700_arp_status.html"), "br-lan")

@@ -256,9 +256,10 @@ def _router_sensor_candidates(
         key = description.key
         module_data = _module_data(data, module)
         value = _entry_value(module_data, key)
+        modem_value = _entry_value(_module_data(data, MODULE_MODEM), key)
         if module == MODULE_WAN and (
             key in _WAN_REMOVED_SENSOR_KEYS
-            or (key in _WAN_DUPLICATE_MODEM_KEYS and MODULE_MODEM in data)
+            or (key in _WAN_DUPLICATE_MODEM_KEYS and _value_present(modem_value))
         ):
             status, reason = "blocked", "superseded"
         else:
