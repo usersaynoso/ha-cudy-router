@@ -122,8 +122,21 @@ def _install_bs4_deprecation_shim() -> None:
 def _clear_bs4_modules() -> None:
     """Remove any partially imported bs4 modules before retrying."""
     for module_name in tuple(sys.modules):
-        if module_name == "bs4" or module_name.startswith("bs4."):
+        if (
+            module_name == "bs4"
+            or module_name.startswith("bs4.")
+            or module_name == "soupsieve"
+            or module_name.startswith("soupsieve.")
+        ):
             sys.modules.pop(module_name, None)
+
+
+def _repair_soupsieve_bs4_references(bs4_module: types.ModuleType | Any) -> None:
+    """Point any already-loaded soupsieve modules at the repaired bs4 module."""
+    for module_name, module in tuple(sys.modules.items()):
+        if module_name == "soupsieve" or module_name.startswith("soupsieve."):
+            if getattr(module, "bs4", None) is not bs4_module:
+                setattr(module, "bs4", bs4_module)
 
 
 def _repair_bs4_public_api(bs4_module: types.ModuleType | Any) -> types.ModuleType | Any:
@@ -151,6 +164,7 @@ def _repair_bs4_public_api(bs4_module: types.ModuleType | Any) -> types.ModuleTy
     if not hasattr(bs4_module, "__getattr__"):
         setattr(bs4_module, "__getattr__", _compat_getattr)
 
+    _repair_soupsieve_bs4_references(bs4_module)
     return bs4_module
 
 

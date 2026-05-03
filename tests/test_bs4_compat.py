@@ -171,3 +171,74 @@ def test_bs4_compat_adds_dynamic_getattr_fallback_for_missing_exports(monkeypatc
     assert fake_bs4.__getattr__("Tag") is fake_element.Tag
     assert fake_bs4.Tag is fake_element.Tag
     assert "bs4.element" in import_calls
+
+
+def test_bs4_compat_repairs_stale_soupsieve_bs4_reference(monkeypatch) -> None:
+    """A stale soupsieve import should use the repaired bs4 module."""
+    patched_modules = (
+        "custom_components.cudy_router.bs4_compat",
+        "bs4",
+        "bs4.element",
+        "bs4.filter",
+        "bs4.css",
+        "bs4.dammit",
+        "bs4.exceptions",
+        "soupsieve",
+        "soupsieve.css_match",
+    )
+    for module_name in patched_modules:
+        sys.modules.pop(module_name, None)
+
+    class FakeBS4(types.ModuleType):
+        BeautifulSoup = object()
+
+    stale_bs4 = types.ModuleType("bs4")
+    fake_bs4 = FakeBS4("bs4")
+    fake_element = types.SimpleNamespace(
+        Tag=object(),
+        Comment=object(),
+        Declaration=object(),
+        ProcessingInstruction=object(),
+        ResultSet=object(),
+        Script=object(),
+        Stylesheet=object(),
+        TemplateString=object(),
+        CData=object(),
+        Doctype=object(),
+    )
+    fake_filter = types.SimpleNamespace(ElementFilter=object())
+    fake_css = types.SimpleNamespace(CSS=object())
+    fake_dammit = types.SimpleNamespace(UnicodeDammit=object())
+    fake_exceptions = types.SimpleNamespace(
+        FeatureNotFound=object(),
+        ParserRejectedMarkup=object(),
+        StopParsing=object(),
+    )
+    stale_soupsieve = types.ModuleType("soupsieve.css_match")
+    stale_soupsieve.bs4 = stale_bs4
+    sys.modules["soupsieve.css_match"] = stale_soupsieve
+
+    def fake_import_module(name: str, package: str | None = None):
+        assert package is None
+        modules = {
+            "bs4": fake_bs4,
+            "bs4.element": fake_element,
+            "bs4.filter": fake_filter,
+            "bs4.css": fake_css,
+            "bs4.dammit": fake_dammit,
+            "bs4.exceptions": fake_exceptions,
+        }
+        if name in modules:
+            return modules[name]
+        return importlib.__import__(name)
+
+    try:
+        monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+        load_cudy_module("bs4_compat")
+
+        assert stale_soupsieve.bs4 is fake_bs4
+        assert stale_soupsieve.bs4.Tag is fake_element.Tag
+    finally:
+        for module_name in patched_modules:
+            sys.modules.pop(module_name, None)
