@@ -156,3 +156,65 @@ def test_entity_catalog_reports_created_registry_entries(monkeypatch) -> None:
     )
     assert uptime["status"] == "created"
     assert uptime["entity_id"] == "sensor.router_uptime"
+
+
+def test_entity_catalog_reports_wisp_entities_for_supported_models() -> None:
+    """Diagnostics should list WISP sensors and the enabled switch when values exist."""
+    catalog = _catalog(
+        {
+            const.MODULE_WISP: {
+                "status": {"value": "Connected"},
+                "ssid": {"value": "Barn-Link"},
+                "enabled": {"value": True},
+            },
+        },
+        model="LT300 V2.0",
+    )
+
+    entries = catalog["entities"]
+    assert any(
+        entry["domain"] == "sensor"
+        and entry["module"] == const.MODULE_WISP
+        and entry["key"] == "status"
+        and entry["status"] in {"available", "created"}
+        for entry in entries
+    )
+    assert any(
+        entry["domain"] == "sensor"
+        and entry["module"] == const.MODULE_WISP
+        and entry["key"] == "ssid"
+        and entry["status"] in {"available", "created"}
+        for entry in entries
+    )
+    assert any(
+        entry["domain"] == "switch"
+        and entry["module"] == const.MODULE_WISP
+        and entry["key"] == "enabled"
+        and entry["status"] in {"available", "created"}
+        for entry in entries
+    )
+    assert const.MODULE_WISP in catalog["model"]["mapped_modules"]
+    assert const.MODULE_WISP in catalog["model"]["live_modules"]
+
+
+def test_entity_catalog_blocks_wisp_entities_for_unsupported_models() -> None:
+    """Non-WISP routers should explain WISP rows as unsupported rather than unknown."""
+    catalog = _catalog({}, model="R700")
+
+    entries = catalog["entities"]
+    assert any(
+        entry["domain"] == "sensor"
+        and entry["module"] == const.MODULE_WISP
+        and entry["key"] == "status"
+        and entry["status"] == "blocked"
+        and entry["reason"] == "unsupported_model"
+        for entry in entries
+    )
+    assert any(
+        entry["domain"] == "switch"
+        and entry["module"] == const.MODULE_WISP
+        and entry["key"] == "enabled"
+        and entry["status"] == "blocked"
+        and entry["reason"] == "unsupported_model"
+        for entry in entries
+    )

@@ -25,6 +25,7 @@ from .const import (
     MODULE_VPN,
     MODULE_WAN,
     MODULE_WAN_INTERFACES,
+    MODULE_WISP,
 )
 
 
@@ -391,6 +392,68 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         native_unit_of_measurement=UnitOfInformation.MEGABYTES,
         device_class=SensorDeviceClass.DATA_SIZE,
         state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    (MODULE_WISP, "status"): CudyRouterSensorEntityDescription(
+        key="status",
+        module=MODULE_WISP,
+        name_suffix="WISP status",
+        icon="mdi:wifi-marker",
+        device_class=SensorDeviceClass.ENUM,
+        options=["Connected", "Not connected", "Roaming", "Scanning", "Disabled"],
+    ),
+    (MODULE_WISP, "ssid"): CudyRouterSensorEntityDescription(
+        key="ssid",
+        module=MODULE_WISP,
+        name_suffix="WISP SSID",
+        icon="mdi:wifi",
+    ),
+    (MODULE_WISP, "bssid"): CudyRouterSensorEntityDescription(
+        key="bssid",
+        module=MODULE_WISP,
+        name_suffix="WISP BSSID",
+        icon="mdi:access-point-network",
+    ),
+    (MODULE_WISP, "signal"): CudyRouterSensorEntityDescription(
+        key="signal",
+        module=MODULE_WISP,
+        name_suffix="WISP signal",
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS,
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    (MODULE_WISP, "quality"): CudyRouterSensorEntityDescription(
+        key="quality",
+        module=MODULE_WISP,
+        name_suffix="WISP quality",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:wifi-strength-3",
+    ),
+    (MODULE_WISP, "channel"): CudyRouterSensorEntityDescription(
+        key="channel",
+        module=MODULE_WISP,
+        name_suffix="WISP channel",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:wifi-settings",
+    ),
+    (MODULE_WISP, "channel_width"): CudyRouterSensorEntityDescription(
+        key="channel_width",
+        module=MODULE_WISP,
+        name_suffix="WISP channel width",
+        icon="mdi:wifi-settings",
+    ),
+    (MODULE_WISP, "protocol"): CudyRouterSensorEntityDescription(
+        key="protocol",
+        module=MODULE_WISP,
+        name_suffix="WISP protocol",
+        icon="mdi:protocol",
+    ),
+    (MODULE_WISP, "transmit_power"): CudyRouterSensorEntityDescription(
+        key="transmit_power",
+        module=MODULE_WISP,
+        name_suffix="WISP transmit power",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:signal-distance-variant",
     ),
     # System sensors
     ("system", "uptime"): CudyRouterSensorEntityDescription(

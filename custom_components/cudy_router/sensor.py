@@ -22,6 +22,7 @@ from .const import (
     MODULE_MODEM,
     MODULE_WAN,
     MODULE_WAN_INTERFACES,
+    MODULE_WISP,
     OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
     OPTIONS_DEVICELIST,
     SECTION_DEVICE_LIST,
@@ -79,6 +80,11 @@ _WAN_REMOVED_SENSOR_KEYS = {
 }
 
 _LOAD_BALANCING_DYNAMIC_KEYS = {f"wan{interface_number}_status" for interface_number in range(1, 5)}
+_WISP_SENSOR_KEYS = {
+    key
+    for module, key in SENSOR_TYPES
+    if module == MODULE_WISP
+}
 
 
 def _connected_devices(coordinator: CudyRouterDataUpdateCoordinator) -> list[dict[str, Any]]:
@@ -200,6 +206,30 @@ async def async_setup_entry(
                 continue
             entity_registry.async_remove(entity_entry.entity_id)
 
+    def _remove_stale_wisp_sensors() -> None:
+        """Remove WISP sensors when the router no longer reports WISP values."""
+        active_unique_ids: set[str] = set()
+        if module_available(device_model, MODULE_WISP, coordinator.data):
+            wisp_data = coordinator.data.get(MODULE_WISP, {}) if coordinator.data else {}
+            if isinstance(wisp_data, dict):
+                active_unique_ids = {
+                    f"{config_entry.entry_id}-{MODULE_WISP}-{sensor_key}"
+                    for sensor_key in _WISP_SENSOR_KEYS
+                    if wisp_data.get(sensor_key, {}).get("value") not in (None, "")
+                }
+
+        unique_id_prefix = f"{config_entry.entry_id}-{MODULE_WISP}-"
+        for entity_entry in list(entity_registry.entities.values()):
+            unique_id = getattr(entity_entry, "unique_id", "") or ""
+            if (
+                getattr(entity_entry, "platform", None) != DOMAIN
+                or getattr(entity_entry, "domain", None) != "sensor"
+                or not unique_id.startswith(unique_id_prefix)
+                or unique_id in active_unique_ids
+            ):
+                continue
+            entity_registry.async_remove(entity_entry.entity_id)
+
     def _append_entity(entity: SensorEntity) -> None:
         """Append entity once per unique ID."""
         unique_id = entity.unique_id
@@ -254,6 +284,7 @@ async def async_setup_entry(
                 _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_LOAD_BALANCING}-{sensor_key}")
     _remove_legacy_manual_device_sensors()
     _remove_stale_wan_interface_sensors()
+    _remove_stale_wisp_sensors()
 
     # Add sensors based on available data from coordinator
     if coordinator.data:

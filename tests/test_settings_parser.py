@@ -418,6 +418,20 @@ def test_parse_vpn_and_auto_update_settings_extract_controls() -> None:
     assert autoupdate["update_time"]["value"] == "3"
 
 
+def test_parse_wisp_settings_prefers_state_enabled_field() -> None:
+    """WISP settings should read the cbid state field, not only the widget flag."""
+    html = """
+    <form>
+      <input type="hidden" name="cbi.cbe.wds-config.1.enabled" value="1" />
+      <input type="hidden" name="cbid.wds-config.1.enabled" value="0" />
+    </form>
+    """
+
+    parsed = parser_settings.parse_wisp_settings(html)
+
+    assert parsed["enabled"]["value"] is False
+
+
 def test_parse_auto_update_settings_supports_setup_page_field_names() -> None:
     """Auto-update parsing should accept setup-page field prefixes used by newer R700 firmware."""
     setup_html = """

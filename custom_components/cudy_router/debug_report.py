@@ -31,6 +31,8 @@ from .parser_network import (
     parse_load_balancing_status,
     parse_vpn_status,
     parse_wan_status,
+    parse_wisp_data,
+    parse_wisp_status,
 )
 from .parser_settings import (
     parse_auto_update_settings,
@@ -38,11 +40,15 @@ from .parser_settings import (
     parse_lan_settings,
     parse_vpn_settings,
     parse_wan_settings,
+    parse_wisp_settings,
     parse_wireless_settings,
 )
 from .router_data import (
     _LOAD_BALANCING_STATUS_PATHS,
     _VPN_STATUS_PATHS,
+    _WISP_CONFIG_PATHS,
+    _WISP_DATA_PATHS,
+    _WISP_STATUS_PATHS,
     _wan_status_paths,
 )
 
@@ -108,6 +114,11 @@ _MODULE_DEBUG_PATHS: dict[str, tuple[str, ...]] = {
         "admin/network/lan/config/detail?nomodal=",
     ),
     "dhcp": ("admin/services/dhcp/status?detail=1",),
+    "wisp": (
+        *_WISP_STATUS_PATHS,
+        *_WISP_DATA_PATHS,
+        *_WISP_CONFIG_PATHS,
+    ),
     "mesh": (
         "admin/network/mesh/status",
         "admin/network/mesh",
@@ -382,6 +393,12 @@ def _parser_output(path: str, html: str, redactor: Redactor) -> dict[str, Any]:
             return redactor.data(parse_sms_status(html) or {})
         if path.startswith("admin/network/wireless/status"):
             return redactor.data(parse_wifi_status(html))
+        if path in _WISP_STATUS_PATHS:
+            return redactor.data(parse_wisp_status(html))
+        if path in _WISP_DATA_PATHS:
+            return redactor.data(parse_wisp_data(html))
+        if path in _WISP_CONFIG_PATHS:
+            return redactor.data(parse_wisp_settings(html))
         if path.startswith("admin/network/lan/status"):
             return redactor.data(parse_lan_status(html))
         if path.startswith("admin/network/lan/config"):

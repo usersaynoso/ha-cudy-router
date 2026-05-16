@@ -237,6 +237,56 @@ def test_parse_wan_status_reads_combined_rx_tx_byte_counter() -> None:
     assert parsed["bytes_sent"]["value"] == 128 * 1024**2
 
 
+def test_parse_wisp_status_reads_lt300_host_network_panel() -> None:
+    """WISP status parsing should extract LT300 host-network panel fields."""
+    parsed = parser_network.parse_wisp_status(
+        """
+        <div class="panel panel-primary">
+          <div class="panel-heading"><h3 class="panel-title">Host Network</h3></div>
+          <table class="table">
+            <thead>
+              <tr><th>Status</th><th>Connected</th><th><i class="fa fa-check"></i></th></tr>
+            </thead>
+            <tbody>
+              <tr><td><p class="visible-xs">SSID</p></td><td><p class="visible-xs">Cudy-Office-Guest</p></td></tr>
+              <tr><td><p class="visible-xs">Signal</p></td><td><p class="visible-xs">65 dB</p></td></tr>
+            </tbody>
+          </table>
+        </div>
+        """
+    )
+
+    assert parsed["status"]["value"] == "Connected"
+    assert parsed["status"]["attributes"]["raw_status"] == "Connected"
+    assert parsed["ssid"]["value"] == "Cudy-Office-Guest"
+    assert parsed["signal"]["value"] == 65
+
+
+def test_parse_wisp_data_reads_json_status_payload() -> None:
+    """WISP JSON parsing should normalize status, protocol, and radio fields."""
+    parsed = parser_network.parse_wisp_data(
+        """
+        {"wds":"success","ssid":"Cudy-Office-Guest","up":true,
+         "bssid":"80:AF:CA:5F:AA:C6","hidden":0,"proto":"dhcp",
+         "txpower":-1,"channel":5,"htbw":"ht40","maxsta":0,
+         "isolate":0,"quality":62}
+        """
+    )
+
+    assert parsed["status"]["value"] == "Connected"
+    assert parsed["status"]["attributes"] == {"raw_status": "success", "up": True}
+    assert parsed["ssid"]["value"] == "Cudy-Office-Guest"
+    assert parsed["bssid"]["value"] == "80:AF:CA:5F:AA:C6"
+    assert parsed["quality"]["value"] == 62
+    assert parsed["channel"]["value"] == 5
+    assert parsed["channel_width"]["value"] == "40 MHz"
+    assert parsed["protocol"]["value"] == "DHCP"
+    assert parsed["transmit_power"]["value"] == -1
+    assert parsed["hidden"]["value"] is False
+    assert parsed["isolate"]["value"] is False
+    assert parsed["up"]["value"] is True
+
+
 def test_parse_vpn_status_reads_r700_pptp_fields() -> None:
     """R700 VPN status parsing should expose the PPTP protocol and tunnel IP."""
     parsed = parser_network.parse_vpn_status(_fixture_text("vpn", "vpn_r700_status.html"))

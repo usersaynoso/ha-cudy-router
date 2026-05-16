@@ -24,6 +24,7 @@ from .const import (
     MODULE_WAN,
     MODULE_WAN_INTERFACES,
     MODULE_WIRELESS_SETTINGS,
+    MODULE_WISP,
     MODULE_WIFI_2G,
     MODULE_WIFI_5G,
     OPTIONS_DEVICELIST,
@@ -47,6 +48,8 @@ from .parser_network import (
     parse_load_balancing_status,
     parse_vpn_status,
     parse_wan_status,
+    parse_wisp_data,
+    parse_wisp_status,
 )
 from .parser_settings import (
     parse_auto_update_settings,
@@ -54,6 +57,7 @@ from .parser_settings import (
     parse_lan_settings,
     parse_vpn_settings,
     parse_wan_settings,
+    parse_wisp_settings,
     parse_wireless_settings,
 )
 
@@ -82,6 +86,19 @@ _VPN_STATUS_PATH_PROTOCOLS: dict[str, frozenset[str]] = {
 _LOAD_BALANCING_STATUS_PATHS: tuple[str, ...] = (
     "admin/network/mwan3/status?detail=",
     "admin/network/mwan3/status",
+)
+_WISP_STATUS_PATHS: tuple[str, ...] = (
+    "admin/network/wireless/wds/status",
+    "admin/network/wireless/wds/status?mode=wisp",
+)
+_WISP_DATA_PATHS: tuple[str, ...] = (
+    "admin/network/wireless/wds/data",
+    "admin/network/wireless/wds/data?iface=wlan11",
+    "admin/network/wireless/wds/data?iface=wlan01",
+)
+_WISP_CONFIG_PATHS: tuple[str, ...] = (
+    "admin/network/wireless/wds/config?nomodal=&mode=wisp",
+    "admin/network/wireless/wds/config/nomodal/wisp",
 )
 
 _WAN_STATUS_PATH_FORMATS: tuple[str, ...] = (
@@ -149,6 +166,53 @@ def _non_empty_entries(parsed: dict[str, Any]) -> dict[str, Any]:
         for key, entry in parsed.items()
         if isinstance(entry, dict) and entry.get("value") not in (None, "")
     }
+
+
+def _merge_module_entries(
+    target: dict[str, Any],
+    source: dict[str, Any],
+) -> None:
+    """Merge parsed module entries while preserving the first live state value."""
+    for key, entry in source.items():
+        if not isinstance(entry, dict) or entry.get("value") in (None, ""):
+            continue
+        if key not in target or target.get(key, {}).get("value") in (None, ""):
+            target[key] = dict(entry)
+            continue
+
+        existing_entry = target[key]
+        if not isinstance(existing_entry, dict):
+            continue
+        existing_attributes = existing_entry.get("attributes")
+        new_attributes = entry.get("attributes")
+        if isinstance(new_attributes, dict):
+            merged_attributes = dict(existing_attributes) if isinstance(existing_attributes, dict) else {}
+            merged_attributes.update(new_attributes)
+            existing_entry["attributes"] = merged_attributes
+
+
+def _wisp_data_score(module_data: dict[str, Any]) -> tuple[int, int]:
+    """Score parsed WISP data so richer endpoint responses are preferred."""
+    rich_fields = sum(
+        _entry_value(module_data, key) not in (None, "")
+        for key in (
+            "status",
+            "ssid",
+            "bssid",
+            "signal",
+            "quality",
+            "channel",
+            "channel_width",
+            "protocol",
+            "transmit_power",
+        )
+    )
+    populated_fields = sum(
+        entry.get("value") not in (None, "")
+        for entry in module_data.values()
+        if isinstance(entry, dict)
+    )
+    return rich_fields, populated_fields
 
 
 def _module_entry_has_value(data: dict[str, Any], module: str, key: str) -> bool:
@@ -443,6 +507,63 @@ async def collect_router_data(
         data[MODULE_WIFI_5G] = parse_wifi_status(
             await hass.async_add_executor_job(router.get, "admin/network/wireless/status?iface=wlan10")
         )
+
+    # WISP / host-network uplink status
+    if existing_feature(device_model, MODULE_WISP) is True:
+        wisp_data: dict[str, Any] = {}
+
+        best_wisp_status: dict[str, Any] = {}
+        best_wisp_status_score = (-1, -1)
+        for wisp_status_path in _WISP_STATUS_PATHS:
+            wisp_status_html = await hass.async_add_executor_job(
+                router.get,
+                wisp_status_path,
+                True,
+            )
+            if not wisp_status_html:
+                continue
+
+            parsed_wisp_status = _non_empty_entries(parse_wisp_status(wisp_status_html))
+            candidate_score = _wisp_data_score(parsed_wisp_status)
+            if candidate_score > best_wisp_status_score:
+                best_wisp_status = parsed_wisp_status
+                best_wisp_status_score = candidate_score
+        _merge_module_entries(wisp_data, best_wisp_status)
+
+        best_wisp_data: dict[str, Any] = {}
+        best_wisp_data_score = (-1, -1)
+        for wisp_data_path in _WISP_DATA_PATHS:
+            wisp_data_payload = await hass.async_add_executor_job(
+                router.get,
+                wisp_data_path,
+                True,
+            )
+            if not wisp_data_payload:
+                continue
+
+            parsed_wisp_data = _non_empty_entries(parse_wisp_data(wisp_data_payload))
+            candidate_score = _wisp_data_score(parsed_wisp_data)
+            if candidate_score > best_wisp_data_score:
+                best_wisp_data = parsed_wisp_data
+                best_wisp_data_score = candidate_score
+        _merge_module_entries(wisp_data, best_wisp_data)
+
+        for wisp_config_path in _WISP_CONFIG_PATHS:
+            wisp_config_html = await hass.async_add_executor_job(
+                router.get,
+                wisp_config_path,
+                True,
+            )
+            if not wisp_config_html:
+                continue
+
+            parsed_wisp_settings = _non_empty_entries(parse_wisp_settings(wisp_config_html))
+            if parsed_wisp_settings:
+                _merge_module_entries(wisp_data, parsed_wisp_settings)
+                break
+
+        if wisp_data:
+            data[MODULE_WISP] = wisp_data
 
     # LAN status
     if existing_feature(device_model, MODULE_LAN) is True:

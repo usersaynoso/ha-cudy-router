@@ -23,6 +23,7 @@ from .const import (
     MODULE_MESH,
     MODULE_VPN_SETTINGS,
     MODULE_WIRELESS_SETTINGS,
+    MODULE_WISP,
     OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
     OPTIONS_DEVICELIST,
     SECTION_DEVICE_LIST,
@@ -141,6 +142,13 @@ ROUTER_SETTING_SWITCHES: tuple[CudyRouterSettingSwitchDescription, ...] = (
         module=MODULE_AUTO_UPDATE_SETTINGS,
         name_suffix="Auto update",
         icon="mdi:update",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    CudyRouterSettingSwitchDescription(
+        key="enabled",
+        module=MODULE_WISP,
+        name_suffix="WISP enabled",
+        icon="mdi:wifi-marker",
         entity_category=EntityCategory.CONFIG,
     ),
 )
@@ -363,6 +371,12 @@ class CudyRouterSettingSwitch(
         elif module == MODULE_AUTO_UPDATE_SETTINGS:
             result = await self.hass.async_add_executor_job(
                 api.set_auto_update_setting,
+                self.entity_description.key,
+                value,
+            )
+        elif module == MODULE_WISP:
+            result = await self.hass.async_add_executor_job(
+                api.set_wisp_setting,
                 self.entity_description.key,
                 value,
             )

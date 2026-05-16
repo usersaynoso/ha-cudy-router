@@ -80,6 +80,29 @@ def _find_form_field_name_by_suffix(
     return ""
 
 
+def _find_state_form_field_name_by_suffix(
+    html: str,
+    field_name_suffix: str,
+    *,
+    tag_names: tuple[str, ...],
+) -> str:
+    """Find a LuCI state field by suffix, preferring cbid over cbi.cbe widget fields."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    normalized_suffix = field_name_suffix.strip().lower()
+    fallback = ""
+
+    for tag_name in tag_names:
+        for field in soup.find_all(tag_name):
+            field_name = (field.get("name") or "").strip()
+            if not field_name or not field_name.lower().endswith(normalized_suffix):
+                continue
+            if field_name.startswith("cbid."):
+                return field_name
+            if not fallback:
+                fallback = field_name
+    return fallback
+
+
 def _compute_luci_password(plain_password: str, salt: str, token: str) -> str:
     """Compute the LuCI password hash.
 
@@ -1220,6 +1243,35 @@ class CudyRouter:
             {field_name: serializer(value)},
             referer=referer,
         )
+
+    def set_wisp_setting(self, key: str, value: str | bool) -> tuple[int, str]:
+        """Set a WISP configuration value."""
+        if key != "enabled":
+            return 0, f"Unsupported WISP setting: {key}"
+
+        for fetch_path in (
+            "admin/network/wireless/wds/config/nomodal/wisp",
+            "admin/network/wireless/wds/config?nomodal=&mode=wisp",
+        ):
+            html = self.get(fetch_path, True)
+            if not html:
+                continue
+
+            field_name = _find_state_form_field_name_by_suffix(
+                html,
+                "enabled",
+                tag_names=("input",),
+            )
+            if not field_name:
+                continue
+
+            return self._submit_form(
+                fetch_path,
+                {field_name: "1" if value else "0"},
+                referer=f"{self.base_url}/cgi-bin/luci/admin/network/wireless/wds",
+            )
+
+        return 0, "WISP enabled field not found"
 
     def _wireless_setting_context(self) -> tuple[bool, str]:
         """Return the active smart-connect state and writable form path."""

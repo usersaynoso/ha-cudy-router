@@ -134,6 +134,27 @@ def _hidden_bool_by_suffix(
     return _hidden_bool(soup, field_name, inverted=inverted)
 
 
+def _state_field_name_by_suffix(
+    soup: BeautifulSoup,
+    field_name_suffix: str,
+    *,
+    tag_names: tuple[str, ...] = ("input", "select"),
+) -> str | None:
+    """Find a state field by suffix, preferring LuCI cbid fields over widget fields."""
+    normalized_suffix = field_name_suffix.strip().lower()
+    fallback: str | None = None
+    for tag_name in tag_names:
+        for field in soup.find_all(tag_name):
+            field_name = (field.get("name") or "").strip()
+            if not field_name or not field_name.lower().endswith(normalized_suffix):
+                continue
+            if field_name.startswith("cbid."):
+                return field_name
+            if fallback is None:
+                fallback = field_name
+    return fallback
+
+
 def _select_entry_by_suffix(
     soup: BeautifulSoup,
     field_name_suffix: str,
@@ -270,6 +291,43 @@ def parse_wan_settings(input_html: str) -> dict[str, Any]:
             suffix = "proto" if key == "protocol" else "netmask"
             value = _field_value_by_suffix(soup, suffix)
         if value not in (None, ""):
+            data[key] = {"value": value}
+
+    return data
+
+
+def parse_wisp_settings(input_html: str) -> dict[str, Any]:
+    """Parse WISP configuration controls exposed by supported firmware."""
+    soup = _soup(input_html)
+
+    data: dict[str, Any] = {}
+
+    enabled_field = "cbid.wds-config.1.enabled"
+    enabled = _hidden_bool(soup, enabled_field)
+    if enabled is None:
+        discovered_enabled_field = _state_field_name_by_suffix(
+            soup,
+            "enabled",
+            tag_names=("input",),
+        )
+        if discovered_enabled_field is not None:
+            enabled = _hidden_bool(soup, discovered_enabled_field)
+    if enabled is not None:
+        data["enabled"] = {"value": enabled}
+
+    for key, suffix in (
+        ("hidden", "hidden"),
+        ("isolate", "isolate"),
+    ):
+        field_name = _state_field_name_by_suffix(
+            soup,
+            suffix,
+            tag_names=("input",),
+        )
+        if field_name is None:
+            continue
+        value = _hidden_bool(soup, field_name)
+        if value is not None:
             data[key] = {"value": value}
 
     return data

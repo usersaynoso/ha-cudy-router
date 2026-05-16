@@ -36,6 +36,9 @@ def test_router_data_collects_configuration_modules() -> None:
     assert '"admin/system/status/arp"' in source
     assert '"admin/system/autoupgrade"' in source
     assert '"admin/setup"' in source
+    assert '"admin/network/wireless/wds/status"' in source
+    assert '"admin/network/wireless/wds/data"' in source
+    assert '"admin/network/wireless/wds/config/nomodal/wisp"' in source
     assert "existing_feature(device_model, MODULE_WIRELESS_SETTINGS)" in source
     assert "existing_feature(device_model, MODULE_AUTO_UPDATE_SETTINGS)" in source
 
@@ -50,11 +53,14 @@ def test_router_client_exposes_setting_mutators() -> None:
         "set_smart_connect",
         "set_vpn_setting",
         "set_auto_update_setting",
+        "set_wisp_setting",
         "set_device_access",
     ):
         assert f"def {method_name}" in source
     assert '"cbi.toggle"' in source
     assert "cbid.table" in source
+    assert "_find_state_form_field_name_by_suffix" in source
+    assert '"admin/network/wireless/wds/config/nomodal/wisp"' in source
     assert '"admin/setup"' in source
     assert '"auto_upgrade"' in source
 
@@ -73,6 +79,8 @@ def test_switch_and_select_platforms_cover_router_settings() -> None:
     assert 'entity_registry.async_get_entity_id("switch", DOMAIN, unique_id)' in switch_source
     assert "entity_registry.async_remove(entity_id)" in switch_source
     assert "_remove_router_setting_entity" in switch_source
+    assert "MODULE_WISP" in switch_source
+    assert '"WISP enabled"' in switch_source
     assert "ROUTER_SELECTS" in select_source
     assert "CudyRouterSettingSelect" in select_source
     assert '"network_search"' in select_source

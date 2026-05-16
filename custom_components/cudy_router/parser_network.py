@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -131,6 +132,28 @@ _VPN_STATUS_VALUE_LABELS = {
     "tunnel address",
     "tunnel address/ip",
 }
+_WISP_STATUS_LABELS = {
+    "success": "Connected",
+    "connected": "Connected",
+    "up": "Connected",
+    "roam": "Roaming",
+    "roaming": "Roaming",
+    "scan": "Scanning",
+    "scanning": "Scanning",
+    "stop": "Not connected",
+    "stopped": "Not connected",
+    "down": "Not connected",
+    "failed": "Not connected",
+    "fail": "Not connected",
+    "not connected": "Not connected",
+    "disabled": "Disabled",
+    "disable": "Disabled",
+}
+_WISP_PROTOCOL_LABELS = {
+    "dhcp": "DHCP",
+    "pppoe": "PPPoE",
+    "static": "Static",
+}
 
 
 def _pick_first_value(raw_data: dict[str, Any], *keys: str) -> Any:
@@ -180,6 +203,79 @@ def _clean_count(value: Any) -> int | None:
     if not match:
         return None
     return int(match.group(0))
+
+
+def _clean_int(value: Any) -> int | None:
+    """Extract an integer from a status value."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+
+    cleaned = _clean_text(value)
+    if cleaned is None:
+        return None
+
+    match = re.search(r"-?\d+", cleaned)
+    if not match:
+        return None
+    return int(match.group(0))
+
+
+def _clean_bool(value: Any) -> bool | None:
+    """Normalize common boolean-ish status values."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        return bool(value)
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on", "enabled", "enable"}:
+        return True
+    if normalized in {"0", "false", "no", "off", "disabled", "disable"}:
+        return False
+    return None
+
+
+def _wisp_status_label(raw_status: Any, up: Any = None) -> str | None:
+    """Return a user-facing WISP connection status."""
+    cleaned = _clean_text(str(raw_status)) if raw_status is not None else None
+    if cleaned is not None:
+        label = _WISP_STATUS_LABELS.get(cleaned.lower())
+        if label is not None:
+            return label
+        return cleaned
+
+    up_value = _clean_bool(up)
+    if up_value is True:
+        return "Connected"
+    if up_value is False:
+        return "Not connected"
+    return None
+
+
+def _wisp_protocol_label(value: Any) -> str | None:
+    """Return a readable WISP protocol label."""
+    cleaned = _clean_text(str(value)) if value is not None else None
+    if cleaned is None:
+        return None
+    return _WISP_PROTOCOL_LABELS.get(cleaned.lower(), cleaned)
+
+
+def _wisp_channel_width_label(value: Any) -> str | None:
+    """Return a readable WISP channel width label."""
+    cleaned = _clean_text(str(value)) if value is not None else None
+    if cleaned is None:
+        return None
+
+    match = re.fullmatch(r"ht\s*(\d+)", cleaned, flags=re.IGNORECASE)
+    if match:
+        return f"{match.group(1)} MHz"
+    return cleaned
 
 
 def _parse_data_size_pair(value: Any) -> tuple[int | None, int | None]:
@@ -298,6 +394,93 @@ def parse_vpn_status(input_html: str) -> dict[str, Any]:
         "tunnel_ip": {
             "value": _clean_text(_pick_first_value(raw_data, "Tunnel IP", "Tunnel Address", "Tunnel Address/IP"))
         },
+    }
+
+
+def _wisp_header_status(input_html: str) -> str | None:
+    """Extract WISP status from Cudy status table headers."""
+    soup = BeautifulSoup(input_html, "html.parser")
+    for row in soup.select("thead tr"):
+        values = _cell_strings(row)
+        for index, value in enumerate(values):
+            if value.strip().lower() != "status":
+                continue
+            if index + 1 < len(values):
+                return _clean_text(values[index + 1])
+    return None
+
+
+def parse_wisp_status(input_html: str) -> dict[str, Any]:
+    """Parse WISP/host-network status HTML."""
+    raw_data = parse_tables(input_html)
+    raw_status = _wisp_header_status(input_html) or _pick_first_value(
+        raw_data,
+        "Status",
+        "Connection Status",
+        "WISP Status",
+    )
+    ssid = _clean_text(_pick_first_value(raw_data, "SSID", "Host SSID", "Host Network", "Network Name"))
+    signal = _clean_int(_pick_first_value(raw_data, "Signal", "Signal Strength"))
+
+    status_label = _wisp_status_label(raw_status)
+    status_attributes: dict[str, Any] = {}
+    if raw_status not in (None, ""):
+        status_attributes["raw_status"] = raw_status
+
+    return {
+        "status": {
+            "value": status_label,
+            "attributes": status_attributes,
+        },
+        "ssid": {"value": ssid},
+        "signal": {"value": signal},
+    }
+
+
+def parse_wisp_data(input_data: str) -> dict[str, Any]:
+    """Parse WISP JSON status data."""
+    payload = input_data.strip() if isinstance(input_data, str) else ""
+    if not payload:
+        return {}
+
+    try:
+        parsed_payload = json.loads(payload)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", payload, re.DOTALL)
+        if not match:
+            return {}
+        try:
+            parsed_payload = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return {}
+
+    if not isinstance(parsed_payload, dict):
+        return {}
+
+    raw_status = parsed_payload.get("wds")
+    up = parsed_payload.get("up")
+    status_attributes: dict[str, Any] = {}
+    if raw_status not in (None, ""):
+        status_attributes["raw_status"] = raw_status
+    up_value = _clean_bool(up)
+    if up_value is not None:
+        status_attributes["up"] = up_value
+
+    return {
+        "status": {
+            "value": _wisp_status_label(raw_status, up),
+            "attributes": status_attributes,
+        },
+        "ssid": {"value": _clean_text(parsed_payload.get("ssid"))},
+        "bssid": {"value": _clean_text(parsed_payload.get("bssid"))},
+        "quality": {"value": _clean_int(parsed_payload.get("quality"))},
+        "channel": {"value": _clean_int(parsed_payload.get("channel"))},
+        "channel_width": {"value": _wisp_channel_width_label(parsed_payload.get("htbw"))},
+        "protocol": {"value": _wisp_protocol_label(parsed_payload.get("proto"))},
+        "transmit_power": {"value": _clean_int(parsed_payload.get("txpower"))},
+        "hidden": {"value": _clean_bool(parsed_payload.get("hidden"))},
+        "isolate": {"value": _clean_bool(parsed_payload.get("isolate"))},
+        "up": {"value": up_value},
     }
 
 

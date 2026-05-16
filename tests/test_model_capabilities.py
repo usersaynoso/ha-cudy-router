@@ -100,10 +100,72 @@ def test_r700_variants_keep_the_r700_feature_profile() -> None:
     assert features.existing_feature("R700 AX3000", const.MODULE_AUTO_UPDATE_SETTINGS) is True
 
 
+def test_wisp_capability_list_matches_supported_emulator_models() -> None:
+    """Only emulator-confirmed WISP models should get the model-mapped WISP module."""
+    for model in (
+        "IR02",
+        "IR04",
+        "LT15E",
+        "LT18",
+        "LT300",
+        "LT300 V2.0",
+        "LT300V2",
+        "LT300V3",
+        "LT400",
+        "LT400-Outdoor",
+        "LT400E",
+        "LT400V",
+        "LT500",
+        "LT500-Outdoor",
+        "LT500E",
+        "LT700-Outdoor",
+        "LT700E",
+        "LT700V",
+        "M11000",
+        "M1200",
+        "M1300",
+        "M1500",
+        "M1800",
+        "M3000",
+        "M3000S",
+        "P2",
+        "RE1200",
+        "RE1200-Outdoor",
+        "RE1500",
+        "RE1800",
+        "RE3000",
+        "RE3600",
+        "TR1200",
+        "TR3000",
+        "WR1200",
+        "WR1200E",
+        "WR1300",
+        "WR1300E",
+        "WR1300EV2",
+        "WR1300S",
+        "WR1500",
+        "WR300",
+        "WR3000",
+        "WR3000E",
+        "WR3000EV2",
+        "WR3000P",
+        "WR3000S",
+        "WR3000V2",
+        "WR300S",
+        "X6",
+    ):
+        assert features.existing_feature(model, const.MODULE_WISP) is True
+
+    for model in ("AP11000", "AP1200", "R700", "WR6500"):
+        assert features.known_feature(model, const.MODULE_WISP) is False
+        assert features.existing_feature(model, const.MODULE_WISP) is False
+
+
 def test_unknown_models_keep_best_effort_default_profile() -> None:
     """Unknown models should still fall back to the permissive compatibility profile."""
     assert features.existing_feature("Some Future Model V1.0", const.MODULE_MODEM) is True
     assert features.existing_feature("Some Future Model V1.0", const.MODULE_WIRELESS_SETTINGS) is True
+    assert features.existing_feature("Some Future Model V1.0", const.MODULE_WISP) is False
 
 
 def test_module_available_allows_only_live_detected_data_for_unmapped_features() -> None:

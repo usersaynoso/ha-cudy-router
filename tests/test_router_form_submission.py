@@ -330,3 +330,59 @@ def test_set_auto_update_setting_falls_back_to_setup_page(monkeypatch) -> None:
             "https://192.168.10.1/cgi-bin/luci/admin/setup",
         )
     ]
+
+
+def test_set_wisp_setting_prefers_real_enabled_field(monkeypatch) -> None:
+    """WISP writes should update the cbid state field, not the visible toggle helper."""
+    router = router_module.CudyRouter(None, "https://192.168.10.1", "user", "password")
+
+    wisp_html = """
+    <form action="/cgi-bin/luci/admin/network/wireless/wds/config/nomodal/wisp">
+      <input type="hidden" name="token" value="page-token" />
+      <input type="hidden" name="timeclock" value="" />
+      <input type="hidden" name="cbi.submit" value="1" />
+      <input type="hidden" name="cbi.cbe.wds-config.1.enabled" value="1" />
+      <input type="hidden" name="cbid.wds-config.1.enabled" value="1" />
+      <button type="submit" name="cbi.apply">Save &amp; Apply</button>
+    </form>
+    """
+
+    posted: list[tuple[str, dict[str, list[str]], str]] = []
+
+    monkeypatch.setattr(
+        router,
+        "get",
+        lambda path, silent=False: wisp_html
+        if path == "admin/network/wireless/wds/config/nomodal/wisp"
+        else "",
+    )
+
+    def fake_get(path: str, **kwargs):
+        if path == "admin/network/wireless/wds/config/nomodal/wisp":
+            return _response(wisp_html)
+        raise AssertionError(f"Unexpected GET path: {path}")
+
+    def fake_post(path: str, **kwargs):
+        posted.append((path, parse_qs(kwargs["data"], keep_blank_values=True), kwargs["headers"]["Referer"]))
+        return _response("saved")
+
+    monkeypatch.setattr(router, "_luci_get", fake_get)
+    monkeypatch.setattr(router, "_luci_post", fake_post)
+
+    result = router.set_wisp_setting("enabled", False)
+
+    assert result == (200, "saved")
+    assert posted == [
+        (
+            "admin/network/wireless/wds/config/nomodal/wisp",
+            {
+                "token": ["page-token"],
+                "timeclock": [posted[0][1]["timeclock"][0]],
+                "cbi.submit": ["1"],
+                "cbi.cbe.wds-config.1.enabled": ["1"],
+                "cbid.wds-config.1.enabled": ["0"],
+                "cbi.apply": [""],
+            },
+            "https://192.168.10.1/cgi-bin/luci/admin/network/wireless/wds",
+        )
+    ]

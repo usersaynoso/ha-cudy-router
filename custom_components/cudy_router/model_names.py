@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 _MODEL_ALIASES: dict[str, str] = {
+    "LT300 V2.0": "LT300V2",
     "LT300 V3.0": "LT300V3",
     "WR1300E V2.0": "WR1300EV2",
     "WR1300 V4.0": "WR1300V4.0",

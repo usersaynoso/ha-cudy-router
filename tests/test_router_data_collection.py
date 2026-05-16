@@ -55,6 +55,147 @@ class _FakeRouter:
         return self._pages.get(path, "")
 
 
+def test_collect_router_data_adds_wisp_for_lt300_v2(monkeypatch) -> None:
+    """LT300 V2 should expose WISP as its own uplink module."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_WISP,
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/wireless/wds/status": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">Host Network</h3></div>
+              <table class="table">
+                <thead><tr><th>Status</th><th>Connected</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td>SSID</td><td>Cudy-Office-Guest</td></tr>
+                  <tr><td>Signal</td><td>65 dB</td></tr>
+                </tbody>
+              </table>
+            </div>
+            """,
+            "admin/network/wireless/wds/data": """
+            {"wds":"success","ssid":"Cudy-Office-Guest","up":true,
+             "bssid":"80:AF:CA:5F:AA:C6","hidden":0,"proto":"dhcp",
+             "txpower":-1,"channel":5,"htbw":"ht40","isolate":0,"quality":62}
+            """,
+            "admin/network/wireless/wds/config?nomodal=&mode=wisp": "",
+            "admin/network/wireless/wds/config/nomodal/wisp": """
+            <form>
+              <input type="hidden" name="cbi.cbe.wds-config.1.enabled" value="1" />
+              <input type="hidden" name="cbid.wds-config.1.enabled" value="1" />
+            </form>
+            """,
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "LT300 V2.0",
+        )
+    )
+
+    wisp = data[const.MODULE_WISP]
+    assert wisp["status"]["value"] == "Connected"
+    assert wisp["status"]["attributes"] == {"raw_status": "success", "up": True}
+    assert wisp["ssid"]["value"] == "Cudy-Office-Guest"
+    assert wisp["bssid"]["value"] == "80:AF:CA:5F:AA:C6"
+    assert wisp["signal"]["value"] == 65
+    assert wisp["quality"]["value"] == 62
+    assert wisp["channel"]["value"] == 5
+    assert wisp["channel_width"]["value"] == "40 MHz"
+    assert wisp["protocol"]["value"] == "DHCP"
+    assert wisp["transmit_power"]["value"] == -1
+    assert wisp["enabled"]["value"] is True
+    assert ("admin/network/wireless/wds/status", True) in fake_router.requests
+    assert ("admin/network/wireless/wds/data", True) in fake_router.requests
+
+
+def test_collect_router_data_skips_wisp_for_unsupported_models(monkeypatch) -> None:
+    """Routers without WISP support should not probe WISP endpoints."""
+    monkeypatch.setattr(router_data, "existing_feature", lambda device_model, module: False)
+    fake_router = _FakeRouter(
+        {
+            "admin/network/wireless/wds/status": "<table><tr><td>SSID</td><td>ignored</td></tr></table>",
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert const.MODULE_WISP not in data
+    assert fake_router.requests == []
+
+
+def test_collect_router_data_skips_empty_wisp_pages(monkeypatch) -> None:
+    """Empty WISP endpoints should not create Unknown WISP entities."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_WISP,
+    )
+    fake_router = _FakeRouter({})
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "LT300 V2.0",
+        )
+    )
+
+    assert const.MODULE_WISP not in data
+
+
+def test_collect_router_data_keeps_wisp_and_modem_data_separate(monkeypatch) -> None:
+    """WISP uplink data should coexist with cellular radio status."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module in {const.MODULE_MODEM, const.MODULE_WISP},
+    )
+    monkeypatch.setattr(
+        router_data,
+        "parse_modem_info",
+        lambda html: {"network": {"value": "O2 - UK 4G"}},
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/gcom/status": "<html></html>",
+            "admin/network/gcom/status?detail=1&iface=4g": "<html></html>",
+            "admin/network/gcom/config/apn": "",
+            "admin/network/wireless/wds/data": """
+            {"wds":"success","ssid":"Primary-WISP","up":true,"proto":"dhcp"}
+            """,
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "LT300 V2.0",
+        )
+    )
+
+    assert data[const.MODULE_MODEM]["network"]["value"] == "O2 - UK 4G"
+    assert data[const.MODULE_WISP]["ssid"]["value"] == "Primary-WISP"
+    assert data[const.MODULE_WISP]["protocol"]["value"] == "DHCP"
+
+
 def test_collect_router_data_adds_br_lan_arp_count(monkeypatch) -> None:
     """Device data should include the br-lan ARP count from the system ARP page."""
     monkeypatch.setattr(
