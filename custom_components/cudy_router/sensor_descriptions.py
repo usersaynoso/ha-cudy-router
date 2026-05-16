@@ -413,6 +413,12 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         name_suffix="WISP BSSID",
         icon="mdi:access-point-network",
     ),
+    (MODULE_WISP, "public_ip"): CudyRouterSensorEntityDescription(
+        key="public_ip",
+        module=MODULE_WISP,
+        name_suffix="WISP public IP",
+        icon="mdi:ip",
+    ),
     (MODULE_WISP, "signal"): CudyRouterSensorEntityDescription(
         key="signal",
         module=MODULE_WISP,

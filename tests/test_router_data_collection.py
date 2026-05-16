@@ -71,6 +71,7 @@ def test_collect_router_data_adds_wisp_for_lt300_v2(monkeypatch) -> None:
                 <thead><tr><th>Status</th><th>Connected</th><th></th></tr></thead>
                 <tbody>
                   <tr><td>SSID</td><td>Cudy-Office-Guest</td></tr>
+                  <tr><td>Public IP</td><td>203.0.113.77</td></tr>
                   <tr><td>Signal</td><td>65 dB</td></tr>
                 </tbody>
               </table>
@@ -78,6 +79,7 @@ def test_collect_router_data_adds_wisp_for_lt300_v2(monkeypatch) -> None:
             """,
             "admin/network/wireless/wds/data": """
             {"wds":"success","ssid":"Cudy-Office-Guest","up":true,
+             "public_ip":"203.0.113.78",
              "bssid":"80:AF:CA:5F:AA:C6","hidden":0,"proto":"dhcp",
              "txpower":-1,"channel":5,"htbw":"ht40","isolate":0,"quality":62}
             """,
@@ -105,6 +107,7 @@ def test_collect_router_data_adds_wisp_for_lt300_v2(monkeypatch) -> None:
     assert wisp["status"]["attributes"] == {"raw_status": "success", "up": True}
     assert wisp["ssid"]["value"] == "Cudy-Office-Guest"
     assert wisp["bssid"]["value"] == "80:AF:CA:5F:AA:C6"
+    assert wisp["public_ip"]["value"] == "203.0.113.77"
     assert wisp["signal"]["value"] == 65
     assert wisp["quality"]["value"] == 62
     assert wisp["channel"]["value"] == 5

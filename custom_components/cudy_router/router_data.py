@@ -199,6 +199,7 @@ def _wisp_data_score(module_data: dict[str, Any]) -> tuple[int, int]:
             "status",
             "ssid",
             "bssid",
+            "public_ip",
             "signal",
             "quality",
             "channel",

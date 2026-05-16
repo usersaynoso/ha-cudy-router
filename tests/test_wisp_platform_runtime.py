@@ -58,6 +58,7 @@ def test_sensor_setup_adds_wisp_sensors_and_removes_stale_entries(monkeypatch) -
                 "status": {"value": "Connected"},
                 "ssid": {"value": "Barn-Link"},
                 "bssid": {"value": None},
+                "public_ip": {"value": "203.0.113.77"},
                 "signal": {"value": 65},
                 "quality": {"value": 62},
                 "channel": {"value": 5},
@@ -102,6 +103,7 @@ def test_sensor_setup_adds_wisp_sensors_and_removes_stale_entries(monkeypatch) -
     for key in (
         "status",
         "ssid",
+        "public_ip",
         "signal",
         "quality",
         "channel",

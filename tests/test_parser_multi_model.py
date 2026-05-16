@@ -249,6 +249,7 @@ def test_parse_wisp_status_reads_lt300_host_network_panel() -> None:
             </thead>
             <tbody>
               <tr><td><p class="visible-xs">SSID</p></td><td><p class="visible-xs">Cudy-Office-Guest</p></td></tr>
+              <tr><td><p class="visible-xs">Public IP</p></td><td><p class="visible-xs">203.0.113.77</p></td></tr>
               <tr><td><p class="visible-xs">Signal</p></td><td><p class="visible-xs">65 dB</p></td></tr>
             </tbody>
           </table>
@@ -259,6 +260,7 @@ def test_parse_wisp_status_reads_lt300_host_network_panel() -> None:
     assert parsed["status"]["value"] == "Connected"
     assert parsed["status"]["attributes"]["raw_status"] == "Connected"
     assert parsed["ssid"]["value"] == "Cudy-Office-Guest"
+    assert parsed["public_ip"]["value"] == "203.0.113.77"
     assert parsed["signal"]["value"] == 65
 
 
@@ -267,6 +269,7 @@ def test_parse_wisp_data_reads_json_status_payload() -> None:
     parsed = parser_network.parse_wisp_data(
         """
         {"wds":"success","ssid":"Cudy-Office-Guest","up":true,
+         "public_ip":"203.0.113.78",
          "bssid":"80:AF:CA:5F:AA:C6","hidden":0,"proto":"dhcp",
          "txpower":-1,"channel":5,"htbw":"ht40","maxsta":0,
          "isolate":0,"quality":62}
@@ -277,6 +280,7 @@ def test_parse_wisp_data_reads_json_status_payload() -> None:
     assert parsed["status"]["attributes"] == {"raw_status": "success", "up": True}
     assert parsed["ssid"]["value"] == "Cudy-Office-Guest"
     assert parsed["bssid"]["value"] == "80:AF:CA:5F:AA:C6"
+    assert parsed["public_ip"]["value"] == "203.0.113.78"
     assert parsed["quality"]["value"] == 62
     assert parsed["channel"]["value"] == 5
     assert parsed["channel_width"]["value"] == "40 MHz"

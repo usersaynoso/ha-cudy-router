@@ -165,6 +165,7 @@ def test_entity_catalog_reports_wisp_entities_for_supported_models() -> None:
             const.MODULE_WISP: {
                 "status": {"value": "Connected"},
                 "ssid": {"value": "Barn-Link"},
+                "public_ip": {"value": "203.0.113.77"},
                 "enabled": {"value": True},
             },
         },
@@ -183,6 +184,13 @@ def test_entity_catalog_reports_wisp_entities_for_supported_models() -> None:
         entry["domain"] == "sensor"
         and entry["module"] == const.MODULE_WISP
         and entry["key"] == "ssid"
+        and entry["status"] in {"available", "created"}
+        for entry in entries
+    )
+    assert any(
+        entry["domain"] == "sensor"
+        and entry["module"] == const.MODULE_WISP
+        and entry["key"] == "public_ip"
         and entry["status"] in {"available", "created"}
         for entry in entries
     )

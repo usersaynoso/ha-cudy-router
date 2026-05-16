@@ -421,6 +421,16 @@ def parse_wisp_status(input_html: str) -> dict[str, Any]:
     )
     ssid = _clean_text(_pick_first_value(raw_data, "SSID", "Host SSID", "Host Network", "Network Name"))
     signal = _clean_int(_pick_first_value(raw_data, "Signal", "Signal Strength"))
+    public_ip = _clean_text(
+        _pick_first_value(
+            raw_data,
+            "Public IP",
+            "Public IPv4",
+            "WAN Public IP",
+            "Internet IP",
+            "External IP",
+        )
+    )
 
     status_label = _wisp_status_label(raw_status)
     status_attributes: dict[str, Any] = {}
@@ -433,6 +443,7 @@ def parse_wisp_status(input_html: str) -> dict[str, Any]:
             "attributes": status_attributes,
         },
         "ssid": {"value": ssid},
+        "public_ip": {"value": public_ip},
         "signal": {"value": signal},
     }
 
@@ -473,6 +484,22 @@ def parse_wisp_data(input_data: str) -> dict[str, Any]:
         },
         "ssid": {"value": _clean_text(parsed_payload.get("ssid"))},
         "bssid": {"value": _clean_text(parsed_payload.get("bssid"))},
+        "public_ip": {
+            "value": _clean_text(
+                _pick_first_value(
+                    parsed_payload,
+                    "public_ip",
+                    "publicip",
+                    "publicIP",
+                    "publicIp",
+                    "public_ipv4",
+                    "publicIPv4",
+                    "wan_public_ip",
+                    "internet_ip",
+                    "external_ip",
+                )
+            )
+        },
         "quality": {"value": _clean_int(parsed_payload.get("quality"))},
         "channel": {"value": _clean_int(parsed_payload.get("channel"))},
         "channel_width": {"value": _wisp_channel_width_label(parsed_payload.get("htbw"))},
