@@ -88,9 +88,17 @@ _LOAD_BALANCING_STATUS_PATHS: tuple[str, ...] = (
     "admin/network/mwan3/status",
 )
 _WISP_STATUS_PATHS: tuple[str, ...] = (
-    "admin/network/wireless/wds",
+    "admin/network/wireless/wds/status?detail=1",
+    "admin/network/wireless/wds/status?detail=",
+    "admin/network/wireless/wds/status?detail=1&mode=wisp",
+    "admin/network/wireless/wds/status?mode=wisp&detail=1",
+    "admin/network/wireless/wds/status?status=",
+    "admin/network/wireless/wds?detail=1",
+    "admin/network/wireless/wds?detail=",
+    "admin/network/wireless/wds?status=",
     "admin/network/wireless/wds/status",
     "admin/network/wireless/wds/status?mode=wisp",
+    "admin/network/wireless/wds",
 )
 _WISP_DATA_PATHS: tuple[str, ...] = (
     "admin/network/wireless/wds/data",

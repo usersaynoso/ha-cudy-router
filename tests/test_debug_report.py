@@ -72,6 +72,7 @@ def test_debug_report_endpoint_matrix_includes_r700_wan_and_vpn_variants() -> No
     """The diagnostic matrix should probe the known R700 WAN and VPN variants."""
     wan_paths = debug_report.wan_debug_paths()
     vpn_paths = debug_report.vpn_debug_paths()
+    wisp_paths = debug_report.module_debug_paths()["wisp"]
 
     assert "admin/network/mwan3/status?detail=" in wan_paths
     assert "admin/network/wan/status?detail=1&iface=wan" in wan_paths
@@ -84,6 +85,10 @@ def test_debug_report_endpoint_matrix_includes_r700_wan_and_vpn_variants() -> No
     assert "admin/network/vpn?mvpn=" in vpn_paths
     assert "admin/network/vpn/openvpnc/status?detail=" in vpn_paths
     assert "admin/network/vpn/pptp/status?status=" in vpn_paths
+    assert "admin/network/wireless/wds/status?detail=1" in wisp_paths
+    assert "admin/network/wireless/wds/status?status=" in wisp_paths
+    assert "admin/network/wireless/wds?detail=1" in wisp_paths
+    assert "admin/network/wireless/wds?status=" in wisp_paths
 
 
 def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
@@ -107,7 +112,7 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
         "admin/network/vpn?mvpn=": """
         <table><tr><td>VPN Client</td><td>1</td></tr></table>
         """,
-        "admin/network/wireless/wds": """
+        "admin/network/wireless/wds/status?detail=1": """
         <h3 class="panel-title">WISP</h3>
         <table>
           <thead><tr><th>Status</th><th>Connected</th><th></th></tr></thead>
@@ -120,6 +125,10 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
             <tr><td>Signal</td><td>65 dB</td></tr>
           </tbody>
         </table>
+        """,
+        "admin/network/wireless/wds": """
+        <!DOCTYPE html><html><head><title>LT300</title></head>
+        <body><h4>System Status Host Network</h4></body></html>
         """,
         "admin/network/wireless/wds/status": """
         <h3 class="panel-title">WISP</h3>
@@ -189,7 +198,7 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     wisp_probe = next(
         probe
         for probe in payload["probes"]["wisp"]
-        if probe["path"] == "admin/network/wireless/wds"
+        if probe["path"] == "admin/network/wireless/wds/status?detail=1"
     )
 
     assert payload["config_entry"]["data"]["password"] == "<REDACTED>"
@@ -208,6 +217,7 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     assert "admin/network/devices/devlist?detail=1" in payload["endpoint_matrix"]["devices"]
     assert "admin/network/gcom/status?detail=1&iface=4g" in payload["endpoint_matrix"]["modem"]
     assert "admin/network/wireless/wds" in payload["endpoint_matrix"]["wisp"]
+    assert "admin/network/wireless/wds/status?detail=1" in payload["endpoint_matrix"]["wisp"]
     assert "203.0.113.77" not in json.dumps(wisp_probe)
     assert wisp_probe["headings"] == ["WISP"]
     assert wisp_probe["table_data"]["Public IP"].startswith("<IP_")
