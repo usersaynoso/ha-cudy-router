@@ -420,6 +420,7 @@ def parse_wisp_status(input_html: str) -> dict[str, Any]:
         "WISP Status",
     )
     ssid = _clean_text(_pick_first_value(raw_data, "SSID", "Host SSID", "Host Network", "Network Name"))
+    bssid = _clean_text(_pick_first_value(raw_data, "BSSID", "MAC Address", "MAC-Address"))
     signal = _clean_int(_pick_first_value(raw_data, "Signal", "Signal Strength"))
     public_ip = _clean_text(
         _pick_first_value(
@@ -431,6 +432,9 @@ def parse_wisp_status(input_html: str) -> dict[str, Any]:
             "External IP",
         )
     )
+    channel = _clean_int(_pick_first_value(raw_data, "Channel"))
+    channel_width = _wisp_channel_width_label(_pick_first_value(raw_data, "Width", "Channel Width"))
+    protocol = _wisp_protocol_label(_pick_first_value(raw_data, "Protocol", "Connection Type"))
 
     status_label = _wisp_status_label(raw_status)
     status_attributes: dict[str, Any] = {}
@@ -443,8 +447,12 @@ def parse_wisp_status(input_html: str) -> dict[str, Any]:
             "attributes": status_attributes,
         },
         "ssid": {"value": ssid},
+        "bssid": {"value": bssid},
         "public_ip": {"value": public_ip},
         "signal": {"value": signal},
+        "channel": {"value": channel},
+        "channel_width": {"value": channel_width},
+        "protocol": {"value": protocol},
     }
 
 

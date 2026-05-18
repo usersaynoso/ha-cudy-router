@@ -107,13 +107,26 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
         "admin/network/vpn?mvpn=": """
         <table><tr><td>VPN Client</td><td>1</td></tr></table>
         """,
+        "admin/network/wireless/wds": """
+        <h3 class="panel-title">WISP</h3>
+        <table>
+          <thead><tr><th>Status</th><th>Connected</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>SSID</td><td>Farm-Uplink</td></tr>
+            <tr><td>BSSID</td><td>80:AF:CA:5F:AA:C6</td></tr>
+            <tr><td>Channel</td><td>5</td></tr>
+            <tr><td>Width</td><td>HT40</td></tr>
+            <tr><td>Public IP</td><td>203.0.113.77</td></tr>
+            <tr><td>Signal</td><td>65 dB</td></tr>
+          </tbody>
+        </table>
+        """,
         "admin/network/wireless/wds/status": """
         <h3 class="panel-title">WISP</h3>
         <table>
           <thead><tr><th>Status</th><th>Connected</th><th></th></tr></thead>
           <tbody>
             <tr><td>SSID</td><td>Farm-Uplink</td></tr>
-            <tr><td>Public IP</td><td>203.0.113.77</td></tr>
             <tr><td>Signal</td><td>65 dB</td></tr>
           </tbody>
         </table>
@@ -176,7 +189,7 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     wisp_probe = next(
         probe
         for probe in payload["probes"]["wisp"]
-        if probe["path"] == "admin/network/wireless/wds/status"
+        if probe["path"] == "admin/network/wireless/wds"
     )
 
     assert payload["config_entry"]["data"]["password"] == "<REDACTED>"
@@ -194,12 +207,14 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     assert "<MAC_" in payload_text
     assert "admin/network/devices/devlist?detail=1" in payload["endpoint_matrix"]["devices"]
     assert "admin/network/gcom/status?detail=1&iface=4g" in payload["endpoint_matrix"]["modem"]
-    assert "admin/network/wireless/wds/status" in payload["endpoint_matrix"]["wisp"]
+    assert "admin/network/wireless/wds" in payload["endpoint_matrix"]["wisp"]
     assert "203.0.113.77" not in json.dumps(wisp_probe)
     assert wisp_probe["headings"] == ["WISP"]
     assert wisp_probe["table_data"]["Public IP"].startswith("<IP_")
     assert wisp_probe["parser_output"]["status"]["value"] == "Connected"
     assert wisp_probe["parser_output"]["public_ip"]["value"].startswith("<IP_")
+    assert wisp_probe["parser_output"]["bssid"]["value"].startswith("<MAC_")
+    assert wisp_probe["parser_output"]["channel_width"]["value"] == "40 MHz"
     assert "192.168.10.42" not in wan3_probe["html_excerpt"]
     assert wan3_probe["headings"] == ["WAN3"]
     assert wan3_probe["table_data"]["IP Address"].startswith("<IP_")

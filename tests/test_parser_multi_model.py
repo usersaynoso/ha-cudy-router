@@ -264,6 +264,45 @@ def test_parse_wisp_status_reads_lt300_host_network_panel() -> None:
     assert parsed["signal"]["value"] == 65
 
 
+def test_parse_wisp_status_reads_lt300_full_wisp_page() -> None:
+    """Full LT300 WISP pages should expose the uplink public IP and radio fields."""
+    parsed = parser_network.parse_wisp_status(
+        """
+        <div class="panel panel-primary">
+          <div class="panel-heading"><h3 class="panel-title">WISP</h3></div>
+          <table class="table">
+            <thead>
+              <tr><th>Status</th><th>Connected</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr><td>SSID</td><td>Giraffe</td></tr>
+              <tr><td>Upload / Download</td><td>1.11 GB / 0.80 GB</td></tr>
+              <tr><td>BSSID</td><td>C8:7F:54:BA:1D:92</td></tr>
+              <tr><td>Channel</td><td>9</td></tr>
+              <tr><td>Mode</td><td>11n</td></tr>
+              <tr><td>Width</td><td>HT20</td></tr>
+              <tr><td>Signal</td><td>-52 dBm</td></tr>
+              <tr><td>Public IP</td><td>81.105.1.23</td></tr>
+              <tr><td>IP Address</td><td>192.168.50.100</td></tr>
+              <tr><td>Subnet Mask</td><td>255.255.255.0</td></tr>
+              <tr><td>Gateway</td><td>192.168.50.1</td></tr>
+              <tr><td>DNS</td><td>8.8.8.8/9.9.9.9</td></tr>
+              <tr><td>Connected Time</td><td>04:52:22</td></tr>
+            </tbody>
+          </table>
+        </div>
+        """
+    )
+
+    assert parsed["status"]["value"] == "Connected"
+    assert parsed["ssid"]["value"] == "Giraffe"
+    assert parsed["bssid"]["value"] == "C8:7F:54:BA:1D:92"
+    assert parsed["public_ip"]["value"] == "81.105.1.23"
+    assert parsed["signal"]["value"] == -52
+    assert parsed["channel"]["value"] == 9
+    assert parsed["channel_width"]["value"] == "20 MHz"
+
+
 def test_parse_wisp_data_reads_json_status_payload() -> None:
     """WISP JSON parsing should normalize status, protocol, and radio fields."""
     parsed = parser_network.parse_wisp_data(
