@@ -135,6 +135,17 @@ def test_parse_wan_status_reads_wr3000s_detail_fixture() -> None:
     assert parsed["session_download"]["value"] == 2502942.72
 
 
+def test_parse_wan_status_reads_r700_secondary_interface_fixture() -> None:
+    """R700 secondary WAN detail pages should parse like the primary WAN page."""
+    parsed = parser_network.parse_wan_status(_fixture_text("wan", "r700_wan2_status.html"))
+
+    assert parsed["protocol"]["value"] == "DHCP"
+    assert parsed["wan_ip"]["value"] == "198.51.100.22"
+    assert parsed["gateway"]["value"] == "198.51.100.1"
+    assert parsed["bytes_received"]["value"] == 2 * 1024**3
+    assert parsed["bytes_sent"]["value"] == 256 * 1024**2
+
+
 def test_parse_arp_status_counts_br_lan_entries() -> None:
     """ARP parsing should count only the requested interface rows."""
     parsed = parser_network.parse_arp_status(_fixture_text("devices", "r700_arp_status.html"), "br-lan")

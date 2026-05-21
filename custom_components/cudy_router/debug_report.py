@@ -73,6 +73,21 @@ _WAN_CONFIG_PATH_FORMATS: tuple[str, ...] = (
     "admin/network/wan/iface/{iface_name}/status",
     "admin/network/wan/iface/{iface_name}/config",
 )
+_WISP_DEBUG_IFACES: tuple[str, ...] = (
+    "apcli0",
+    "wwan",
+    "wisp",
+    "wlan01",
+    "wlan11",
+)
+_WISP_IFACE_PATH_FORMATS: tuple[str, ...] = (
+    "admin/network/wireless/wds/status?detail=1&iface={iface_name}",
+    "admin/network/wireless/wds/status?detail=&iface={iface_name}",
+    "admin/network/wireless/wds/status?iface={iface_name}&detail=1",
+    "admin/network/wireless/wds/status?iface={iface_name}",
+    "admin/network/wireless/wds/data?iface={iface_name}",
+    "admin/network/wireless/wds/config?nomodal=&mode=wisp&iface={iface_name}",
+)
 _VPN_DEBUG_EXTRA_PATHS: tuple[str, ...] = (
     "admin/network/vpn/wireguard/status",
     "admin/network/vpn/wireguard/status?status=",
@@ -85,6 +100,28 @@ _VPN_DEBUG_EXTRA_PATHS: tuple[str, ...] = (
     "admin/network/vpn/status?status=",
     "admin/network/vpn/status?detail=1",
 )
+
+
+def _wisp_debug_paths() -> tuple[str, ...]:
+    """Return WISP diagnostic endpoints, including likely station interface aliases."""
+    paths: list[str] = [
+        *_WISP_STATUS_PATHS,
+        *_WISP_DATA_PATHS,
+        *_WISP_CONFIG_PATHS,
+    ]
+    for iface_name in _WISP_DEBUG_IFACES:
+        paths.extend(_wan_status_paths(iface_name))
+        paths.extend(path.format(iface_name=iface_name) for path in _WISP_IFACE_PATH_FORMATS)
+    seen: set[str] = set()
+    unique_paths: list[str] = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique_paths.append(path)
+    return tuple(unique_paths)
+
+
 _MODULE_DEBUG_PATHS: dict[str, tuple[str, ...]] = {
     "system": (
         "admin/system/status",
@@ -114,11 +151,7 @@ _MODULE_DEBUG_PATHS: dict[str, tuple[str, ...]] = {
         "admin/network/lan/config/detail?nomodal=",
     ),
     "dhcp": ("admin/services/dhcp/status?detail=1",),
-    "wisp": (
-        *_WISP_STATUS_PATHS,
-        *_WISP_DATA_PATHS,
-        *_WISP_CONFIG_PATHS,
-    ),
+    "wisp": _wisp_debug_paths(),
     "mesh": (
         "admin/network/mesh/status",
         "admin/network/mesh",
@@ -138,6 +171,20 @@ _MODULE_DEBUG_PATHS: dict[str, tuple[str, ...]] = {
         "admin/setup",
     ),
 }
+
+_LUCI_PATH_RE = re.compile(r"(?P<quote>['\"])(?P<path>/cgi-bin/luci/admin/[^'\"<>\s\\]+)(?P=quote)")
+_LUCI_PATH_QUERY_RE = re.compile(
+    r"(?P<quote>['\"])(?P<path>/cgi-bin/luci/admin/[^'\"]+)(?P=quote)\s*,\s*"
+    r"(?P<query_quote>['\"])(?P<query>[^'\"]*)(?P=query_quote)"
+)
+_WISP_DISCOVERY_MARKERS = (
+    "wds",
+    "wisp",
+    "apcli",
+    "wlan01",
+    "wlan11",
+    "wwan",
+)
 
 _MAC_RE = re.compile(r"\b(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}\b")
 _COMPACT_MAC_RE = re.compile(r"(?<![0-9a-fA-F])(?:[0-9a-fA-F]{12})(?![0-9a-fA-F])")
@@ -281,6 +328,67 @@ def _unique(values: list[str] | tuple[str, ...]) -> list[str]:
     return unique_values
 
 
+def _normalize_luci_path(path: str, query: str | None = None) -> str | None:
+    """Normalize a LuCI URL found in router HTML into a router.get path."""
+    cleaned_path = path.replace("&amp;", "&").strip()
+    if cleaned_path.startswith("/cgi-bin/luci/"):
+        cleaned_path = cleaned_path.removeprefix("/cgi-bin/luci/")
+    elif cleaned_path.startswith("cgi-bin/luci/"):
+        cleaned_path = cleaned_path.removeprefix("cgi-bin/luci/")
+    if not cleaned_path.startswith("admin/"):
+        return None
+
+    cleaned_query = (query or "").replace("&amp;", "&").strip()
+    if cleaned_query and "?" not in cleaned_path:
+        cleaned_path = f"{cleaned_path}?{cleaned_query.lstrip('?')}"
+    elif cleaned_query:
+        cleaned_path = f"{cleaned_path}&{cleaned_query.lstrip('?')}"
+
+    return cleaned_path
+
+
+def _discover_luci_paths(input_html: str, markers: tuple[str, ...] = ()) -> list[str]:
+    """Extract relevant LuCI AJAX routes from an HTML response."""
+    if not input_html:
+        return []
+
+    discovered: list[str] = []
+    for match in _LUCI_PATH_QUERY_RE.finditer(input_html):
+        path = _normalize_luci_path(match.group("path"), match.group("query"))
+        if path:
+            discovered.append(path)
+    for match in _LUCI_PATH_RE.finditer(input_html):
+        path = _normalize_luci_path(match.group("path"))
+        if path:
+            discovered.append(path)
+
+    if markers:
+        marker_values = tuple(marker.lower() for marker in markers)
+        discovered = [
+            path
+            for path in discovered
+            if any(marker in path.lower() for marker in marker_values)
+        ]
+    return _unique(discovered)
+
+
+def _is_wisp_data_path(path: str) -> bool:
+    """Return whether a path is a WISP JSON data endpoint."""
+    return path.startswith("admin/network/wireless/wds/data")
+
+
+def _is_wisp_config_path(path: str) -> bool:
+    """Return whether a path is a WISP settings endpoint."""
+    return path.startswith("admin/network/wireless/wds/config")
+
+
+def _is_wisp_status_path(path: str) -> bool:
+    """Return whether a path is a WISP status/page endpoint."""
+    return path.startswith("admin/network/wireless/wds") and not (
+        _is_wisp_data_path(path) or _is_wisp_config_path(path)
+    )
+
+
 def _json_safe(value: Any) -> Any:
     """Return a JSON-safe primitive representation."""
     if isinstance(value, str | int | float | bool) or value is None:
@@ -393,11 +501,11 @@ def _parser_output(path: str, html: str, redactor: Redactor) -> dict[str, Any]:
             return redactor.data(parse_sms_status(html) or {})
         if path.startswith("admin/network/wireless/status"):
             return redactor.data(parse_wifi_status(html))
-        if path in _WISP_STATUS_PATHS:
+        if _is_wisp_status_path(path):
             return redactor.data(parse_wisp_status(html))
-        if path in _WISP_DATA_PATHS:
+        if _is_wisp_data_path(path):
             return redactor.data(parse_wisp_data(html))
-        if path in _WISP_CONFIG_PATHS:
+        if _is_wisp_config_path(path):
             return redactor.data(parse_wisp_settings(html))
         if path.startswith("admin/network/lan/status"):
             return redactor.data(parse_lan_status(html))
@@ -467,6 +575,10 @@ async def _async_probe_path(
         "table_data": _redacted_table_data(text, redactor),
         "parser_output": _parser_output(path, text, redactor),
     }
+    discovered_paths = _discover_luci_paths(text, _WISP_DISCOVERY_MARKERS)
+    if discovered_paths:
+        probe["_raw_discovered_paths"] = discovered_paths
+        probe["discovered_paths"] = redactor.data(discovered_paths)
     if include_html:
         probe["html_excerpt"] = redactor.text(text[: max(0, max_html_chars)])
     return probe
@@ -534,6 +646,33 @@ async def async_build_debug_payload(
                     max_html_chars=max_html_chars,
                 )
             )
+
+    discovered_wisp_paths: list[str] = []
+    known_wisp_paths = set(payload["endpoint_matrix"].get("wisp", []))
+    for probe in payload["probes"].get("wisp", []):
+        for discovered_path in probe.get("_raw_discovered_paths", []):
+            if (
+                not isinstance(discovered_path, str)
+                or discovered_path in known_wisp_paths
+                or discovered_path in discovered_wisp_paths
+            ):
+                continue
+            discovered_wisp_paths.append(discovered_path)
+    if discovered_wisp_paths:
+        payload["endpoint_matrix"]["wisp_discovered"] = discovered_wisp_paths
+        payload["probes"]["wisp_discovered"] = []
+        for path in discovered_wisp_paths:
+            payload["probes"]["wisp_discovered"].append(
+                await _async_probe_path(
+                    hass,
+                    api,
+                    path,
+                    redactor,
+                    include_html=include_html,
+                    max_html_chars=max_html_chars,
+                )
+            )
+
     for path in _LOAD_BALANCING_STATUS_PATHS:
         payload["probes"]["load_balancing"].append(
             await _async_probe_path(
@@ -567,6 +706,10 @@ async def async_build_debug_payload(
                 max_html_chars=max_html_chars,
             )
         )
+
+    for probe_group in payload["probes"].values():
+        for probe in probe_group:
+            probe.pop("_raw_discovered_paths", None)
 
     return payload
 

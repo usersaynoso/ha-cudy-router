@@ -89,6 +89,10 @@ def test_debug_report_endpoint_matrix_includes_r700_wan_and_vpn_variants() -> No
     assert "admin/network/wireless/wds/status?status=" in wisp_paths
     assert "admin/network/wireless/wds?detail=1" in wisp_paths
     assert "admin/network/wireless/wds?status=" in wisp_paths
+    assert "admin/network/wan/status?detail=1&iface=apcli0" in wisp_paths
+    assert "admin/network/wan/status?iface=wwan" in wisp_paths
+    assert "admin/network/wireless/wds/status?detail=1&iface=wlan01" in wisp_paths
+    assert "admin/network/wireless/wds/data?iface=apcli0" in wisp_paths
 
 
 def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
@@ -128,7 +132,11 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
         """,
         "admin/network/wireless/wds": """
         <!DOCTYPE html><html><head><title>LT300</title></head>
-        <body><h4>System Status Host Network</h4></body></html>
+        <body><h4>System Status Host Network</h4>
+        <script>
+          wizard_xhr_load("#cbi-wisp-div", "/cgi-bin/luci/admin/network/wireless/wds/status-extra", "detail=1&iface=apcli0");
+          $.get('/cgi-bin/luci/admin/network/wireless/wds/data-extra?iface=apcli0');
+        </script></body></html>
         """,
         "admin/network/wireless/wds/status": """
         <h3 class="panel-title">WISP</h3>
@@ -139,6 +147,19 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
             <tr><td>Signal</td><td>65 dB</td></tr>
           </tbody>
         </table>
+        """,
+        "admin/network/wireless/wds/status-extra?detail=1&iface=apcli0": """
+        <h3 class="panel-title">WISP</h3>
+        <table>
+          <thead><tr><th>Status</th><th>Connected</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Public IP</td><td>198.51.100.88</td></tr>
+            <tr><td>IP Address</td><td>192.0.2.88</td></tr>
+          </tbody>
+        </table>
+        """,
+        "admin/network/wireless/wds/data-extra?iface=apcli0": """
+        {"wds":"success","ssid":"Farm-Uplink","up":true}
         """,
     }
     config_entry = SimpleNamespace(
@@ -200,6 +221,16 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
         for probe in payload["probes"]["wisp"]
         if probe["path"] == "admin/network/wireless/wds/status?detail=1"
     )
+    wisp_page_probe = next(
+        probe
+        for probe in payload["probes"]["wisp"]
+        if probe["path"] == "admin/network/wireless/wds"
+    )
+    discovered_wisp_probe = next(
+        probe
+        for probe in payload["probes"]["wisp_discovered"]
+        if probe["path"] == "admin/network/wireless/wds/status-extra?detail=1&iface=apcli0"
+    )
 
     assert payload["config_entry"]["data"]["password"] == "<REDACTED>"
     assert "entity_catalog" in payload
@@ -218,6 +249,14 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     assert "admin/network/gcom/status?detail=1&iface=4g" in payload["endpoint_matrix"]["modem"]
     assert "admin/network/wireless/wds" in payload["endpoint_matrix"]["wisp"]
     assert "admin/network/wireless/wds/status?detail=1" in payload["endpoint_matrix"]["wisp"]
+    assert "admin/network/wan/status?detail=1&iface=apcli0" in payload["endpoint_matrix"]["wisp"]
+    assert "admin/network/wireless/wds/status-extra?detail=1&iface=apcli0" in payload["endpoint_matrix"][
+        "wisp_discovered"
+    ]
+    assert "admin/network/wireless/wds/data-extra?iface=apcli0" in payload["endpoint_matrix"]["wisp_discovered"]
+    assert "admin/network/wireless/wds/status-extra?detail=1&iface=apcli0" in wisp_page_probe[
+        "discovered_paths"
+    ]
     assert "203.0.113.77" not in json.dumps(wisp_probe)
     assert wisp_probe["headings"] == ["WISP"]
     assert wisp_probe["table_data"]["Public IP"].startswith("<IP_")
@@ -225,6 +264,7 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     assert wisp_probe["parser_output"]["public_ip"]["value"].startswith("<IP_")
     assert wisp_probe["parser_output"]["bssid"]["value"].startswith("<MAC_")
     assert wisp_probe["parser_output"]["channel_width"]["value"] == "40 MHz"
+    assert discovered_wisp_probe["parser_output"]["public_ip"]["value"].startswith("<IP_")
     assert "192.168.10.42" not in wan3_probe["html_excerpt"]
     assert wan3_probe["headings"] == ["WAN3"]
     assert wan3_probe["table_data"]["IP Address"].startswith("<IP_")

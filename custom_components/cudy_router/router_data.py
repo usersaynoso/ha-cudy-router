@@ -152,6 +152,7 @@ _WAN_RICH_STATUS_KEYS: tuple[str, ...] = (
     "gateway",
     "mac_address",
     "public_ip",
+    "wan_ip",
     "subnet_mask",
     "bytes_received",
     "bytes_sent",
@@ -715,13 +716,11 @@ async def collect_router_data(
         for iface_name, interface_key, expected_suffixes, query_iface_names in _WAN_STATUS_IFACES:
             if iface_name != "wan" and existing_feature(device_model, MODULE_LOAD_BALANCING) is not True:
                 continue
-            if (
-                iface_name != "wan"
-                and isinstance(load_balancing_data, dict)
-                and load_balancing_data
-                and not _load_balancing_has_interface(load_balancing_data, interface_key)
-            ):
-                continue
+            load_balancing_summary_populated = isinstance(load_balancing_data, dict) and bool(load_balancing_data)
+            load_balancing_lists_interface = (
+                isinstance(load_balancing_data, dict)
+                and _load_balancing_has_interface(load_balancing_data, interface_key)
+            )
 
             for query_iface_name in query_iface_names:
                 matched_status = False
@@ -749,6 +748,15 @@ async def collect_router_data(
                             interface_data
                         ):
                             interface_data = provisional_status
+                        interface_score = _wan_status_data_score(interface_data)
+                        if (
+                            iface_name != "wan"
+                            and load_balancing_summary_populated
+                            and not load_balancing_lists_interface
+                            and interface_score[0] == 0
+                        ):
+                            matched_status = True
+                            break
                         wan_candidates.append((iface_name, interface_key, interface_data))
                         wan_interfaces[interface_key] = dict(interface_data)
                         matched_status = True

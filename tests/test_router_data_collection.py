@@ -406,6 +406,79 @@ def test_collect_router_data_skips_duplicate_multi_wan_page_and_aggregates_valid
     assert data[const.MODULE_LOAD_BALANCING]["wan4_status"]["value"] == "Online"
 
 
+def test_collect_router_data_probes_r700_wan_if_summary_omits_interfaces(
+    monkeypatch,
+) -> None:
+    """R700 WAN2/WAN3 should still be discovered when the summary only lists WAN1."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module
+        in {const.MODULE_WAN, const.MODULE_WAN_INTERFACES, const.MODULE_LOAD_BALANCING},
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/mwan3/status?detail=": """
+            <table><tr><td>WAN1</td><td>Online</td></tr></table>
+            """,
+            "admin/network/wan/status?detail=1&iface=wan": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN1</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>DHCP</td></tr>
+                <tr><td>IP Address</td><td>198.51.100.11</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=1&iface=wanb": _fixture_text(
+                "wan",
+                "r700_wan2_status.html",
+            ),
+            "admin/network/wan/status?detail=1&iface=wanc": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN3</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>PPPoE</td></tr>
+                <tr><td>IP Address</td><td>198.51.100.33</td></tr>
+                <tr><td>Bytes Received</td><td>512 MB</td></tr>
+                <tr><td>Bytes Sent</td><td>64 MB</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/status?detail=1&iface=wand": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">WAN1</h3></div>
+              <table class="table">
+                <tr><td>Protocol</td><td>DHCP</td></tr>
+              </table>
+            </div>
+            """,
+            "admin/network/wan/config/detail?nomodal=&iface=wan": "",
+            "admin/network/wan/config?nomodal=&iface=wan": "",
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    assert set(data[const.MODULE_LOAD_BALANCING]) == {"wan1_status"}
+    assert set(data[const.MODULE_WAN_INTERFACES]) == {"wan1", "wan2", "wan3"}
+    assert data[const.MODULE_WAN_INTERFACES]["wan1"]["status"]["value"] == "Online"
+    assert data[const.MODULE_WAN_INTERFACES]["wan2"]["wan_ip"]["value"] == "198.51.100.22"
+    assert data[const.MODULE_WAN_INTERFACES]["wan2"]["bytes_received"]["value"] == 2 * 1024**3
+    assert data[const.MODULE_WAN_INTERFACES]["wan3"]["wan_ip"]["value"] == "198.51.100.33"
+    assert data[const.MODULE_WAN]["bytes_received"]["value"] == (2 * 1024**3) + (512 * 1024**2)
+    assert ("admin/network/wan/status?detail=1&iface=wanb", True) in fake_router.requests
+    assert ("admin/network/wan/status?detail=1&iface=wanc", True) in fake_router.requests
+    assert "wan4" not in data[const.MODULE_WAN_INTERFACES]
+
+
 def test_collect_router_data_keeps_wr3000s_wan_metrics_with_empty_modem_fallback() -> None:
     """Empty modem probes on unmapped routers must not hide real WAN detail fields."""
     fake_router = _FakeRouter(
@@ -981,7 +1054,7 @@ def test_collect_router_data_prefers_unlabeled_lettered_wan_details_after_summar
     assert data[const.MODULE_WAN]["subnet_mask"]["value"] == "255.255.255.255"
     assert ("admin/network/wan/status?iface=wanb", True) in fake_router.requests
     assert ("admin/network/wan/status?iface=wanc", True) in fake_router.requests
-    assert ("admin/network/wan/status?detail=1&iface=wand", True) not in fake_router.requests
+    assert ("admin/network/wan/status?detail=1&iface=wand", True) in fake_router.requests
 
 
 def test_collect_router_data_reads_auto_update_from_r700_setup_page_fallback(monkeypatch) -> None:
