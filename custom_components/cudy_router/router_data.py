@@ -39,6 +39,7 @@ from .parser import (
     parse_mesh_devices,
     parse_modem_info,
     parse_sms_status,
+    parse_system_load_status,
     parse_system_status,
     parse_wifi_status,
 )
@@ -489,9 +490,20 @@ async def collect_router_data(
             "admin/system/system",
             True,  # silent
         )
-        data[MODULE_SYSTEM] = parse_system_status(
+        system_data = parse_system_status(
             f"{system_html}{panel_html}{overview_html or ''}{system_page_html or ''}"
         )
+        system_load_status = await hass.async_add_executor_job(
+            router.get,
+            "admin/status/load",
+            True,
+        )
+        if system_load_status:
+            _merge_module_entries(
+                system_data,
+                parse_system_load_status(system_load_status),
+            )
+        data[MODULE_SYSTEM] = system_data
 
     # Data usage statistics
     if existing_feature(device_model, MODULE_DATA_USAGE) is True:

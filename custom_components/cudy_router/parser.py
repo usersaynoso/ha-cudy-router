@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import urllib.parse
@@ -613,6 +614,80 @@ def _parse_usage_percentage(value: Any) -> float | None:
     return None
 
 
+def _usage_labels_from_html(input_html: str) -> tuple[float | None, float | None]:
+    """Extract rendered dashboard CPU and RAM labels when present."""
+    if not input_html:
+        return None, None
+
+    soup = BeautifulSoup(input_html, "html.parser")
+    cpu_label = soup.find(id="label_cpu")
+    mem_label = soup.find(id="label_mem")
+    cpu_usage = _parse_usage_percentage(cpu_label.get_text(" ", strip=True)) if cpu_label else None
+    ram_usage = _parse_usage_percentage(mem_label.get_text(" ", strip=True)) if mem_label else None
+    return cpu_usage, ram_usage
+
+
+def _load_status_record(row: Any) -> tuple[float, float, float, float] | None:
+    """Normalize one LuCI load status row."""
+    if not isinstance(row, list | tuple) or len(row) < 4:
+        return None
+
+    try:
+        return (
+            float(row[0]),
+            float(row[1]),
+            float(row[2]),
+            float(row[3]),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _round_percentage(value: float | None) -> float | None:
+    """Round a percentage and reject impossible values."""
+    if value is None or value < 0 or value > 100:
+        return None
+    return round(value, 2)
+
+
+def parse_system_load_status(input_data: str) -> dict[str, Any]:
+    """Parse LuCI system load samples into CPU and RAM percentages."""
+    try:
+        raw_records = json.loads(input_data or "[]")
+    except (TypeError, json.JSONDecodeError):
+        raw_records = []
+
+    records = [
+        record
+        for row in raw_records
+        if (record := _load_status_record(row)) is not None
+    ]
+    cpu_usage = None
+    ram_usage = None
+
+    if len(records) >= 4:
+        baseline = records[-4]
+        current = records[-1]
+        cpu_delta = current[2] - baseline[2]
+        if cpu_delta > 0:
+            cpu_usage = 100 - (100 * (current[1] - baseline[1]) / cpu_delta)
+        ram_usage = sum(row[3] for row in records[-4:]) / 400
+    elif len(records) >= 2:
+        baseline = records[-2]
+        current = records[-1]
+        cpu_delta = current[2] - baseline[2]
+        if cpu_delta > 0:
+            cpu_usage = 100 - (100 * (current[1] - baseline[1]) / cpu_delta)
+        ram_usage = (baseline[3] + current[3]) / 200
+    elif len(records) == 1:
+        ram_usage = records[0][3] / 100
+
+    return {
+        "cpu_usage": {"value": _round_percentage(cpu_usage)},
+        "ram_usage": {"value": _round_percentage(ram_usage)},
+    }
+
+
 def parse_system_status(input_html: str) -> dict[str, Any]:
     """Parses system status page."""
     raw_data = parse_tables(input_html)
@@ -690,6 +765,11 @@ def parse_system_status(input_html: str) -> dict[str, Any]:
             "Memory",
         )
     )
+    label_cpu_usage, label_ram_usage = _usage_labels_from_html(input_html)
+    if cpu_usage is None:
+        cpu_usage = label_cpu_usage
+    if ram_usage is None:
+        ram_usage = label_ram_usage
 
     return {
         "uptime": {"value": uptime_seconds},

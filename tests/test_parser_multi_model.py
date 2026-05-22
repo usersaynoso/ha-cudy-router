@@ -60,6 +60,22 @@ def test_parse_system_status_supports_alternate_labels() -> None:
     assert parsed["ram_usage"]["value"] == 50.0
 
 
+def test_parse_system_status_reads_rendered_r700_dashboard_usage_labels() -> None:
+    """Rendered R700 dashboard labels should produce system CPU and RAM values."""
+    parsed = parser.parse_system_status(_fixture_text("system", "r700_system_load_rendered.html"))
+
+    assert parsed["cpu_usage"]["value"] == 37.19
+    assert parsed["ram_usage"]["value"] == 36.0
+
+
+def test_parse_system_load_status_reads_r700_ajax_samples() -> None:
+    """R700 LuCI load JSON should match the dashboard JavaScript percentages."""
+    parsed = parser.parse_system_load_status(_fixture_text("system", "r700_status_load.json"))
+
+    assert parsed["cpu_usage"]["value"] == 37.19
+    assert parsed["ram_usage"]["value"] == 36.0
+
+
 def test_parse_sms_status_and_inbox_rows_from_p5_layout() -> None:
     """SMS parsing should extract counts and inbox row metadata from the P5 layout."""
     status = parser.parse_sms_status(_fixture_text("sms", "status.html"))

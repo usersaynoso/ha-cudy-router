@@ -18,7 +18,7 @@ This project is not endorsed, maintained, or supported by Cudy.
 ## Highlights
 
 - Local polling integration with Home Assistant config flow and options flow.
-- Router-wide sensors for modem/cellular, WAN, LAN, DHCP, VPN, load balancing, Wi-Fi, SMS, traffic, and system status.
+- Router-wide sensors for modem/cellular, WAN, LAN, DHCP, VPN, load balancing, Wi-Fi, SMS, traffic, and system status, including CPU/RAM usage when the router reports it.
 - Writable router settings exposed as Home Assistant `switch` and `select` entities when the router supports them.
 - Reboot buttons and services for SMS, AT commands, 5G connection restart, and band switching.
 - Mesh node support with separate Home Assistant devices, per-node LED control, and per-node reboot.
@@ -71,7 +71,7 @@ The integration creates entities on these Home Assistant platforms: `sensor`, `s
 
 Entity availability depends on the router model and firmware. Not every router exposes every page or field.
 
-- **Main router device:** modem/cellular, WAN, traffic, system, SMS, Wi-Fi, LAN, DHCP, VPN, load balancing, Mesh devices connected, settings, diagnostics, and reboot controls.
+- **Main router device:** modem/cellular, WAN, traffic, system, CPU/RAM usage when supported, SMS, Wi-Fi, LAN, DHCP, VPN, load balancing, Mesh devices connected, settings, diagnostics, and reboot controls.
 - **Mesh node devices:** node identity, firmware, status, IP address, backhaul, connected-device count, LED control, and reboot controls.
 - **Connected client devices:** IP address, connection type, signal, online time, internet access, DNS filter, VPN control, and optional tracking.
 - **SMS panel:** SMS-capable routers expose an admin-only sidebar panel at `/cudy-router-sms` for inbox, outbox, replies, and composing SMS messages.

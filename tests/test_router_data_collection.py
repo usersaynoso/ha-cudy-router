@@ -55,6 +55,46 @@ class _FakeRouter:
         return self._pages.get(path, "")
 
 
+def test_collect_router_data_reads_r700_system_load_ajax_samples(monkeypatch) -> None:
+    """System collection should add CPU/RAM from R700's load endpoint."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_SYSTEM,
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/system/status": """
+            <table class="table">
+              <thead>
+                <tr><th>Firmware Version</th><th>1.15.3 US</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Local Time</td><td>2026-05-22 12:34:00</td></tr>
+                <tr><td>Uptime</td><td>01:02:03</td></tr>
+              </tbody>
+            </table>
+            """,
+            "admin/status/load": _fixture_text("system", "r700_status_load.json"),
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "R700",
+        )
+    )
+
+    system = data[const.MODULE_SYSTEM]
+    assert system["firmware_version"]["value"] == "1.15.3 US"
+    assert system["cpu_usage"]["value"] == 37.19
+    assert system["ram_usage"]["value"] == 36.0
+    assert ("admin/status/load", True) in fake_router.requests
+
+
 def test_collect_router_data_adds_wisp_for_lt300_v2(monkeypatch) -> None:
     """LT300 V2 should expose WISP as its own uplink module."""
     monkeypatch.setattr(
