@@ -344,6 +344,21 @@ def test_parse_wisp_status_reads_lt300_detail_endpoint_fixture() -> None:
     assert parsed["protocol"]["value"] == "DHCP"
 
 
+def test_parse_wisp_status_reads_lt300_v3_path_detail_fixture() -> None:
+    """LT300 V3 path-style WISP detail tables should expose the public IP."""
+    parsed = parser_network.parse_wisp_status(
+        _fixture_text("wisp", "lt300_v3_wisp_path_detail.html")
+    )
+
+    assert parsed["status"]["value"] == "Connected"
+    assert parsed["ssid"]["value"] == "Cudy-tom"
+    assert parsed["bssid"]["value"] == "C8:7F:54:BA:1D:92"
+    assert parsed["public_ip"]["value"] == "113.87.80.146"
+    assert parsed["signal"]["value"] == -49
+    assert parsed["channel"]["value"] == 11
+    assert parsed["channel_width"]["value"] == "20 MHz"
+
+
 def test_parse_wisp_data_reads_json_status_payload() -> None:
     """WISP JSON parsing should normalize status, protocol, and radio fields."""
     parsed = parser_network.parse_wisp_data(

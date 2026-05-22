@@ -89,6 +89,7 @@ _LOAD_BALANCING_STATUS_PATHS: tuple[str, ...] = (
     "admin/network/mwan3/status",
 )
 _WISP_STATUS_PATHS: tuple[str, ...] = (
+    "admin/network/wireless/wds/status/detail/1/wisp",
     "admin/network/wireless/wds/status?detail=1",
     "admin/network/wireless/wds/status?detail=",
     "admin/network/wireless/wds/status?detail=1&mode=wisp",
@@ -99,6 +100,7 @@ _WISP_STATUS_PATHS: tuple[str, ...] = (
     "admin/network/wireless/wds?status=",
     "admin/network/wireless/wds/status",
     "admin/network/wireless/wds/status?mode=wisp",
+    "admin/network/wireless/wds/wisp",
     "admin/network/wireless/wds",
 )
 _WISP_DATA_PATHS: tuple[str, ...] = (
@@ -107,6 +109,7 @@ _WISP_DATA_PATHS: tuple[str, ...] = (
     "admin/network/wireless/wds/data?iface=wlan01",
 )
 _WISP_CONFIG_PATHS: tuple[str, ...] = (
+    "admin/network/wireless/wds/config/nomodal/mode/wisp",
     "admin/network/wireless/wds/config?nomodal=&mode=wisp",
     "admin/network/wireless/wds/config/nomodal/wisp",
 )

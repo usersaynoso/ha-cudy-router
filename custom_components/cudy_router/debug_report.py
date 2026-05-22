@@ -172,9 +172,12 @@ _MODULE_DEBUG_PATHS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_LUCI_PATH_RE = re.compile(r"(?P<quote>['\"])(?P<path>/cgi-bin/luci/admin/[^'\"<>\s\\]+)(?P=quote)")
+_LUCI_ADMIN_PATH_PATTERN = r"(?:/cgi-bin/luci/admin|/[^'\"<>\s\\]*/cgi-bin/luci/admin)/[^'\"<>\s\\]+"
+_LUCI_PATH_RE = re.compile(
+    rf"(?P<quote>['\"])(?P<path>{_LUCI_ADMIN_PATH_PATTERN})(?P=quote)"
+)
 _LUCI_PATH_QUERY_RE = re.compile(
-    r"(?P<quote>['\"])(?P<path>/cgi-bin/luci/admin/[^'\"]+)(?P=quote)\s*,\s*"
+    rf"(?P<quote>['\"])(?P<path>{_LUCI_ADMIN_PATH_PATTERN})(?P=quote)\s*,\s*"
     r"(?P<query_quote>['\"])(?P<query>[^'\"]*)(?P=query_quote)"
 )
 _WISP_DISCOVERY_MARKERS = (
@@ -331,8 +334,8 @@ def _unique(values: list[str] | tuple[str, ...]) -> list[str]:
 def _normalize_luci_path(path: str, query: str | None = None) -> str | None:
     """Normalize a LuCI URL found in router HTML into a router.get path."""
     cleaned_path = path.replace("&amp;", "&").strip()
-    if cleaned_path.startswith("/cgi-bin/luci/"):
-        cleaned_path = cleaned_path.removeprefix("/cgi-bin/luci/")
+    if "/cgi-bin/luci/" in cleaned_path:
+        cleaned_path = cleaned_path.split("/cgi-bin/luci/", 1)[1]
     elif cleaned_path.startswith("cgi-bin/luci/"):
         cleaned_path = cleaned_path.removeprefix("cgi-bin/luci/")
     if not cleaned_path.startswith("admin/"):

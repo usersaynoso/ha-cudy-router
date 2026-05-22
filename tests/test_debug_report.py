@@ -85,10 +85,13 @@ def test_debug_report_endpoint_matrix_includes_r700_wan_and_vpn_variants() -> No
     assert "admin/network/vpn?mvpn=" in vpn_paths
     assert "admin/network/vpn/openvpnc/status?detail=" in vpn_paths
     assert "admin/network/vpn/pptp/status?status=" in vpn_paths
+    assert "admin/network/wireless/wds/status/detail/1/wisp" in wisp_paths
     assert "admin/network/wireless/wds/status?detail=1" in wisp_paths
     assert "admin/network/wireless/wds/status?status=" in wisp_paths
     assert "admin/network/wireless/wds?detail=1" in wisp_paths
     assert "admin/network/wireless/wds?status=" in wisp_paths
+    assert "admin/network/wireless/wds/wisp" in wisp_paths
+    assert "admin/network/wireless/wds/config/nomodal/mode/wisp" in wisp_paths
     assert "admin/network/wan/status?detail=1&iface=apcli0" in wisp_paths
     assert "admin/network/wan/status?iface=wwan" in wisp_paths
     assert "admin/network/wireless/wds/status?detail=1&iface=wlan01" in wisp_paths
@@ -135,6 +138,7 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
         <body><h4>System Status Host Network</h4>
         <script>
           wizard_xhr_load("#cbi-wisp-div", "/cgi-bin/luci/admin/network/wireless/wds/status-extra", "detail=1&iface=apcli0");
+          cbi_xhr_load("#tab-status-1", "poll", "/emulator/LT300V3/cgi-bin/luci/admin/network/wireless/wds/status-extra", "detail=1&wisp=");
           $.get('/cgi-bin/luci/admin/network/wireless/wds/data-extra?iface=apcli0');
         </script></body></html>
         """,
@@ -155,6 +159,15 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
           <tbody>
             <tr><td>Public IP</td><td>198.51.100.88</td></tr>
             <tr><td>IP Address</td><td>192.0.2.88</td></tr>
+          </tbody>
+        </table>
+        """,
+        "admin/network/wireless/wds/status-extra?detail=1&wisp=": """
+        <h3 class="panel-title">WISP</h3>
+        <table>
+          <thead><tr><th>Status</th><th>Connected</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Public IP</td><td>198.51.100.99</td></tr>
           </tbody>
         </table>
         """,
@@ -253,10 +266,14 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     assert "admin/network/wireless/wds/status-extra?detail=1&iface=apcli0" in payload["endpoint_matrix"][
         "wisp_discovered"
     ]
+    assert "admin/network/wireless/wds/status-extra?detail=1&wisp=" in payload["endpoint_matrix"][
+        "wisp_discovered"
+    ]
     assert "admin/network/wireless/wds/data-extra?iface=apcli0" in payload["endpoint_matrix"]["wisp_discovered"]
     assert "admin/network/wireless/wds/status-extra?detail=1&iface=apcli0" in wisp_page_probe[
         "discovered_paths"
     ]
+    assert "admin/network/wireless/wds/status-extra?detail=1&wisp=" in wisp_page_probe["discovered_paths"]
     assert "203.0.113.77" not in json.dumps(wisp_probe)
     assert wisp_probe["headings"] == ["WISP"]
     assert wisp_probe["table_data"]["Public IP"].startswith("<IP_")

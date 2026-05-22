@@ -242,6 +242,72 @@ def test_collect_router_data_merges_wisp_public_ip_from_detail_probe(monkeypatch
     assert ("admin/network/wireless/wds/data", True) in fake_router.requests
 
 
+def test_collect_router_data_reads_wisp_path_style_detail_probe(monkeypatch) -> None:
+    """LT300 WISP collection should read the path-style detail endpoint."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_WISP,
+    )
+    fake_router = _FakeRouter(
+        {
+            "admin/network/wireless/wds/status?detail=1": """
+            <div class="panel panel-primary">
+              <div class="panel-heading"><h3 class="panel-title">Host Network</h3></div>
+              <table class="table">
+                <thead><tr><th>Status</th><th>Connected</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td>SSID</td><td>Cudy-tom</td></tr>
+                  <tr><td>Signal</td><td>-48 dBm</td></tr>
+                </tbody>
+              </table>
+            </div>
+            """,
+            "admin/network/wireless/wds/status/detail/1/wisp": _fixture_text(
+                "wisp",
+                "lt300_v3_wisp_path_detail.html",
+            ),
+            "admin/network/wireless/wds/data": """
+            {"wds":"success","ssid":"Cudy-tom","up":true,
+             "bssid":"C8:7F:54:BA:1D:92","hidden":0,"proto":"dhcp",
+             "txpower":-1,"channel":11,"htbw":"ht20","isolate":0}
+            """,
+            "admin/network/wireless/wds/config/nomodal/mode/wisp": """
+            <form>
+              <input type="hidden" name="cbi.cbe.wds-config.1.enabled" value="1" />
+              <input type="hidden" name="cbid.wds-config.1.enabled" value="1" />
+            </form>
+            """,
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "LT300 V3.0",
+        )
+    )
+
+    wisp = data[const.MODULE_WISP]
+    assert wisp["status"]["value"] == "Connected"
+    assert wisp["status"]["attributes"] == {"raw_status": "success", "up": True}
+    assert wisp["ssid"]["value"] == "Cudy-tom"
+    assert wisp["public_ip"]["value"] == "113.87.80.146"
+    assert wisp["signal"]["value"] == -49
+    assert wisp["bssid"]["value"] == "C8:7F:54:BA:1D:92"
+    assert wisp["channel"]["value"] == 11
+    assert wisp["channel_width"]["value"] == "20 MHz"
+    assert wisp["protocol"]["value"] == "DHCP"
+    assert wisp["transmit_power"]["value"] == -1
+    assert wisp["enabled"]["value"] is True
+    assert ("admin/network/wireless/wds/status/detail/1/wisp", True) in fake_router.requests
+    assert ("admin/network/wireless/wds/status?detail=1", True) in fake_router.requests
+    assert ("admin/network/wireless/wds/data", True) in fake_router.requests
+    assert ("admin/network/wireless/wds/config/nomodal/mode/wisp", True) in fake_router.requests
+
+
 def test_collect_router_data_skips_wisp_for_unsupported_models(monkeypatch) -> None:
     """Routers without WISP support should not probe WISP endpoints."""
     monkeypatch.setattr(router_data, "existing_feature", lambda device_model, module: False)
