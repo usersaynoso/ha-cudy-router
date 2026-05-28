@@ -543,6 +543,7 @@ def test_parse_modem_info_reads_lt500d_cellular_icon_strength() -> None:
                 </span>
               </td>
             </tr>
+            <tr><td>RSSI</td><td>27</td></tr>
           </tbody>
         </table>
         """
@@ -551,6 +552,7 @@ def test_parse_modem_info_reads_lt500d_cellular_icon_strength() -> None:
     assert parsed["network"]["value"] == "4G"
     assert parsed["network"]["attributes"]["raw_network_type"] == "Movistar 4G"
     assert parsed["signal"]["value"] == 2
+    assert parsed["rssi"]["value"] == 27
 
 
 def test_modem_network_sensor_is_labelled_as_network_type() -> None:

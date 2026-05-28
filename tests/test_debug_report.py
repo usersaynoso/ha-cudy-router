@@ -289,3 +289,42 @@ def test_debug_report_payload_probes_and_redacts_router_pages() -> None:
     assert wan3_probe["parser_output"]["bytes_received"]["value"] == 512 * 1024**2
     assert vpn_probe["parser_output"]["vpn_clients"]["value"] == 1
     assert mvpn_probe["parser_output"]["vpn_clients"]["value"] == 1
+
+
+def test_debug_payload_can_skip_live_endpoint_probes_for_fast_diagnostics() -> None:
+    """Standard Home Assistant diagnostics should not wait on live router probes."""
+    config_entry = SimpleNamespace(
+        entry_id="entry123",
+        title="Office Router",
+        version=3,
+        domain="cudy_router",
+        data={"host": "192.168.10.1", "username": "admin", "password": "secret", "model": "LT500D"},
+        options={},
+    )
+    api = _FakeApi({"admin/network/gcom/status?detail=1&iface=4g": "<html></html>"})
+    coordinator = SimpleNamespace(
+        config_entry=config_entry,
+        api=api,
+        data={
+            "modem": {
+                "network": {"value": "4G"},
+                "signal": {"value": 2},
+            },
+        },
+    )
+
+    payload = asyncio.run(
+        debug_report.async_build_debug_payload(
+            _FakeHass(),
+            coordinator,
+            include_html=False,
+            probe_endpoints=False,
+        )
+    )
+
+    assert api.requests == []
+    assert payload["diagnostics"]["live_endpoint_probes_included"] is False
+    assert payload["diagnostics"]["html_excerpts_included"] is False
+    assert payload["diagnostics"]["full_probe_report_action"] == "cudy_router.generate_debug_report"
+    assert payload["coordinator"]["data"]["modem"]["signal"]["value"] == 2
+    assert payload["probes"]["modem"] == []

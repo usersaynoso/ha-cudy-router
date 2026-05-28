@@ -20,6 +20,7 @@ async def async_get_config_entry_diagnostics(
     return await async_build_debug_payload(
         hass,
         coordinator,
-        include_html=True,
+        include_html=False,
         max_html_chars=DEFAULT_DEBUG_HTML_CHARS,
+        probe_endpoints=False,
     )

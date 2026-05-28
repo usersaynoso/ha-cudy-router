@@ -521,9 +521,11 @@ def parse_modem_info(input_html: str) -> dict[str, Any]:
     indicator_network = icon_network or text_network
     indicator_signal = icon_signal if icon_signal is not None else text_signal
     rssi = as_int(raw_data.get("RSSI"))
-    signal_strength = get_signal_strength(rssi)
-    if signal_strength is None:
-        signal_strength = indicator_signal
+    signal_strength = (
+        indicator_signal
+        if indicator_signal is not None
+        else get_signal_strength(rssi)
+    )
 
     # Try to get band info from various possible keys
     band_value = (

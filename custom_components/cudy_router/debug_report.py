@@ -593,6 +593,7 @@ async def async_build_debug_payload(
     *,
     include_html: bool = True,
     max_html_chars: int = DEFAULT_DEBUG_HTML_CHARS,
+    probe_endpoints: bool = True,
 ) -> dict[str, Any]:
     """Build a redacted debug payload for diagnostics and service responses."""
     redactor = Redactor()
@@ -622,6 +623,11 @@ async def async_build_debug_payload(
                 value_transform=redactor.keyed_value,
             )
         ),
+        "diagnostics": {
+            "live_endpoint_probes_included": probe_endpoints,
+            "html_excerpts_included": include_html and probe_endpoints,
+            "full_probe_report_action": f"{DOMAIN}.generate_debug_report",
+        },
         "endpoint_matrix": {
             **extra_paths,
             "load_balancing": list(_LOAD_BALANCING_STATUS_PATHS),
@@ -635,6 +641,14 @@ async def async_build_debug_payload(
             "vpn": [],
         },
     }
+
+    if not probe_endpoints:
+        payload["diagnostics"]["note"] = (
+            "Standard Home Assistant diagnostics use cached integration data so the "
+            "download returns quickly. Run the cudy_router.generate_debug_report action "
+            "when a maintainer asks for live router endpoint probes."
+        )
+        return payload
 
     api = coordinator.api
     for group, paths in extra_paths.items():

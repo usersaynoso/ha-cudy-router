@@ -35,7 +35,7 @@ def test_manifest_has_required_hacs_fields() -> None:
         "beautifulsoup4==4.14.3",
         "python-dateutil==2.9.0.post0",
     ]
-    assert manifest["version"] == "1.3.31"
+    assert manifest["version"] == "1.3.32"
     assert "image" not in manifest
 
 
@@ -103,7 +103,7 @@ def test_bug_report_issue_template_requests_diagnostics_attachment() -> None:
     assert "Open the **Cudy Router** integration" in bug_report_template
     assert "three-dot menu on the affected Cudy Router entry" in bug_report_template
     assert "Choose **Download diagnostics**" in bug_report_template
-    assert "this can take a few minutes" in bug_report_template
+    assert "cached integration data" in bug_report_template
     assert "401: Unauthorized" in bug_report_template
     assert "drag and drop the diagnostics file into this issue" in bug_report_template
     assert "I have attached the Home Assistant diagnostics file" in bug_report_template
@@ -125,7 +125,8 @@ def test_readme_links_directly_to_bug_report_issue_form() -> None:
     assert "attach the Home Assistant diagnostics file" in readme
     assert "Settings > Devices & services > Cudy Router" in readme
     assert "Download diagnostics" in readme
-    assert "this can take a few minutes" in readme
+    assert "Standard diagnostics use cached integration data" in readme
+    assert "can take a few minutes" in readme
     assert "401: Unauthorized" in readme
 
 

@@ -104,11 +104,11 @@ The detailed user guide lives in the [GitHub wiki](https://github.com/usersaynos
 
 If entities are missing, check that your router model exposes the relevant page or control and that the integration options for automatic or manual client creation are set correctly.
 
-For router-specific entity, WAN, VPN, SMS, mesh, or settings issues, run the `cudy_router.generate_debug_report` action from Home Assistant Developer Tools. It returns a redacted Markdown report and writes the same report to the Home Assistant log between `CUDY_ROUTER_DEBUG_REPORT_START` and `CUDY_ROUTER_DEBUG_REPORT_END`.
+For router-specific entity, WAN, VPN, SMS, mesh, or settings issues, run the `cudy_router.generate_debug_report` action from Home Assistant Developer Tools when a maintainer asks for a live endpoint probe report. It can take a few minutes on some routers, returns a redacted Markdown report, and writes the same report to the Home Assistant log between `CUDY_ROUTER_DEBUG_REPORT_START` and `CUDY_ROUTER_DEBUG_REPORT_END`.
 
 Please use the [bug report form](https://github.com/usersaynoso/ha-cudy-router/issues/new?template=bug_report.yml) and attach the Home Assistant diagnostics file for the Cudy Router integration.
 
-To download diagnostics, open Home Assistant and go to **Settings > Devices & services > Cudy Router**, use the three-dot menu on the affected Cudy Router entry, then choose **Download diagnostics**. Keep the Home Assistant tab open while the file is created; on some routers this can take a few minutes. Avoid opening the diagnostics download URL in a new tab, because it can return `401: Unauthorized` before Home Assistant has finished preparing the file.
+To download diagnostics, open Home Assistant and go to **Settings > Devices & services > Cudy Router**, use the three-dot menu on the affected Cudy Router entry, then choose **Download diagnostics**. Keep the Home Assistant tab open and avoid opening the diagnostics download URL in a new tab, because that can return `401: Unauthorized`. Standard diagnostics use cached integration data so the download can return quickly.
 
 
 ## Contributing
