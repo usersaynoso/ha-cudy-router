@@ -108,7 +108,7 @@ For router-specific entity, WAN, VPN, SMS, mesh, or settings issues, run the `cu
 
 Please use the [bug report form](https://github.com/usersaynoso/ha-cudy-router/issues/new?template=bug_report.yml) and attach the Home Assistant diagnostics file for the Cudy Router integration.
 
-To download diagnostics, open Home Assistant and go to **Settings > Devices & services > Cudy Router**, use the three-dot menu on the affected Cudy Router entry, then choose **Download diagnostics**.
+To download diagnostics, open Home Assistant and go to **Settings > Devices & services > Cudy Router**, use the three-dot menu on the affected Cudy Router entry, then choose **Download diagnostics**. Keep the Home Assistant tab open while the file is created; on some routers this can take a few minutes. Avoid opening the diagnostics download URL in a new tab, because it can return `401: Unauthorized` before Home Assistant has finished preparing the file.
 
 
 ## Contributing

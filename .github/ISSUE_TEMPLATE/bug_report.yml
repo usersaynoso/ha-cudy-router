@@ -16,7 +16,10 @@ body:
         2. Open the **Cudy Router** integration.
         3. Use the three-dot menu on the affected Cudy Router entry.
         4. Choose **Download diagnostics**.
-        5. Drag and drop the downloaded diagnostics file into this issue.
+        5. Wait for Home Assistant to create the file; on some routers this can take a few minutes.
+        6. Drag and drop the downloaded diagnostics file into this issue.
+
+        Please start the download from the Home Assistant menu and keep that tab open. Opening the diagnostics download URL in a new tab can fail with `401: Unauthorized` before Home Assistant has finished preparing the file.
 
   - type: input
     id: summary
@@ -86,7 +89,7 @@ body:
     id: diagnostics-confirmation
     attributes:
       label: Diagnostics
-      description: In Home Assistant, go to Settings > Devices & services > Cudy Router, open the three-dot menu on the affected entry, choose Download diagnostics, then drag and drop the diagnostics file into this issue before submitting.
+      description: In Home Assistant, go to Settings > Devices & services > Cudy Router, open the three-dot menu on the affected entry, choose Download diagnostics, wait for Home Assistant to create the file, then drag and drop the diagnostics file into this issue before submitting. This can take a few minutes on some routers; avoid opening the diagnostics URL in a new tab because it can return 401 before the file is ready.
       options:
         - label: I have attached the Home Assistant diagnostics file, or I have explained below why I cannot provide it.
           required: true

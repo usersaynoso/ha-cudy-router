@@ -122,4 +122,6 @@ def test_readme_links_directly_to_bug_report_issue_form() -> None:
     assert "attach the Home Assistant diagnostics file" in source
     assert "Settings > Devices & services > Cudy Router" in source
     assert "Download diagnostics" in source
+    assert "this can take a few minutes" in source
+    assert "401: Unauthorized" in source
     assert "cudy_router.generate_debug_report" in source

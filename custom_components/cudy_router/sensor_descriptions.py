@@ -47,7 +47,7 @@ SIGNAL_SENSOR = CudyRouterSensorEntityDescription(
 NETWORK_SENSOR = CudyRouterSensorEntityDescription(
     key="network",
     module="modem",
-    name_suffix="Network",
+    name_suffix="Network type",
 )
 
 WAN_INTERFACE_SENSOR_TYPES: tuple[CudyRouterSensorEntityDescription, ...] = (

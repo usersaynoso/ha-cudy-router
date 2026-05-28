@@ -345,6 +345,49 @@ def get_signal_strength(rssi: int | None) -> int | None:
     return None
 
 
+def parse_network_signal_indicator(value: str | None) -> tuple[str | None, int | None]:
+    """Parse compact Cudy cellular status values such as ``4g2``."""
+    if not value:
+        return None, None
+
+    match = re.fullmatch(r"\s*(?P<network>[2345])\s*g\s*(?P<strength>[0-4])\s*", value, re.IGNORECASE)
+    if match is None:
+        return None, None
+
+    return f"{match.group('network')}G", int(match.group("strength"))
+
+
+def _parse_modem_network_icon(input_html: str) -> tuple[str | None, int | None]:
+    """Read cellular network type and bar strength from Cudy icon classes."""
+    soup = BeautifulSoup(input_html, "html.parser")
+    for element in soup.find_all(class_=True):
+        classes = element.get("class")
+        if not isinstance(classes, list):
+            continue
+        for css_class in classes:
+            network, strength = parse_network_signal_indicator(
+                css_class.removeprefix("icon-")
+            )
+            if network is not None and strength is not None:
+                return network, strength
+    return None, None
+
+
+def _parse_modem_network_text(input_html: str) -> str | None:
+    """Read the rendered Network Type row text from modem status pages."""
+    soup = BeautifulSoup(input_html, "html.parser")
+    for row in soup.find_all("tr"):
+        cells = row.find_all(["th", "td"])
+        if len(cells) < 2:
+            continue
+        label = cells[0].get_text(" ", strip=True)
+        if label.lower() != "network type":
+            continue
+        value = cells[1].get_text(" ", strip=True).replace(" ...", "")
+        return value or None
+    return None
+
+
 def as_int(string: str | None):
     """Parses string as integer or returns None"""
 
@@ -465,6 +508,22 @@ def parse_modem_info(input_html: str) -> dict[str, Any]:
 
     raw_data = parse_tables(input_html)
     cellid = hex_as_int(raw_data.get("Cell ID") or raw_data.get("CellID"))
+    raw_network = (
+        (raw_data.get("Network Type") or "").replace(" ...", "")
+        or _parse_modem_network_text(input_html)
+        or ""
+    )
+    raw_signal = raw_data.get("Signal Strength") or raw_data.get("Signal")
+    icon_network, icon_signal = _parse_modem_network_icon(input_html)
+    text_network, text_signal = parse_network_signal_indicator(
+        raw_network or raw_signal
+    )
+    indicator_network = icon_network or text_network
+    indicator_signal = icon_signal if icon_signal is not None else text_signal
+    rssi = as_int(raw_data.get("RSSI"))
+    signal_strength = get_signal_strength(rssi)
+    if signal_strength is None:
+        signal_strength = indicator_signal
 
     # Try to get band info from various possible keys
     band_value = (
@@ -492,12 +551,16 @@ def parse_modem_info(input_html: str) -> dict[str, Any]:
 
     data: dict[str, dict[str, Any]] = {
         "network": {
-            "value": (raw_data.get("Network Type") or "").replace(" ...", ""),
-            "attributes": {"mcc": raw_data.get("MCC"), "mnc": raw_data.get("MNC")},
+            "value": indicator_network or raw_network,
+            "attributes": {
+                "mcc": raw_data.get("MCC"),
+                "mnc": raw_data.get("MNC"),
+                "raw_network_type": raw_network or None,
+            },
         },
         "connected_time": {"value": get_seconds_duration(raw_data.get("Connected Time"))},
-        "signal": {"value": get_signal_strength(as_int(raw_data.get("RSSI")))},
-        "rssi": {"value": as_int(raw_data.get("RSSI"))},
+        "signal": {"value": signal_strength},
+        "rssi": {"value": rssi},
         "rsrp": {"value": as_int(raw_data.get("RSRP"))},
         "rsrq": {"value": as_int(raw_data.get("RSRQ"))},
         "sinr": {"value": as_int(raw_data.get("SINR"))},

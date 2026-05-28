@@ -14,6 +14,7 @@ load_cudy_module("model_names")
 parser = load_cudy_module("parser")
 parser_network = load_cudy_module("parser_network")
 parser_settings = load_cudy_module("parser_settings")
+sensor_descriptions = load_cudy_module("sensor_descriptions")
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -525,6 +526,36 @@ def test_parse_load_balancing_status_supports_protocol_annotated_interfaces() ->
 def test_get_sim_value_returns_none_when_status_icon_is_missing() -> None:
     """Missing SIM markup should not emit an invalid enum sensor state."""
     assert parser.get_sim_value("<html><body><p>No SIM icon</p></body></html>") is None
+
+
+def test_parse_modem_info_reads_lt500d_cellular_icon_strength() -> None:
+    """LT500D network icons encode both network type and signal bars."""
+    parsed = parser.parse_modem_info(
+        """
+        <table>
+          <tbody>
+            <tr>
+              <td>Network Type</td>
+              <td>
+                Movistar 4G
+                <span class="fa-lg">
+                  <i class="icon-4g2 text-success" aria-hidden="true"></i>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert parsed["network"]["value"] == "4G"
+    assert parsed["network"]["attributes"]["raw_network_type"] == "Movistar 4G"
+    assert parsed["signal"]["value"] == 2
+
+
+def test_modem_network_sensor_is_labelled_as_network_type() -> None:
+    """The cellular network entity should not be confused with signal strength."""
+    assert sensor_descriptions.NETWORK_SENSOR.name_suffix == "Network type"
 
 
 def test_get_signal_strength_returns_none_when_rssi_is_missing() -> None:
