@@ -20,6 +20,7 @@ from .sms import (
     SMS_PANEL_URL_PATH,
     async_fetch_sms_data,
     async_send_sms_message,
+    async_delete_sms_message,
     coordinator_shows_sms_panel_in_sidebar,
     coordinator_supports_sms,
     sms_capable_coordinators,
@@ -105,6 +106,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_list_sms_entries)
     websocket_api.async_register_command(hass, websocket_get_sms_messages)
     websocket_api.async_register_command(hass, websocket_send_sms)
+    websocket_api.async_register_command(hass, websocket_delete_sms)
     runtime["websocket_registered"] = True
 
 
@@ -205,6 +207,39 @@ async def websocket_send_sms(
         msg["phone_number"],
         msg["message"],
     )
+    if not result["success"]:
+        raise HomeAssistantError(result["message"])
+
+    connection.send_result(msg["id"], result)
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "cudy_router/sms/delete",
+        vol.Required("entry_id"): str,
+        vol.Required("cfg"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_delete_sms(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Delete an SMS via the selected router."""
+    coordinator = _coordinator_for_entry_id(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], websocket_api.ERR_NOT_FOUND, "Unknown Cudy Router entry.")
+        return
+    if not coordinator_supports_sms(coordinator):
+        connection.send_error(
+            msg["id"],
+            websocket_api.ERR_NOT_SUPPORTED,
+            "The selected router does not support SMS.",
+        )
+        return
+
+    result = await async_delete_sms_message(hass, coordinator, msg["cfg"])
     if not result["success"]:
         raise HomeAssistantError(result["message"])
 

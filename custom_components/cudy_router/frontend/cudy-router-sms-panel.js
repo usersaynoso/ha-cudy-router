@@ -19,16 +19,35 @@ class CudyRouterSmsPanel extends HTMLElement {
     this._composePhone = "";
     this._composeMessage = "";
     this._bootstrapped = false;
+
+    // Fix: avoid full rerender on every hass update (prevents cursor loss)
+    this._lastDarkMode = null;
+
+    // Delete: basic in-flight guard
+    this._deletePending = false;
   }
 
   set hass(hass) {
     const firstLoad = !this._hass;
     this._hass = hass;
+
     if (firstLoad && !this._bootstrapped) {
       this._bootstrapped = true;
-      this._loadEntries();
+      this._lastDarkMode = Boolean(this._hass?.themes?.darkMode);
+      this._loadEntries(); // will render via _loadEntries/_loadMessages
+      return;
     }
-    this._render();
+
+    // Only re-render when theme mode changes (light/dark).
+    const darkModeNow = Boolean(this._hass?.themes?.darkMode);
+    if (this._lastDarkMode === null) {
+      this._lastDarkMode = darkModeNow;
+      return;
+    }
+    if (darkModeNow !== this._lastDarkMode) {
+      this._lastDarkMode = darkModeNow;
+      this._render();
+    }
   }
 
   set panel(panel) {
@@ -121,7 +140,10 @@ class CudyRouterSmsPanel extends HTMLElement {
   }
 
   _messageKey(message) {
-    return message.cfg || `${message.folder || this._selectedTab}:${message.index || message.timestamp || ""}`;
+    return (
+      message.cfg ||
+      `${message.folder || this._selectedTab}:${message.index || message.timestamp || ""}`
+    );
   }
 
   _messagesForSelectedTab() {
@@ -144,13 +166,19 @@ class CudyRouterSmsPanel extends HTMLElement {
   }
 
   _selectedMessage() {
-    return this._messagesForSelectedTab().find(
-      (message) => this._messageKey(message) === this._selectedMessageKey,
-    ) || null;
+    return (
+      this._messagesForSelectedTab().find(
+        (message) => this._messageKey(message) === this._selectedMessageKey,
+      ) || null
+    );
   }
 
   async _sendSms() {
-    if (!this._selectedEntryId || !this._composePhone.trim() || !this._composeMessage.trim()) {
+    if (
+      !this._selectedEntryId ||
+      !this._composePhone.trim() ||
+      !this._composeMessage.trim()
+    ) {
       this._error = "Phone number and message are required.";
       this._notice = "";
       this._render();
@@ -176,6 +204,51 @@ class CudyRouterSmsPanel extends HTMLElement {
       this._error = err?.message || "Failed to send SMS.";
     } finally {
       this._sendPending = false;
+      this._render();
+    }
+  }
+
+  async _deleteSelectedMessage() {
+    if (this._deletePending) return;
+
+    const message = this._selectedMessage();
+    if (!this._selectedEntryId || !message) {
+      this._error = "Select a message first.";
+      this._notice = "";
+      this._render();
+      return;
+    }
+    if (!message.cfg) {
+      this._error = "This message cannot be deleted (missing cfg id).";
+      this._notice = "";
+      this._render();
+      return;
+    }
+
+    const ok = confirm("Delete this SMS from the router?");
+    if (!ok) return;
+
+    this._deletePending = true;
+    this._error = "";
+    this._notice = "";
+    this._messagesLoading = true; // reuse loading state for UI disable/spinner
+    this._render();
+
+    try {
+      const result = await this._callApi({
+        type: "cudy_router/sms/delete",
+        entry_id: this._selectedEntryId,
+        cfg: message.cfg,
+      });
+
+      this._notice = result?.message || "SMS deleted.";
+      this._selectedMessageKey = "";
+      await this._loadMessages();
+    } catch (err) {
+      this._error = err?.message || "Failed to delete SMS.";
+    } finally {
+      this._deletePending = false;
+      this._messagesLoading = false;
       this._render();
     }
   }
@@ -224,10 +297,12 @@ class CudyRouterSmsPanel extends HTMLElement {
     return mailbox.messages
       .map((message) => {
         const key = this._messageKey(message);
-        const activeClass = key === this._selectedMessageKey ? "message-item active" : "message-item";
-        const status = this._selectedTab === "inbox"
-          ? `<span class="chip ${message.read ? "muted" : "unread"}">${message.read ? "Read" : "Unread"}</span>`
-          : `<span class="chip muted">Sent</span>`;
+        const activeClass =
+          key === this._selectedMessageKey ? "message-item active" : "message-item";
+        const status =
+          this._selectedTab === "inbox"
+            ? `<span class="chip ${message.read ? "muted" : "unread"}">${message.read ? "Read" : "Unread"}</span>`
+            : `<span class="chip muted">Sent</span>`;
         return `
           <button class="${activeClass}" data-message-key="${this._escapeHtml(key)}">
             <div class="message-row">
@@ -250,11 +325,16 @@ class CudyRouterSmsPanel extends HTMLElement {
       return `<div class="empty detail-empty">Select a message to read its full contents.</div>`;
     }
 
-    const body = this._escapeHtml(message.text || "No message body available.").replaceAll("\n", "<br>");
+    const body = this._escapeHtml(message.text || "No message body available.").replaceAll(
+      "\\n",
+      "<br>",
+    );
     const statusLine =
       this._selectedTab === "inbox"
         ? `<div class="detail-meta"><span>Status</span><strong>${message.read ? "Read" : "Unread"}</strong></div>`
         : "";
+
+    const canDelete = Boolean(message.cfg);
 
     return `
       <div class="detail-card">
@@ -263,7 +343,10 @@ class CudyRouterSmsPanel extends HTMLElement {
             <div class="detail-label">${this._selectedTab === "inbox" ? "From" : "To"}</div>
             <h2>${this._escapeHtml(message.phone || "Unknown number")}</h2>
           </div>
-          <button id="reply-button" class="secondary">Reply</button>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+            <button id="reply-button" class="secondary">Reply</button>
+            <button id="delete-button" class="secondary" ${!canDelete || this._deletePending ? "disabled" : ""}>Delete</button>
+          </div>
         </div>
         <div class="detail-meta"><span>Time</span><strong>${this._escapeHtml(message.timestamp || "Unknown")}</strong></div>
         ${statusLine}
@@ -273,11 +356,18 @@ class CudyRouterSmsPanel extends HTMLElement {
   }
 
   _render() {
-    const selectedEntry = this._entries.find((entry) => entry.entry_id === this._selectedEntryId) || null;
-    const counts = this._data?.counts || selectedEntry?.counts || { inbox: 0, outbox: 0, unread: 0 };
+    const selectedEntry =
+      this._entries.find((entry) => entry.entry_id === this._selectedEntryId) ||
+      null;
+    const counts =
+      this._data?.counts || selectedEntry?.counts || { inbox: 0, outbox: 0, unread: 0 };
     const loading = this._entriesLoading || this._messagesLoading;
     const selectedMessage = this._selectedMessage();
     const darkMode = Boolean(this._hass?.themes?.darkMode);
+
+    // keep theme tracker in sync even if _render() is called from non-hass paths
+    this._lastDarkMode = darkMode;
+
     const theme = darkMode
       ? {
           pageBackground: "#11161c",
@@ -293,7 +383,8 @@ class CudyRouterSmsPanel extends HTMLElement {
           controlBackground: "#121821",
           controlBorder: "rgba(232, 237, 245, 0.22)",
           controlOutline: "rgba(232, 237, 245, 0.14)",
-          shadow: "0 18px 36px rgba(0, 0, 0, 0.34), 0 4px 12px rgba(0, 0, 0, 0.28)",
+          shadow:
+            "0 18px 36px rgba(0, 0, 0, 0.34), 0 4px 12px rgba(0, 0, 0, 0.28)",
           success: "#81c784",
           warning: "#ffca28",
           error: "#ef9a9a",
@@ -313,7 +404,8 @@ class CudyRouterSmsPanel extends HTMLElement {
           controlBackground: "#ffffff",
           controlBorder: "rgba(31, 41, 55, 0.18)",
           controlOutline: "rgba(31, 41, 55, 0.12)",
-          shadow: "0 12px 32px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.05)",
+          shadow:
+            "0 12px 32px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.05)",
           success: "#2e7d32",
           warning: "#b26a00",
           error: "#d14343",
@@ -562,12 +654,6 @@ class CudyRouterSmsPanel extends HTMLElement {
           opacity: 1;
         }
 
-        select:focus,
-        textarea:focus,
-        input:focus {
-          box-shadow: none;
-        }
-
         textarea {
           min-height: 160px;
           resize: vertical;
@@ -613,12 +699,6 @@ class CudyRouterSmsPanel extends HTMLElement {
             0 10px 22px color-mix(in srgb, var(--sms-panel-accent) 28%, transparent);
         }
 
-        .primary:hover {
-          box-shadow:
-            0 0 0 1px color-mix(in srgb, var(--sms-panel-accent) 46%, transparent),
-            0 14px 28px color-mix(in srgb, var(--sms-panel-accent) 32%, transparent);
-        }
-
         .primary:disabled {
           background: color-mix(in srgb, var(--sms-panel-accent) 28%, var(--sms-panel-surface) 72%);
           color: color-mix(in srgb, var(--sms-panel-text) 58%, transparent);
@@ -639,7 +719,6 @@ class CudyRouterSmsPanel extends HTMLElement {
             color-mix(in srgb, var(--sms-panel-control-background) 92%, white 8%),
             color-mix(in srgb, var(--sms-panel-subtle-background) 88%, black 12%)
           );
-          color: var(--sms-panel-text);
           border-color: var(--sms-panel-control-border);
           box-shadow:
             inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
@@ -665,13 +744,6 @@ class CudyRouterSmsPanel extends HTMLElement {
         .tab.active {
           background: color-mix(in srgb, var(--sms-panel-accent) 18%, var(--sms-panel-surface-alt) 82%);
           border-color: var(--sms-panel-accent);
-          color: var(--sms-panel-text);
-        }
-
-        .secondary:hover,
-        .tab:hover,
-        .message-item:hover {
-          background: var(--sms-panel-surface-hover);
         }
 
         .stats {
@@ -969,17 +1041,19 @@ class CudyRouterSmsPanel extends HTMLElement {
               <div class="field-label">Router</div>
               <div class="control-shell">
                 <select id="entry-select" ${this._entriesLoading || !this._entries.length ? "disabled" : ""}>
-                  ${this._entries.length
-                    ? this._entries
-                        .map(
-                          (entry) => `
+                  ${
+                    this._entries.length
+                      ? this._entries
+                          .map(
+                            (entry) => `
                             <option value="${this._escapeHtml(entry.entry_id)}" ${entry.entry_id === this._selectedEntryId ? "selected" : ""}>
                               ${this._escapeHtml(entry.title)}${entry.model ? ` (${this._escapeHtml(entry.model)})` : ""}
                             </option>
                           `,
-                        )
-                        .join("")
-                    : `<option value="">No SMS-capable routers available</option>`}
+                          )
+                          .join("")
+                      : `<option value="">No SMS-capable routers available</option>`
+                  }
                 </select>
               </div>
             </label>
@@ -1090,6 +1164,10 @@ class CudyRouterSmsPanel extends HTMLElement {
 
     this.shadowRoot.querySelector("#reply-button")?.addEventListener("click", () => {
       this._replyToSelectedMessage();
+    });
+
+    this.shadowRoot.querySelector("#delete-button")?.addEventListener("click", () => {
+      this._deleteSelectedMessage();
     });
 
     this.shadowRoot.querySelector("#compose-phone")?.addEventListener("input", (event) => {
