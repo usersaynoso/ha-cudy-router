@@ -188,3 +188,30 @@ async def async_send_sms_message(
     if result["success"]:
         await coordinator.async_request_refresh()
     return result
+    
+def interpret_delete_sms_result(status_code: int, response_text: str) -> dict[str, Any]:
+    """Normalize the router's delete-SMS response."""
+    snippet = (response_text or "").strip()
+    normalized = snippet.lower()
+    success = 200 <= status_code < 400 and "error" not in normalized and "failed" not in normalized
+    return {
+        "success": success,
+        "status_code": status_code,
+        "message": "SMS deleted." if success else (snippet or "The router did not confirm deletion."),
+    }
+
+
+async def async_delete_sms_message(
+    hass: HomeAssistant,
+    coordinator: Any,
+    cfg: str,
+) -> dict[str, Any]:
+    """Delete an SMS by cfg and refresh the coordinator if accepted."""
+    status_code, response_text = await hass.async_add_executor_job(
+        coordinator.api.delete_sms,
+        cfg,
+    )
+    result = interpret_delete_sms_result(status_code, response_text)
+    if result["success"]:
+        await coordinator.async_request_refresh()
+    return result
