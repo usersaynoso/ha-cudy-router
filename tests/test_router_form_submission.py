@@ -95,6 +95,44 @@ def test_submit_form_executes_embedded_apply_workflow(monkeypatch) -> None:
     assert apply_post == {"token": ["apply-token"]}
 
 
+def test_delete_sms_posts_luci_delete_endpoint_with_token(monkeypatch) -> None:
+    """SMS delete should submit the LuCI delete endpoint with a page token."""
+    router = router_module.CudyRouter(None, "https://192.168.10.1", "user", "password")
+    posted: list[tuple[str, dict[str, list[str]], dict[str, str]]] = []
+
+    def fake_get(path: str, **kwargs):
+        assert path == "admin/network/gcom/sms/smslist?smsbox=rec&iface=4g"
+        assert kwargs["silent"] is True
+        return _response('<input type="hidden" name="token" value="sms-token" />')
+
+    def fake_post(path: str, **kwargs):
+        posted.append((path, parse_qs(kwargs["data"]), kwargs["headers"]))
+        return _response("deleted", 302)
+
+    monkeypatch.setattr(router, "_luci_get", fake_get)
+    monkeypatch.setattr(router, "_luci_post", fake_post)
+
+    result = router.delete_sms("cfg10a53f")
+
+    assert result == (302, "deleted")
+    assert posted == [
+        (
+            "admin/network/gcom/sms/delsms?iface=4g&cfg=cfg10a53f",
+            {
+                "token": ["sms-token"],
+                "timeclock": ["0"],
+                "cbi.submit": ["1"],
+            },
+            {
+                "User-Agent": "Mozilla/5.0",
+                "Referer": "https://192.168.10.1/cgi-bin/luci/admin/network/gcom/sms",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Origin": "https://192.168.10.1",
+            },
+        )
+    ]
+
+
 def test_set_device_access_supports_vpn_toggle(monkeypatch) -> None:
     """Per-device access toggles should support the VPN control exposed by R700."""
     router = router_module.CudyRouter(None, "https://192.168.10.1", "user", "password")

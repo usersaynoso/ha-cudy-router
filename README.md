@@ -28,7 +28,7 @@ This project is not endorsed, maintained, or supported by Cudy.
 
 ## Current Status
 
-Only the **Cudy P5** has been tested on real hardware so far.
+The **Cudy P5** and **Cudy P4** have been tested on real hardware.
 
 The integration includes a model capability map so unsupported module families stay hidden instead of showing dead or non-functional entities. Unknown Cudy models fall back to best-effort dynamic detection.
 

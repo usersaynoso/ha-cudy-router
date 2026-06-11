@@ -25,9 +25,15 @@ class _FakeHass:
 
 
 class _FakeRouter:
-    def __init__(self, pages: dict[str, str], send_result: tuple[int, str] = (200, "Sent")) -> None:
+    def __init__(
+        self,
+        pages: dict[str, str],
+        send_result: tuple[int, str] = (200, "Sent"),
+        delete_result: tuple[int, str] = (200, "Deleted"),
+    ) -> None:
         self._pages = pages
         self._send_result = send_result
+        self._delete_result = delete_result
         self.requests: list[tuple[str, bool]] = []
 
     def get(self, path: str, silent: bool = False) -> str:
@@ -37,6 +43,10 @@ class _FakeRouter:
     def send_sms(self, phone_number: str, message: str) -> tuple[int, str]:
         self.last_send = (phone_number, message)
         return self._send_result
+
+    def delete_sms(self, cfg: str) -> tuple[int, str]:
+        self.last_delete = cfg
+        return self._delete_result
 
 
 class _FakeConfigEntry:
@@ -169,6 +179,36 @@ def test_async_send_sms_message_returns_failure_without_refresh() -> None:
         "success": False,
         "status_code": 500,
         "message": "Send failed",
+    }
+    assert coordinator.refresh_calls == 0
+
+
+def test_async_delete_sms_message_refreshes_on_success() -> None:
+    """Successful deletes should refresh the coordinator summary data."""
+    router = _FakeRouter({}, delete_result=(302, ""))
+    coordinator = _FakeCoordinator(router)
+
+    result = asyncio.run(sms.async_delete_sms_message(_FakeHass(), coordinator, "cfginbox1"))
+
+    assert router.last_delete == "cfginbox1"
+    assert result == {
+        "success": True,
+        "status_code": 302,
+        "message": "SMS deleted.",
+    }
+    assert coordinator.refresh_calls == 1
+
+
+def test_async_delete_sms_message_returns_failure_without_refresh() -> None:
+    """Failed deletes should keep coordinator data untouched and expose the router error."""
+    coordinator = _FakeCoordinator(_FakeRouter({}, delete_result=(500, "Delete failed")))
+
+    result = asyncio.run(sms.async_delete_sms_message(_FakeHass(), coordinator, "cfginbox1"))
+
+    assert result == {
+        "success": False,
+        "status_code": 500,
+        "message": "Delete failed",
     }
     assert coordinator.refresh_calls == 0
 

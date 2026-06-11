@@ -26,6 +26,8 @@ def test_frontend_module_registers_panel_and_websocket_commands() -> None:
     assert '"cudy_router/sms/list_entries"' in source
     assert '"cudy_router/sms/get_messages"' in source
     assert '"cudy_router/sms/send"' in source
+    assert '"cudy_router/sms/delete"' in source
+    assert "websocket_delete_sms" in source
     assert "@websocket_api.require_admin" in source
     assert 'sidebar_title="Cudy SMS"' in source
     assert 'frontend_url_path=SMS_PANEL_URL_PATH' in source
@@ -44,6 +46,9 @@ def test_frontend_panel_bundle_exists_and_supports_compose_flow() -> None:
     assert 'customElements.define("cudy-router-sms-panel"' in source
     assert 'type: "cudy_router/sms/get_messages"' in source
     assert 'type: "cudy_router/sms/send"' in source
+    assert 'type: "cudy_router/sms/delete"' in source
+    assert "Delete this SMS from the router?" in source
+    assert 'id="delete-button"' in source
     assert "Reply" in source
     assert "Send SMS" in source
     assert "Inbox" in source

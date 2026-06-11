@@ -326,7 +326,7 @@ class CudyRouterSmsPanel extends HTMLElement {
     }
 
     const body = this._escapeHtml(message.text || "No message body available.").replaceAll(
-      "\\n",
+      "\n",
       "<br>",
     );
     const statusLine =

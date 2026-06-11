@@ -188,16 +188,25 @@ async def async_send_sms_message(
     if result["success"]:
         await coordinator.async_request_refresh()
     return result
-    
+
+
 def interpret_delete_sms_result(status_code: int, response_text: str) -> dict[str, Any]:
     """Normalize the router's delete-SMS response."""
     snippet = (response_text or "").strip()
     normalized = snippet.lower()
-    success = 200 <= status_code < 400 and "error" not in normalized and "failed" not in normalized
+    success = (
+        200 <= status_code < 400
+        and "error" not in normalized
+        and "failed" not in normalized
+    )
     return {
         "success": success,
         "status_code": status_code,
-        "message": "SMS deleted." if success else (snippet or "The router did not confirm deletion."),
+        "message": (
+            "SMS deleted."
+            if success
+            else (snippet or "The router did not confirm deletion.")
+        ),
     }
 
 

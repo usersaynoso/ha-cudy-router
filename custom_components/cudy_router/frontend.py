@@ -212,6 +212,7 @@ async def websocket_send_sms(
 
     connection.send_result(msg["id"], result)
 
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "cudy_router/sms/delete",

@@ -1894,63 +1894,69 @@ class CudyRouter:
                 _LOGGER.debug("Get mesh LED state on %s failed: %s", endpoint, e)
                 continue
 
-        # Default to True (LEDs on) if we can't determine state
+        # Default to True (LEDs on) if we can't determine state.
         return True
-        
-    def delete_sms(self, cfg: str, iface: str = "4g") -> tuple[int, str]:
-          """Delete an SMS (inbox/outbox) by cfg id via LuCI.
 
-          Args:
+    def delete_sms(self, cfg: str, iface: str = "4g") -> tuple[int, str]:
+        """Delete an SMS from the router's inbox or outbox by cfg id.
+
+        Args:
             cfg: message cfg id (e.g. 'cfg10a53f')
             iface: modem iface, usually '4g'
 
-          Returns:
+        Returns:
             (status_code, response snippet / message)
-          """
-          if not cfg:
-              return 0, "Missing cfg"
+        """
+        if not cfg:
+            return 0, "Missing cfg"
 
-      # Your confirmed endpoint:
-      # POST cgi-bin/luci/admin/network/gcom/sms/delsms?iface=4g&cfg=cfgXXXX
-          delete_path = f"admin/network/gcom/sms/delsms?iface={iface}&cfg={urllib.parse.quote(cfg)}"
+        quoted_iface = urllib.parse.quote(iface)
+        delete_path = (
+            "admin/network/gcom/sms/delsms"
+            f"?iface={quoted_iface}&cfg={urllib.parse.quote(cfg)}"
+        )
 
-      # We need a LuCI token; easiest is to load an SMS page that contains it.
-          token_source = f"admin/network/gcom/sms/smslist?smsbox=rec&iface={iface}"
-          headers = {
-              "User-Agent": "Mozilla/5.0",
-              "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/gcom/sms",
-          }
+        token_source = f"admin/network/gcom/sms/smslist?smsbox=rec&iface={quoted_iface}"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/gcom/sms",
+        }
 
-          try:
-              resp = self._luci_get(token_source, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
-              if not resp:
-                  return 0, f"Failed to load SMS list page for token ({token_source})"
+        try:
+            resp = self._luci_get(
+                token_source,
+                timeout=DEFAULT_PAGE_TIMEOUT,
+                headers=headers,
+                silent=True,
+            )
+            if not resp:
+                return 0, f"Failed to load SMS list page for token ({token_source})"
 
-              token = _extract_hidden(resp.text, "token")
-              if not token:
-                  return 0, "No token on SMS list page"
+            token = _extract_hidden(resp.text, "token")
+            if not token:
+                return 0, "No token on SMS list page"
 
-              post_fields = {
-                  "token": token,
-                  "timeclock": "0",
-                  "cbi.submit": "1",
-              }
+            post_fields = {
+                "token": token,
+                "timeclock": "0",
+                "cbi.submit": "1",
+            }
 
-              r = self._luci_post(
-                  delete_path,
-                  timeout=DEFAULT_POST_TIMEOUT,
-                  headers={
-                      **headers,
-                      "Content-Type": "application/x-www-form-urlencoded",
-                      "Origin": self.base_url,
-                  },
-                  data=urllib.parse.urlencode(post_fields),
-                  silent=True,
-              )
-              if not r:
-                  return 0, "Failed to submit delete SMS request"
+            response = self._luci_post(
+                delete_path,
+                timeout=DEFAULT_POST_TIMEOUT,
+                headers={
+                    **headers,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": self.base_url,
+                },
+                data=urllib.parse.urlencode(post_fields),
+                silent=True,
+            )
+            if not response:
+                return 0, "Failed to submit delete SMS request"
 
-              return r.status_code, (r.text or "")[:220]
-          except Exception as err:
-              _LOGGER.error("SMS delete failed: %s", err)
-              return 0, str(err)[:220]
+            return response.status_code, (response.text or "")[:220]
+        except Exception as err:
+            _LOGGER.error("SMS delete failed: %s", err)
+            return 0, str(err)[:220]
