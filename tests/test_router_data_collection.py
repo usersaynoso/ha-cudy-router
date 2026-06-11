@@ -886,6 +886,42 @@ def test_collect_router_data_uses_active_vpn_protocol_and_keeps_zero_count(
     assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 0
 
 
+def test_collect_router_data_skips_vpn_status_pages_when_vpn_is_disabled(
+    monkeypatch,
+) -> None:
+    """Disabled VPN settings should not make refresh probe every VPN status page."""
+    monkeypatch.setattr(
+        router_data,
+        "existing_feature",
+        lambda device_model, module: module == const.MODULE_VPN,
+    )
+
+    fake_router = _FakeRouter(
+        {
+            "admin/network/vpn/config": _vpn_config_html("pptp", enabled=False),
+            "admin/network/vpn/pptp/status?detail=": """
+            <table><tr><td>Devices</td><td>5</td></tr></table>
+            """,
+            "admin/network/vpn/status?detail=": """
+            <table><tr><td>Devices</td><td>7</td></tr></table>
+            """,
+        }
+    )
+
+    data = asyncio.run(
+        router_data.collect_router_data(
+            fake_router,
+            _FakeHass(),
+            {},
+            "WR11000",
+        )
+    )
+
+    assert data[const.MODULE_VPN]["protocol"]["value"] == "PPTP Client"
+    assert data[const.MODULE_VPN]["vpn_clients"]["value"] == 0
+    assert fake_router.requests == [("admin/network/vpn/config", True)]
+
+
 def test_collect_router_data_uses_mvpn_page_for_vpn_client_count(monkeypatch) -> None:
     """The main VPN page may expose client counts absent from status endpoints."""
     monkeypatch.setattr(

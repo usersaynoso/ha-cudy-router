@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from urllib.parse import parse_qs
 
@@ -29,6 +30,42 @@ def _response(
 
 def _requests_cookie_jar():
     return router_module.requests.cookies.RequestsCookieJar()
+
+
+def test_request_logs_slow_router_endpoint_with_redacted_query(
+    monkeypatch,
+    caplog,
+) -> None:
+    """Slow router requests should identify the endpoint without leaking client data."""
+    router = router_module.CudyRouter(None, "http://192.168.10.1", "admin", "demo")
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.cookies = _requests_cookie_jar()
+
+        def request(self, **kwargs):
+            return _response("ok", url=kwargs["url"])
+
+    monkeypatch.setattr(router, "_get_session", lambda: FakeSession())
+    elapsed_times = iter([100.0, 112.5])
+    monkeypatch.setattr(router_module.time, "monotonic", lambda: next(elapsed_times))
+
+    caplog.set_level(logging.WARNING, logger=router_module._LOGGER.name)
+
+    response = router._request(
+        "GET",
+        "http://192.168.10.1/cgi-bin/luci/admin/network/mesh/client/devstatus?embedded=&client=80AFCAF259A1&hostname=LivingRoom",
+        timeout=15,
+        headers={},
+        silent=True,
+    )
+
+    assert response is not None
+    assert "Slow router request: GET /cgi-bin/luci/admin/network/mesh/client/devstatus" in caplog.text
+    assert "client=%3Credacted%3E" in caplog.text
+    assert "hostname=%3Credacted%3E" in caplog.text
+    assert "80AFCAF259A1" not in caplog.text
+    assert "LivingRoom" not in caplog.text
 
 
 def test_authenticate_new_discovers_root_login_form_and_posts_browser_payload(

@@ -30,6 +30,8 @@ DEFAULT_RETRIES = 2
 RETRY_BACKOFF_SECONDS = 0.35
 RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504}
 AUTH_COOKIE_NAMES = ("sysauth", "sysauth_http", "sysauth_https")
+SLOW_REQUEST_LOG_SECONDS = 10.0
+REDACTED_QUERY_PARAMS = {"client", "cfg", "hostname", "mac", "macaddr"}
 
 
 @dataclass(slots=True)
@@ -60,6 +62,21 @@ def _extract_model(html: str) -> str:
     """Extract device model in page"""
     match = re.search(r"<span>HW: ([a-zA-Z0-9 \-\.]+)<\/span>", html)
     return match.group(1) if match else ""
+
+
+def _safe_request_target(url: str) -> str:
+    """Return a log-safe request target without host or client identifiers."""
+    parsed = urllib.parse.urlsplit(url)
+    query_pairs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    safe_query = urllib.parse.urlencode(
+        [
+            (key, "<redacted>" if key.lower() in REDACTED_QUERY_PARAMS else value)
+            for key, value in query_pairs
+        ],
+        doseq=True,
+    )
+    target = parsed.path or url
+    return f"{target}?{safe_query}" if safe_query else target
 
 
 def _find_form_field_name_by_suffix(
@@ -190,6 +207,19 @@ class CudyRouter:
         """Execute an HTTP request with shared retry/backoff/auth-refresh behavior."""
         session = self._get_session()
         last_error: Exception | None = None
+        started_at = time.monotonic()
+        safe_target = _safe_request_target(url)
+
+        def log_if_slow(status: int | str) -> None:
+            elapsed = time.monotonic() - started_at
+            if elapsed >= SLOW_REQUEST_LOG_SECONDS:
+                _LOGGER.warning(
+                    "Slow router request: %s %s finished with %s after %.1fs",
+                    method,
+                    safe_target,
+                    status,
+                    elapsed,
+                )
 
         for attempt in range(retries + 1):
             self._set_session_auth_cookie(session)
@@ -210,11 +240,13 @@ class CudyRouter:
                     continue
                 if not silent:
                     _LOGGER.debug("HTTP %s %s failed: %s", method, url, err)
+                log_if_slow("timeout")
                 return None
             except requests.RequestException as err:
                 last_error = err
                 if not silent:
                     _LOGGER.debug("HTTP %s %s request exception: %s", method, url, err)
+                log_if_slow("error")
                 return None
 
             if response.status_code == 403 and reauth_on_403 and attempt < retries:
@@ -222,16 +254,19 @@ class CudyRouter:
                     continue
                 if not silent:
                     _LOGGER.error("Authentication refresh failed for %s", url)
+                log_if_slow(response.status_code)
                 return response
 
             if response.status_code in RETRYABLE_STATUSES and attempt < retries:
                 time.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
                 continue
 
+            log_if_slow(response.status_code)
             return response
 
         if not silent and last_error:
             _LOGGER.debug("HTTP %s %s failed after retries: %s", method, url, last_error)
+        log_if_slow("failed")
         return None
 
     def _luci_get(
