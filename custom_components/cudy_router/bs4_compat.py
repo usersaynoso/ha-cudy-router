@@ -5,9 +5,13 @@ from __future__ import annotations
 import importlib
 import functools
 import sys
+import time
 import types
 import warnings
 from typing import Any
+
+_MAX_BS4_IMPORT_ATTEMPTS = 5
+_BS4_IMPORT_RETRY_BACKOFF = 0.1
 
 _BS4_PUBLIC_EXPORTS = {
     "Tag": ("bs4.element", "Tag"),
@@ -171,9 +175,14 @@ def _repair_bs4_public_api(bs4_module: types.ModuleType | Any) -> types.ModuleTy
 def _load_beautiful_soup():
     """Import BeautifulSoup, repairing broken bs4 installs if necessary."""
     installed_shims: set[str] = set()
-    for _ in range(3):
+    last_import_err: ImportError | None = None
+    for _ in range(_MAX_BS4_IMPORT_ATTEMPTS):
         try:
-            return _repair_bs4_public_api(importlib.import_module("bs4")).BeautifulSoup
+            module = _repair_bs4_public_api(importlib.import_module("bs4"))
+            bs4_cls = getattr(module, "BeautifulSoup", None)
+            if bs4_cls is None:
+                raise ImportError("cannot import name 'BeautifulSoup' from 'bs4'")
+            return bs4_cls
         except ModuleNotFoundError as err:
             if err.name == "bs4._warnings" and err.name not in installed_shims:
                 _clear_bs4_modules()
@@ -186,6 +195,12 @@ def _load_beautiful_soup():
                 installed_shims.add(err.name)
                 continue
             raise
+        except ImportError as err:
+            last_import_err = err
+            time.sleep(_BS4_IMPORT_RETRY_BACKOFF)
+            _clear_bs4_modules()
+    if last_import_err is not None:
+        raise last_import_err
     return _repair_bs4_public_api(importlib.import_module("bs4")).BeautifulSoup
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+import time
 import types
 
 from tests.module_loader import load_cudy_module
@@ -171,6 +172,37 @@ def test_bs4_compat_adds_dynamic_getattr_fallback_for_missing_exports(monkeypatc
     assert fake_bs4.__getattr__("Tag") is fake_element.Tag
     assert fake_bs4.Tag is fake_element.Tag
     assert "bs4.element" in import_calls
+
+
+def test_bs4_compat_recovers_from_partial_import_race(monkeypatch) -> None:
+    """A concurrent bs4 import that leaves bs4.element partially initialised should be retried."""
+    for module_name in (
+        "custom_components.cudy_router.bs4_compat",
+        "bs4",
+        "bs4.element",
+    ):
+        sys.modules.pop(module_name, None)
+
+    fake_bs4 = types.SimpleNamespace(BeautifulSoup=object())
+    call_count = 0
+
+    def fake_import_module(name: str, package: str | None = None):
+        nonlocal call_count
+        assert package is None
+        if name != "bs4":
+            return importlib.__import__(name)
+        call_count += 1
+        if call_count == 1:
+            raise ImportError("cannot import name 'AttributeDict' from 'bs4.element'")
+        return fake_bs4
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+
+    module = load_cudy_module("bs4_compat")
+
+    assert module.BeautifulSoup is fake_bs4.BeautifulSoup
+    assert call_count >= 2
 
 
 def test_bs4_compat_repairs_stale_soupsieve_bs4_reference(monkeypatch) -> None:
