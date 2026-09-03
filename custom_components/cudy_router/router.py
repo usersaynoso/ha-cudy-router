@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import logging
 import re
 import time
@@ -14,6 +16,9 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 import urllib3
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from .bs4_compat import BeautifulSoup
 from .router_data import collect_router_data
@@ -587,7 +592,7 @@ class CudyRouter:
                     return True
             _LOGGER.debug(
                 "Legacy auth did not return sysauth cookie (status=%s)",
-                response.status_code if response else "no-response",
+                response.status_code if response is not None else "no-response",
             )
         except requests.exceptions.ConnectionError:
             _LOGGER.debug("Connection error during legacy auth")
@@ -605,8 +610,7 @@ class CudyRouter:
                 return False
 
             if not (form.salt and form.token):
-                _LOGGER.debug("Could not extract salt/token from login page")
-                return False
+                return self._authenticate_dynamic_luci(form)
 
             # Compute hashed password
             luci_password = _compute_luci_password(self.password, form.salt, form.token)
@@ -659,6 +663,105 @@ class CudyRouter:
             _LOGGER.debug("Timeout during new auth: %s", e)
         except Exception as e:
             _LOGGER.warning("New auth error: %s", e, exc_info=True)
+        return False
+
+    def _authenticate_dynamic_luci(self, form: _LoginFormInfo) -> bool:
+        """Authenticate against LuCI's challenge-based login flow."""
+        try:
+            challenge_url = urllib.parse.urljoin(form.page_url, "admin/login")
+            headers = {
+                **self._browser_headers(),
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Referer": form.page_url,
+                "Origin": self._origin_for_url(form.page_url),
+                "X-Requested-With": "XMLHttpRequest",
+            }
+            challenge_response = self._absolute_request(
+                "POST",
+                challenge_url,
+                timeout=DEFAULT_PAGE_TIMEOUT,
+                headers=headers,
+                data=urllib.parse.urlencode({"username": self.username}),
+                allow_redirects=False,
+                silent=False,
+            )
+            if challenge_response is None or not challenge_response.ok:
+                return False
+
+            challenge = json.loads(challenge_response.text)
+            key = challenge["key"]
+            nonce = challenge["nonce"]
+            salt = challenge["salt"]
+            kdfiter = int(challenge["kdfiter"])
+            if not all(isinstance(value, str) and value for value in (key, nonce, salt)):
+                return False
+
+            if kdfiter > 0:
+                password_hash = PBKDF2HMAC(
+                    algorithm=hashes.SHA256(),
+                    length=32,
+                    salt=bytes.fromhex(salt),
+                    iterations=kdfiter,
+                ).derive(self.password.encode("utf-8")).hex()
+            else:
+                password_hash = _sha256_hex(self.password + salt)
+
+            password_proof = _sha256_hex(password_hash + nonce).encode("utf-8")
+            public_key = serialization.load_pem_public_key(base64.b64decode(key))
+            encrypted_password = base64.b64encode(
+                public_key.encrypt(
+                    password_proof,
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None,
+                    ),
+                )
+            ).decode("ascii")
+
+            post_data = {
+                "_csrf": form.csrf,
+                "luci_username": self.username,
+                "luci_password": encrypted_password,
+                "luci_language": form.language,
+                "zonename": self._local_zonename(),
+                "timeclock": str(int(time.time())),
+            }
+            response = self._absolute_request(
+                "POST",
+                form.action_url,
+                timeout=DEFAULT_PAGE_TIMEOUT,
+                headers={
+                    **headers,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                },
+                data=urllib.parse.urlencode(post_data),
+                allow_redirects=True,
+                silent=False,
+            )
+            if response is None:
+                return False
+
+            if self._extract_session_auth_cookie(response):
+                _LOGGER.debug("Dynamic LuCI auth successful, got sysauth cookie")
+                return True
+
+            if self._login_confirmed_via_panel():
+                _LOGGER.debug("Dynamic LuCI auth confirmed by admin panel access")
+                return True
+
+            _LOGGER.debug("Dynamic LuCI auth failed (status=%s)", response.status_code)
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+            requests.RequestException,
+        ) as err:
+            _LOGGER.debug("Dynamic LuCI auth error: %s", err)
+        except Exception as err:
+            _LOGGER.warning("Dynamic LuCI auth error: %s", err, exc_info=True)
         return False
 
     def get_model(self) -> str:

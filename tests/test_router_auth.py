@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import logging
 from types import SimpleNamespace
 from urllib.parse import parse_qs
@@ -302,3 +305,127 @@ def test_extract_session_auth_cookie_accepts_sysauth_http_header() -> None:
     assert router._extract_session_auth_cookie(response) is True
     assert router.auth_cookie_name == "sysauth_http"
     assert router.auth_cookie == "http-cookie"
+
+
+def test_authenticate_new_uses_dynamic_luci_challenge_without_inline_salt_or_token(
+    monkeypatch,
+) -> None:
+    """New LuCI forms should request a challenge and submit an RSA-encrypted proof."""
+    router = router_module.CudyRouter(None, "http://192.168.10.1", "admin", "demo")
+    session = SimpleNamespace(cookies=_requests_cookie_jar())
+    monkeypatch.setattr(router, "_get_session", lambda: session)
+    monkeypatch.setattr(router_module.time, "time", lambda: 1_700_000_000)
+
+    login_html = """
+    <form method="post" action="/cgi-bin/luci/">
+      <input type="hidden" name="_csrf" value="csrf-token" />
+      <input type="hidden" name="luci_username" value="admin" />
+      <input type="hidden" name="luci_password" value="" />
+      <input type="password" id="luci_password2" />
+    </form>
+    """
+    challenge = {
+        "key": base64.b64encode(b"synthetic-public-key").decode(),
+        "nonce": "nonce-value",
+        "salt": "salt-value",
+        "kdfiter": 0,
+        "cipher": "RSA",
+        "encode": "base64",
+    }
+    encrypted_inputs: list[bytes] = []
+
+    class FakePublicKey:
+        def encrypt(self, value, algorithm):
+            encrypted_inputs.append(value)
+            assert isinstance(algorithm, router_module.padding.OAEP)
+            return b"encrypted-proof"
+
+    monkeypatch.setattr(
+        router_module.serialization,
+        "load_pem_public_key",
+        lambda value: FakePublicKey(),
+    )
+
+    def fake_absolute_request(method: str, url: str, **kwargs):
+        if method == "GET":
+            return _response(login_html, url=url)
+        if url.endswith("/admin/login"):
+            assert kwargs["headers"]["X-Requested-With"] == "XMLHttpRequest"
+            assert parse_qs(kwargs["data"]) == {"username": ["admin"]}
+            return _response(json.dumps(challenge), url=url)
+        if method == "POST" and url.endswith("/cgi-bin/luci/"):
+            payload = parse_qs(kwargs["data"], keep_blank_values=True)
+            assert payload["_csrf"] == ["csrf-token"]
+            assert payload["luci_username"] == ["admin"]
+            assert payload["luci_password"] == [base64.b64encode(b"encrypted-proof").decode()]
+            assert payload["timeclock"] == ["1700000000"]
+            session.cookies.set("sysauth", "cookie-value")
+            return _response("ok", url=url)
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(router, "_absolute_request", fake_absolute_request)
+
+    assert router._authenticate_new() is True
+    password_hash = hashlib.sha256(b"demosalt-value").hexdigest()
+    assert encrypted_inputs == [
+        hashlib.sha256(f"{password_hash}nonce-value".encode()).hexdigest().encode()
+    ]
+    assert router.auth_cookie == "cookie-value"
+
+
+def test_dynamic_luci_challenge_uses_pbkdf2_when_iterations_are_positive(monkeypatch) -> None:
+    """Dynamic LuCI challenges with iterations should derive the password via PBKDF2."""
+    router = router_module.CudyRouter(None, "http://192.168.10.1", "admin", "demo")
+    form = router_module._LoginFormInfo(
+        page_url="http://192.168.10.1/cgi-bin/luci/",
+        action_url="http://192.168.10.1/cgi-bin/luci/",
+        html="",
+        csrf="csrf-token",
+        token="",
+        salt="",
+        language="en",
+    )
+    challenge = {
+        "key": base64.b64encode(b"synthetic-public-key").decode(),
+        "nonce": "nonce-value",
+        "salt": "00ff",
+        "kdfiter": 123,
+    }
+    kdf_arguments: dict[str, object] = {}
+    encrypted_inputs: list[bytes] = []
+
+    class FakeKdf:
+        def __init__(self, **kwargs):
+            kdf_arguments.update(kwargs)
+
+        def derive(self, password: bytes) -> bytes:
+            assert password == b"demo"
+            return b"\xab" * 32
+
+    class FakePublicKey:
+        def encrypt(self, value, algorithm):
+            encrypted_inputs.append(value)
+            return b"encrypted-proof"
+
+    monkeypatch.setattr(router_module, "PBKDF2HMAC", FakeKdf)
+    monkeypatch.setattr(router_module.serialization, "load_pem_public_key", lambda value: FakePublicKey())
+    monkeypatch.setattr(router, "_extract_session_auth_cookie", lambda response: True)
+
+    calls = 0
+
+    def fake_absolute_request(method: str, url: str, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _response(json.dumps(challenge), url=url)
+        return _response("ok", url=url)
+
+    monkeypatch.setattr(router, "_absolute_request", fake_absolute_request)
+
+    assert router._authenticate_dynamic_luci(form) is True
+    assert kdf_arguments["salt"] == bytes.fromhex("00ff")
+    assert kdf_arguments["iterations"] == 123
+    password_hash = (b"\xab" * 32).hex()
+    assert encrypted_inputs == [
+        hashlib.sha256(f"{password_hash}nonce-value".encode()).hexdigest().encode()
+    ]
