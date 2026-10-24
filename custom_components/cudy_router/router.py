@@ -1237,43 +1237,52 @@ class CudyRouter:
             return code or 0, str(e)[:220]
 
     def reboot_router(self) -> tuple[int, str]:
-        """Trigger router reboot via LuCI web UI."""
-        # The Cudy router reboot page is at /admin/system/reboot/reboot
-        # It has a simple form with token and a cbi.apply button
-        page = "admin/system/reboot/reboot"
+        """Trigger router reboot via the LuCI reboot action.
+
+        Cudy's system page does not use the usual token-bearing CBI form for
+        this action.  Its browser UI sends an empty multipart POST to the
+        ``/reboot/reboot`` action, which redirects to the reboot page and then
+        exposes its ``/apply`` progress endpoint.  Posting the generic CBI
+        fields instead is accepted by some firmware versions but does not
+        actually restart the router.
+        """
+        action = "admin/system/reboot/reboot"
+        reboot_page = "admin/system/reboot"
+        apply_page = "admin/system/reboot/apply"
+        boundary = "----CudyRouterRebootBoundary"
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": f"{self.base_url}/cgi-bin/luci/admin/panel",
+            "Origin": self.base_url,
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
         }
 
         try:
-            resp = self._luci_get(page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers)
-            if not resp:
-                return 0, "Failed to load reboot page"
-            html = resp.text
-            token = _extract_hidden(html, "token")
-            if not token:
-                return 0, "No token on reboot page"
-
-            post_fields = {
-                "token": token,
-                "timeclock": "0",
-                "cbi.submit": "1",
-                "cbi.apply": "OK",
-            }
             r = self._luci_post(
-                page,
+                action,
                 timeout=DEFAULT_POST_TIMEOUT,
-                headers={
-                    **headers,
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Origin": self.base_url,
-                },
-                data=urllib.parse.urlencode(post_fields),
+                headers=headers,
+                # Match the empty FormData body emitted by Cudy's own UI.
+                data=f"--{boundary}--\r\n".encode(),
             )
             if not r:
                 return 0, "Failed to submit reboot request"
-            return r.status_code, r.text[:220]
+            if r.status_code != 302:
+                return 0, f"The router rejected the reboot request (HTTP {r.status_code})"
+
+            location = r.headers.get("Location", "")
+            expected_location = f"/cgi-bin/luci/{reboot_page}"
+            if urllib.parse.urlsplit(location).path != expected_location:
+                return 0, "Unexpected redirect after the reboot request"
+
+            # These requests mirror the router UI and let it start the reboot
+            # workflow.  It can go offline during either one, so a successful
+            # redirect remains proof that the reboot was accepted.
+            self._luci_get(reboot_page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+            self._luci_get(apply_page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+            _LOGGER.info("Router reboot initiated")
+            return 200, "Router reboot initiated"
         except Exception as e:
             _LOGGER.error("Reboot failed: %s", e)
             return 0, str(e)[:220]
