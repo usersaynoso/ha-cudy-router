@@ -1242,7 +1242,9 @@ class CudyRouter:
         Cudy's system page does not use the usual token-bearing CBI form for
         this action.  Its browser UI sends an empty multipart POST to the
         ``/reboot/reboot`` action, which redirects to the reboot page and then
-        exposes its ``/apply`` progress endpoint.  Posting the generic CBI
+        exposes its ``/apply`` progress endpoint.  The action returns either
+        that redirect or the reboot page itself, depending on the router's
+        HTTP client handling. Posting the generic CBI
         fields instead is accepted by some firmware versions but does not
         actually restart the router.
         """
@@ -1268,17 +1270,19 @@ class CudyRouter:
             )
             if not r:
                 return 0, "Failed to submit reboot request"
-            if r.status_code != 302:
+            if r.status_code not in (200, 302):
                 return 0, f"The router rejected the reboot request (HTTP {r.status_code})"
 
-            location = r.headers.get("Location", "")
-            expected_location = f"/cgi-bin/luci/{reboot_page}"
-            if urllib.parse.urlsplit(location).path != expected_location:
-                return 0, "Unexpected redirect after the reboot request"
+            if r.status_code == 302:
+                location = r.headers.get("Location", "")
+                expected_location = f"/cgi-bin/luci/{reboot_page}"
+                if urllib.parse.urlsplit(location).path != expected_location:
+                    return 0, "Unexpected redirect after the reboot request"
 
             # These requests mirror the router UI and let it start the reboot
-            # workflow.  It can go offline during either one, so a successful
-            # redirect remains proof that the reboot was accepted.
+            # workflow. Some firmware returns the reboot page directly (200)
+            # instead of issuing the browser's redirect (302), but still
+            # requires the apply request. It can go offline during either one.
             self._luci_get(reboot_page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
             self._luci_get(apply_page, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
             _LOGGER.info("Router reboot initiated")

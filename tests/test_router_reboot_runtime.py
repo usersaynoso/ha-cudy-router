@@ -51,3 +51,27 @@ def test_reboot_rejects_a_redirect_to_an_unrelated_page(monkeypatch) -> None:
 
     assert status == 0
     assert "Unexpected redirect" in message
+
+
+def test_reboot_follows_the_apply_workflow_when_router_returns_page_directly(monkeypatch) -> None:
+    """Some firmware returns the reboot page as HTTP 200 instead of redirecting."""
+    api = router_module.CudyRouter(None, "http://192.168.10.1", "user", "password")
+    calls: list[tuple[str, str]] = []
+
+    def fake_post(path: str, **_kwargs):
+        calls.append(("POST", path))
+        return _response(200)
+
+    def fake_get(path: str, **_kwargs):
+        calls.append(("GET", path))
+        return _response(200)
+
+    monkeypatch.setattr(api, "_luci_post", fake_post)
+    monkeypatch.setattr(api, "_luci_get", fake_get)
+
+    assert api.reboot_router() == (200, "Router reboot initiated")
+    assert calls == [
+        ("POST", "admin/system/reboot/reboot"),
+        ("GET", "admin/system/reboot"),
+        ("GET", "admin/system/reboot/apply"),
+    ]
