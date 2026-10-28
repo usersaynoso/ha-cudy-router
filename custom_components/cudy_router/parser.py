@@ -21,7 +21,7 @@ _UP_RE = re.compile(r"up[:\s]+([\d.]+)\s*([kmg]?bps)", re.IGNORECASE)
 _DOWN_RE = re.compile(r"down[:\s]+([\d.]+)\s*([kmg]?bps)", re.IGNORECASE)
 _MAC_RE = re.compile(r"(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}", re.IGNORECASE)
 _IP_RE = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
-_SMS_MODAL_HEADER_RE = re.compile(r"^(From|To):\s*(.*?)\s*\(([^()]*)\)\s*$")
+_SMS_MODAL_HEADER_RE = re.compile(r"^(From|To|Von|An):\s*(.*?)\s*\(([^()]*)\)\s*$")
 
 
 def _clean_cell_strings(element: Any) -> list[str]:
@@ -1003,11 +1003,30 @@ def parse_sms_detail(input_html: str) -> dict[str, Any] | None:
     }
 
 
+def _sms_counts_by_row_position(input_html: str) -> tuple[int | None, int | None]:
+    """Read inbox/outbox counts from the first two body rows, ignoring labels."""
+    soup = BeautifulSoup(input_html, "html.parser")
+    counts: list[int | None] = []
+    for row in soup.find_all("tr", id=re.compile(r"^cbi-table-\d+$")):
+        cells = [
+            (cell.find("p") or cell).get_text(strip=True) for cell in row.find_all("td")
+        ]
+        cells = [cell for cell in cells if cell]
+        counts.append(as_int(cells[1]) if len(cells) >= 2 else None)
+    counts += [None, None]
+    return counts[0], counts[1]
+
+
 def parse_sms_status(input_html: str) -> dict[str, Any] | None:
     """Parses SMS status page."""
     raw_data = parse_tables(input_html)
-    inbox_count = as_int(raw_data.get("Inbox"))
-    outbox_count = as_int(raw_data.get("Outbox"))
+    inbox_count = as_int(raw_data.get("Inbox") or raw_data.get("Posteingang"))
+    outbox_count = as_int(raw_data.get("Outbox") or raw_data.get("Postausgang"))
+
+    if inbox_count is None and outbox_count is None:
+        # Translated routers localise the row labels; the rows themselves are
+        # always inbox first, outbox second.
+        inbox_count, outbox_count = _sms_counts_by_row_position(input_html)
 
     if inbox_count is None and outbox_count is None:
         return None

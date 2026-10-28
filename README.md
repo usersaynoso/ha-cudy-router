@@ -12,29 +12,44 @@
 
 It connects directly to the router over your local network, reads the same status and configuration pages you see in the browser, and turns them into Home Assistant entities, devices, and services.
 
-This project is not endorsed, maintained, or supported by Cudy.
+![Cudy Router device page in Home Assistant](docs/images/router-device.png)
 
+## Why use it?
+
+- **See what your network is doing:** signal strength, WAN status, traffic, CPU/RAM, and who is connected.
+- **Control it from automations:** pause a device's internet access, switch Wi-Fi or VPN, or reboot the router on a schedule.
+- **Stay on top of mobile broadband:** get notified when the 5G signal drops, restart the connection, or switch bands.
+- **Handle SMS in Home Assistant:** read and send messages from a built-in panel or from automations.
 
 ## Highlights
 
-- Local polling integration with Home Assistant config flow and options flow.
+- Local polling integration with config flow and options flow. No cloud, no account.
 - Router-wide sensors for modem/cellular, WAN, LAN, DHCP, VPN, load balancing, Wi-Fi, SMS, traffic, and system status, including CPU/RAM usage when the router reports it.
-- Writable router settings exposed as Home Assistant `switch` and `select` entities when the router supports them.
-- WISP uplink scan and connect on supported models: a **WISP scan** button, a **WISP network** picker, a write-only **WISP password** field, and a **WISP connect** button.
+- Writable router settings as `switch` and `select` entities, where the router supports them.
+- Mesh node support with separate devices, per-node LED control, and per-node reboot.
+- Connected client devices with per-client controls and optional `device_tracker` entities.
+- WISP uplink scan and connect on supported models.
 - Reboot buttons and services for SMS, AT commands, 5G connection restart, and band switching.
-- Mesh node support with separate Home Assistant devices, per-node LED control, and per-node reboot.
-- Connected client devices, per-client controls, and optional `device_tracker` entities.
 - Automatic config entry migration from older versions.
-
 
 ## Current Status
 
+| Level | Models |
+| --- | --- |
+| Tested on real hardware | Cudy P5, Cudy P4 |
+| Mapped from emulator or firmware page behavior | Several other routers, 4G/5G routers, mesh devices, and extenders |
+| Unknown models | Best-effort dynamic detection |
+
 The **Cudy P5** and **Cudy P4** have been tested on real hardware.
 
-The integration includes a model capability map so unsupported module families stay hidden instead of showing dead or non-functional entities. Unknown Cudy models fall back to best-effort dynamic detection.
+The integration includes a model capability map so unsupported module families stay hidden instead of showing dead or non-functional entities.
 
-Several additional routers, 4G/5G routers, mesh devices, and extenders are mapped from emulator or firmware page behavior but have **not** been tested on real hardware yet. See the [supported routers and compatibility guide](https://github.com/usersaynoso/ha-cudy-router/wiki/Supported-Routers-and-Compatibility) for the full list.
+Other mapped models have **not** been tested on real hardware yet. See the [supported routers and compatibility guide](https://github.com/usersaynoso/ha-cudy-router/wiki/Supported-Routers-and-Compatibility) for the full list. If you try one, please share a [compatibility report](https://github.com/usersaynoso/ha-cudy-router/wiki/Router-Compatibility-Reports).
 
+## Requirements
+
+- A Cudy router with the LuCI web interface, reachable from Home Assistant on your local network.
+- The router's admin username and password. They are stored in Home Assistant and only sent to your router; see [Privacy and Security](https://github.com/usersaynoso/ha-cudy-router/wiki/Privacy-and-Security).
 
 ## Installation
 
@@ -56,15 +71,31 @@ If the button does not work:
 1. Copy `custom_components/cudy_router` into your Home Assistant `custom_components` directory.
 2. Restart Home Assistant.
 
-
 ## Setup
 
 1. Go to **Settings > Devices & Services**.
 2. Add the **Cudy Router** integration.
 3. Enter the router IP address, username, and password.
+4. Your router appears as a device within a minute, with its entities grouped underneath.
 
 The integration normalizes the host automatically. If you enter `192.168.10.1`, it will probe the router and store the working scheme as either `http://192.168.10.1` or `https://192.168.10.1`.
 
+![Cudy Router setup dialog](docs/images/setup-dialog.png)
+
+![Cudy Router integration card](docs/images/integration-card.png)
+
+## Options
+
+Open **Settings > Devices & Services > Cudy Router > Configure** to change:
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| Automatically add connected devices | Off | Creates client devices and live per-client entities for every connected device. When off, pick specific clients manually. |
+| Automatically add device trackers | Off | Creates `device_tracker` entities for connected devices with a MAC address. Automatic connected-device cleanup does not remove trackers. |
+| Show Cudy SMS in sidebar | On | Shows the SMS panel link in the sidebar. The panel stays available by URL when off. |
+| Update interval | 60 seconds | How often the router is polled, in seconds. |
+
+![Cudy Router options](docs/images/options-dialog.png)
 
 ## What It Creates
 
@@ -76,20 +107,31 @@ Entity availability depends on the router model and firmware. Not every router e
 - **Mesh node devices:** node identity, firmware, status, IP address, backhaul, connected-device count, LED control, and reboot controls.
 - **Connected client devices:** IP address, connection type, signal, online time, internet access, DNS filter, VPN control, and optional tracking.
 - **SMS panel:** SMS-capable routers expose an admin-only sidebar panel at `/cudy-router-sms` for inbox, outbox, replies, and composing SMS messages.
+- **WISP (supported models):** a **WISP scan** button, a **WISP network** picker, a write-only **WISP password** field, and a **WISP connect** button.
 
+<details>
+<summary>Screenshots: mesh node, connected client, and SMS panel</summary>
+
+![Mesh node device page](docs/images/entities-mesh.png)
+
+![Connected client device page](docs/images/entities-client.png)
+
+![Cudy Router SMS panel](docs/images/sms-panel.png)
+
+</details>
 
 ## Services
-
-The integration provides these Home Assistant services:
 
 - `cudy_router.reboot_router`
 - `cudy_router.restart_5g_connection`
 - `cudy_router.switch_5g_band`
 - `cudy_router.send_sms`
 - `cudy_router.send_at_command`
+- `cudy_router.generate_debug_report` (diagnostics; see Troubleshooting)
 
-Use the optional `entry_id` field to target a specific router when you have multiple Cudy Router entries.
+Use the optional `entry_id` field to target a specific router when you have multiple Cudy Router entries. See [Services and Example Calls](https://github.com/usersaynoso/ha-cudy-router/wiki/Services-and-Example-Calls) for examples.
 
+![Send SMS action in Developer Tools](docs/images/service-call.png)
 
 ## Full Documentation
 
@@ -100,6 +142,11 @@ The detailed user guide lives in the [GitHub wiki](https://github.com/usersaynos
 - **Support:** [Troubleshooting and Diagnostics](https://github.com/usersaynoso/ha-cudy-router/wiki/Troubleshooting-and-Diagnostics), [Troubleshooting by Symptom](https://github.com/usersaynoso/ha-cudy-router/wiki/Troubleshooting-by-Symptom), [Error Messages and Repairs](https://github.com/usersaynoso/ha-cudy-router/wiki/Error-Messages-and-Repairs), [FAQ](https://github.com/usersaynoso/ha-cudy-router/wiki/FAQ), [Known Limitations and Firmware Quirks](https://github.com/usersaynoso/ha-cudy-router/wiki/Known-Limitations-and-Firmware-Quirks), [Privacy and Security](https://github.com/usersaynoso/ha-cudy-router/wiki/Privacy-and-Security)
 - **Compatibility and releases:** [Supported Model Matrix](https://github.com/usersaynoso/ha-cudy-router/wiki/Supported-Model-Matrix), [Supported Routers and Compatibility](https://github.com/usersaynoso/ha-cudy-router/wiki/Supported-Routers-and-Compatibility), [Router Compatibility Reports](https://github.com/usersaynoso/ha-cudy-router/wiki/Router-Compatibility-Reports), [Network Setup Examples](https://github.com/usersaynoso/ha-cudy-router/wiki/Network-Setup-Examples), [Release Notes and Upgrade Guide](https://github.com/usersaynoso/ha-cudy-router/wiki/Release-Notes-and-Upgrade-Guide), [Maintainer and Contributor Guide](https://github.com/usersaynoso/ha-cudy-router/wiki/Maintainer-and-Contributor-Guide)
 
+## Known Limitations
+
+- Not every model or firmware exposes every page, so some entities will not appear on every router.
+- Some controls only exist on specific models (for example SMS, 5G band switching, WISP, and mesh).
+- See [Known Limitations and Firmware Quirks](https://github.com/usersaynoso/ha-cudy-router/wiki/Known-Limitations-and-Firmware-Quirks) for details.
 
 ## Troubleshooting
 
@@ -111,6 +158,7 @@ Please use the [bug report form](https://github.com/usersaynoso/ha-cudy-router/i
 
 To download diagnostics, open Home Assistant and go to **Settings > Devices & services > Cudy Router**, use the three-dot menu on the affected Cudy Router entry, then choose **Download diagnostics**. Keep the Home Assistant tab open and avoid opening the diagnostics download URL in a new tab, because that can return `401: Unauthorized`. Standard diagnostics use cached integration data so the download can return quickly.
 
+![Download diagnostics menu](docs/images/download-diagnostics.png)
 
 ## Contributing
 
@@ -118,7 +166,8 @@ Issues and pull requests are welcome at [github.com/usersaynoso/ha-cudy-router](
 
 When changing behavior, update the tests and keep the README or wiki in sync with the actual entity surface, options flow, and service list.
 
-
-## License
+## License and Disclaimer
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE.md).
+
+This project is not endorsed, maintained, or supported by Cudy.

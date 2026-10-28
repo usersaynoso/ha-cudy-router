@@ -48,7 +48,7 @@ def test_readme_is_a_concise_landing_page() -> None:
     source = _readme()
 
     assert source.startswith("# Cudy Router for Home Assistant")
-    assert len(source.splitlines()) < 150
+    assert len(source.splitlines()) < 200
     assert "This project is not endorsed, maintained, or supported by Cudy." in source
     assert "## Full Documentation" in source
 

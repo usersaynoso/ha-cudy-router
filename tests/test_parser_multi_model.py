@@ -95,6 +95,36 @@ def test_parse_sms_status_and_inbox_rows_from_p5_layout() -> None:
     assert inbox_messages[0]["read"] is False
 
 
+def test_parse_sms_status_accepts_german_labels() -> None:
+    """Translated routers must still yield SMS counts (issue #39)."""
+    html = _fixture_text("sms", "status.html")
+    german = html.replace("Inbox", "Posteingang").replace("Outbox", "Postausgang")
+    german = german.replace("New Message", "Neue Nachricht")
+    status = parser.parse_sms_status(german)
+    assert status["inbox_count"]["value"] == 1
+    assert status["outbox_count"]["value"] == 1
+    assert status["unread_count"]["value"] == 1
+
+
+def test_parse_sms_status_falls_back_to_row_position_for_unknown_language() -> None:
+    """Unknown translations fall back to row order."""
+    html = _fixture_text("sms", "status.html")
+    other = html.replace("Inbox", "Boîte").replace("Outbox", "Envoi")
+    other = other.replace('<p class="visible-xs">1</p></td>\n          <td><i class="fa fa-paper', '<p class="visible-xs">7</p></td>\n          <td><i class="fa fa-paper')
+    status = parser.parse_sms_status(other)
+    assert status["inbox_count"]["value"] == 1
+    assert status["outbox_count"]["value"] == 7
+
+
+def test_parse_sms_detail_accepts_german_header() -> None:
+    """German modal headers use Von/An instead of From/To."""
+    html = '<h4 class="modal-title">Von: +49123 (04/12/26, 08:41:23)</h4><textarea name="x.text">hi</textarea>'
+    detail = parser.parse_sms_detail(html)
+    assert detail["direction"] == "Von"
+    assert detail["phone"] == "+49123"
+    assert detail["timestamp"] == "04/12/26, 08:41:23"
+
+
 def test_parse_sms_outbox_rows_and_detail_modal() -> None:
     """SMS parsing should extract outbox metadata and full detail text."""
     outbox_messages = parser.parse_sms_list(_fixture_text("sms", "outbox_list.html"), "sto")
