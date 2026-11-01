@@ -1894,75 +1894,89 @@ class CudyRouter:
             return 0, str(e)[:220]
 
     def _set_led_state(self, device_id: str, enabled: bool, label: str) -> tuple[int, str]:
-        """Set LED state on mesh LED control endpoint."""
+        """Set LED state via the per-device mesh LED CBI form.
+
+        Uses ``admin/network/mesh/leds?client=<id>`` (the per-device "LED
+        Control" modal), which is the only UI path that actually drives the
+        LEDs on this firmware: for the main router (id ``000000000000``) it
+        sets ``system.@system[0].leds`` locally, and for a mesh node it sends
+        an ``ledctl`` command over the mesh. Both work regardless of the
+        ``system.board.ledctl`` flag. The older ``mesh/ledctl/<mac>`` endpoint
+        only acts when the router reports ``ledstatus`` (i.e. the board flag is
+        set), which it is not on firmware that was upgraded in place - it
+        silently returns HTTP 200 and does nothing.
+        """
         if not self.auth_cookie and not self.authenticate():
             _LOGGER.error("Failed to authenticate for %s LED control", label)
             return 0, "Authentication failed"
 
         led_value = "1" if enabled else "0"
         led_status = "on" if enabled else "off"
-        panel_url = f"{self.base_url}/cgi-bin/luci/admin/panel"
+        form_path = f"admin/network/mesh/leds?embedded=1&client={device_id}"
+        apply_path = f"admin/network/mesh/apply?command=leds&client={device_id}"
         headers = {
             "User-Agent": "Mozilla/5.0",
-            "Referer": panel_url,
+            "Referer": f"{self.base_url}/cgi-bin/luci/admin/network/mesh",
             "X-Requested-With": "XMLHttpRequest",
         }
 
         try:
-            resp = self._luci_get("admin/network/mesh/batled", timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+            resp = self._luci_get(form_path, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
             if not resp:
-                return 0, "Failed to load batled page"
+                return 0, "Failed to load LED form"
             html = resp.text
-            _LOGGER.debug("Batled page HTTP status: %d, length: %d", resp.status_code, len(html))
+            _LOGGER.debug("LED form HTTP status for %s: %d, length: %d", label, resp.status_code, len(html))
 
             if "luci_password" in html or "cbi-modal-auth" in html:
-                _LOGGER.warning("Batled page returned login form - re-authenticating")
+                _LOGGER.warning("LED form returned login form - re-authenticating")
                 if not self.authenticate():
                     return 0, "Re-authentication failed"
-                resp = self._luci_get("admin/network/mesh/batled", timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
+                resp = self._luci_get(form_path, timeout=DEFAULT_PAGE_TIMEOUT, headers=headers, silent=True)
                 if not resp:
-                    return 0, "Failed to reload batled page after re-auth"
+                    return 0, "Failed to reload LED form after re-auth"
                 html = resp.text
 
             token = _extract_hidden(html, "token")
             if not token:
-                _LOGGER.error("No token found on batled page")
-                return 0, "No token on batled page"
+                _LOGGER.error("No token found on LED form for %s", label)
+                return 0, "No token on LED form"
 
             form_data = {
-                "token": (None, token),
-                "cbi.submit": (None, "1"),
-                "cbi.toggle": (None, "1"),
-                "cbi.cbe.table.1.ledstatus": (None, led_value),
-                "cbid.table.1.ledstatus": (None, led_value),
+                "token": token,
+                "cbi.submit": "1",
+                "cbi.cbe.leds.1.leds": "1",
+                "cbid.leds.1.leds": led_value,
+                "cbi.apply": "1",
             }
 
-            post_path = f"admin/network/mesh/ledctl/{device_id}"
             r = self._luci_post(
-                post_path,
+                form_path,
                 timeout=DEFAULT_POST_TIMEOUT,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
-                    "Referer": panel_url,
+                    "User-Agent": "Mozilla/5.0",
+                    "Referer": f"{self.base_url}/cgi-bin/luci/{form_path}",
                     "Origin": self.base_url,
                     "X-Requested-With": "XMLHttpRequest",
                 },
-                files=form_data,
+                data=form_data,
                 silent=True,
             )
             if not r:
                 return 0, "Failed to submit LED control request"
 
             _LOGGER.debug(
-                "LED control POST status for %s: %d, response: %s",
+                "LED control POST status for %s: %d, location: %s",
                 label,
                 r.status_code,
-                r.text[:200] if r.text else "empty",
+                r.headers.get("Location"),
             )
 
-            if r.status_code == 200:
+            # A successful submit redirects (302) to the apply handler; follow
+            # it so the change is committed/applied on the router.
+            if r.status_code in (200, 302):
+                self._luci_get(apply_path, timeout=DEFAULT_POST_TIMEOUT, headers=headers, silent=True)
                 _LOGGER.info("%s LED set to %s successfully", label, led_status)
-                return r.status_code, f"LED {led_status} for {label}"
+                return 200, f"LED {led_status} for {label}"
             _LOGGER.warning("LED control for %s returned status %d", label, r.status_code)
             return r.status_code, f"LED control returned {r.status_code}"
         except Exception as err:

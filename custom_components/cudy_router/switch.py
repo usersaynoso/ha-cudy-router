@@ -202,9 +202,14 @@ async def async_setup_entry(
             _remove_router_setting_entity(description)
 
     mesh_data = coordinator.data.get(MODULE_MESH, {}) if coordinator.data else {}
-    main_router_led_supported = (
-        module_available(device_model, MODULE_MESH, coordinator.data)
-        and mesh_data.get("main_router_led_status") is not None
+    # The main-router LED switch is offered whenever the mesh module is
+    # available. We do NOT require ``main_router_led_status`` to be reported:
+    # on firmware upgraded in place the ``system.board.ledctl`` flag is unset,
+    # so the router never reports an LED status, yet LED control still works
+    # through the per-device mesh LED form. In that case the switch simply
+    # tracks state optimistically.
+    main_router_led_supported = module_available(
+        device_model, MODULE_MESH, coordinator.data
     )
     if main_router_led_supported:
         entities.append(
