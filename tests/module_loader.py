@@ -164,6 +164,20 @@ def _ensure_homeassistant_stub() -> None:
         text_module.TextMode = TextMode
         sys.modules["homeassistant.components.text"] = text_module
 
+    device_tracker_module = sys.modules.get("homeassistant.components.device_tracker")
+    if device_tracker_module is None:
+        device_tracker_module = types.ModuleType("homeassistant.components.device_tracker")
+
+        class ScannerEntity:
+            """Minimal ScannerEntity stub."""
+
+        class SourceType:
+            ROUTER = "router"
+
+        device_tracker_module.ScannerEntity = ScannerEntity
+        device_tracker_module.SourceType = SourceType
+        sys.modules["homeassistant.components.device_tracker"] = device_tracker_module
+
     config_entries_module = sys.modules.get("homeassistant.config_entries")
     if config_entries_module is None:
         config_entries_module = types.ModuleType("homeassistant.config_entries")

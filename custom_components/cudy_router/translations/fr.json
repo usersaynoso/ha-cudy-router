@@ -1,0 +1,178 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "L'appareil est déjà configuré",
+      "reauth_successful": "La réauthentification a réussi."
+    },
+    "error": {
+      "cannot_connect": "Échec de la connexion",
+      "invalid_auth": "Authentification invalide. Veuillez vérifier votre nom d'utilisateur et votre mot de passe.",
+      "unknown": "Erreur inattendue"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "host": "Adresse IP du routeur",
+          "password": "Mot de passe",
+          "username": "Nom d'utilisateur"
+        },
+        "data_description": {
+          "host": "L'adresse IP de votre routeur (par exemple, 192.168.10.1)"
+        },
+        "description": "Entrez les détails de connexion de votre routeur Cudy.",
+        "title": "Ajouter un nouveau routeur"
+      },
+      "reauth_confirm": {
+        "data": {
+          "password": "Mot de passe",
+          "username": "Nom d'utilisateur"
+        },
+        "description": "Mettez à jour les informations d'identification enregistrées pour ce routeur.",
+        "title": "Reconnectez-vous au routeur Cudy"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "auto_add_connected_devices": "Ajouter automatiquement des appareils connectés",
+          "auto_add_device_trackers": "Ajouter automatiquement des trackers d'appareils pour les appareils connectés",
+          "show_sms_panel_in_sidebar": "Afficher les SMS de Cudy dans la barre latérale",
+          "scan_interval": "Intervalle de mise à jour"
+        },
+        "data_description": {
+          "auto_add_connected_devices": "Créez des appareils clients et des entités client en direct pour chaque appareil actuellement connecté. Désactivé par défaut pour les nouvelles intégrations. Activez cette option pour créer automatiquement des appareils clients et des entités en direct par client, ou désactivez-la pour les créer uniquement pour les appareils répertoriés ci-dessous.",
+          "auto_add_device_trackers": "Créez des entités device_tracker pour chaque appareil actuellement connecté avec une adresse MAC. Désactivé par défaut. Activez cette option si vous souhaitez des trackers de présence en plus des entités clientes en direct.",
+          "show_sms_panel_in_sidebar": "Affichez le lien du panneau SMS Cudy dans la barre latérale de Home Assistant. Désactivez cette option pour que la page SMS reste disponible uniquement par URL directe.",
+          "scan_interval": "À quelle fréquence interroger le routeur pour les mises à jour (en secondes)"
+        },
+        "title": "Configurer le routeur Cudy"
+      },
+      "manual_devices": {
+        "data": {
+          "device_list": "Ajouter manuellement des appareils connectés"
+        },
+        "data_description": {
+          "device_list": "Sélectionnez les clients connectés dans une liste lorsque la découverte automatique des appareils connectés est désactivée. Les appareils manuels sélectionnés restent dans Home Assistant lorsqu'ils sont hors ligne et deviennent indisponibles jusqu'à ce que le client se reconnecte. Les valeurs textuelles héritées sont toujours honorées jusqu'à ce que vous enregistriez ce sélecteur."
+        },
+        "title": "Sélectionnez les appareils connectés manuellement"
+      },
+      "trackers": {
+        "data": {
+          "tracked_device_macs": "Appareils suivis"
+        },
+        "data_description": {
+          "tracked_device_macs": "Sélectionnez des clients connectés spécifiques qui doivent toujours conserver une entité device_tracker. Lorsque la découverte automatique des appareils connectés est désactivée, ce sélecteur affiche les appareils connectés manuellement sélectionnés à l'étape précédente, ou tous les clients connectés en direct lorsqu'aucun appareil connecté manuellement n'est sélectionné. Les trackers sélectionnés restent disponibles lors des rechargements et s'affichent absents (not_home) lorsque le client est hors ligne."
+        },
+        "title": "Sélectionnez les appareils suivis"
+      }
+    }
+  },
+  "services": {
+    "reboot_router": {
+      "name": "Redémarrer le routeur",
+      "description": "Redémarre le routeur Cudy.",
+      "fields": {
+        "entry_id": {
+          "name": "ID d'entrée de configuration",
+          "description": "L'ID d'entrée de configuration du routeur (facultatif si un seul routeur est configuré)."
+        }
+      }
+    },
+    "restart_5g_connection": {
+      "name": "Redémarrer la connexion 5G",
+      "description": "Redémarre la connexion du modem 5G en déclenchant une réinitialisation du modem.",
+      "fields": {
+        "entry_id": {
+          "name": "ID d'entrée de configuration",
+          "description": "L'ID d'entrée de configuration du routeur (facultatif si un seul routeur est configuré)."
+        }
+      }
+    },
+    "switch_5g_band": {
+      "name": "Changer de bande 5G",
+      "description": "Modifie le paramètre de bande 5G sur le routeur.",
+      "fields": {
+        "entry_id": {
+          "name": "ID d'entrée de configuration",
+          "description": "L'ID d'entrée de configuration du routeur (facultatif si un seul routeur est configuré)."
+        },
+        "band": {
+          "name": "Bande",
+          "description": "La valeur de bande vers laquelle basculer (par exemple, « auto », « 5g-only », « lte-only »)."
+        }
+      }
+    },
+    "send_sms": {
+      "name": "Envoyer des SMS",
+      "description": "Envoie un message SMS via le modem cellulaire du routeur.",
+      "fields": {
+        "entry_id": {
+          "name": "ID d'entrée de configuration",
+          "description": "L'ID d'entrée de configuration du routeur (facultatif si un seul routeur est configuré)."
+        },
+        "phone_number": {
+          "name": "Numéro de téléphone",
+          "description": "Le numéro de téléphone de destination avec l'indicatif du pays (par exemple, +441234567890)."
+        },
+        "message": {
+          "name": "Message",
+          "description": "Le contenu du texte SMS."
+        }
+      }
+    },
+    "send_at_command": {
+      "name": "Envoyer la commande AT",
+      "description": "Envoie une commande AT brute au modem cellulaire du routeur.",
+      "fields": {
+        "entry_id": {
+          "name": "ID d'entrée de configuration",
+          "description": "L'ID d'entrée de configuration du routeur (facultatif si un seul routeur est configuré)."
+        },
+        "command": {
+          "name": "Commande",
+          "description": "La commande AT à exécuter (par exemple, 'AT+CSQ')."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "mesh_count": {
+        "name": "Appareils mesh"
+      },
+      "mesh_name": {
+        "name": "Nom"
+      },
+      "mesh_model": {
+        "name": "Modèle"
+      },
+      "mesh_mac_address": {
+        "name": "Adresse MAC"
+      },
+      "mesh_firmware_version": {
+        "name": "Micrologiciel"
+      },
+      "mesh_status": {
+        "name": "Statut"
+      },
+      "mesh_ip_address": {
+        "name": "Adresse IP"
+      }
+    },
+    "switch": {
+      "mesh_led": {
+        "name": "LED"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Redémarrer"
+      },
+      "mesh_reboot": {
+        "name": "Redémarrer"
+      }
+    }
+  }
+}

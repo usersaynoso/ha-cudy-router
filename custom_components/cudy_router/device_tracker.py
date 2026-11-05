@@ -25,7 +25,6 @@ from .device_info import (
     async_ensure_client_entity_device,
     async_cleanup_stale_tracker_entities,
     build_client_device_info,
-    client_display_name,
     known_tracker_clients,
 )
 from .device_tracking import (
@@ -129,6 +128,12 @@ class CudyRouterDeviceTracker(
     """Track the presence of a configured router client."""
 
     _attr_has_entity_name = True
+    # The tracker is the main feature of the client device, so it takes the
+    # device name instead of repeating it (Home Assistant 2026.11+).
+    _attr_name = None
+    # Trackers only exist for clients the user chose to track, so keep them
+    # enabled even though ScannerEntity now defaults to disabled.
+    _attr_entity_registry_enabled_default = True
 
     def __init__(
         self,
@@ -146,12 +151,6 @@ class CudyRouterDeviceTracker(
         self._mac = format_mac(device.get("mac")) or format_mac(self._normalized_mac)
         self._hostname = device.get("hostname")
 
-        self._attr_name = client_display_name(
-            {
-                "hostname": self._hostname,
-                "mac": self._mac,
-            }
-        )
         self._attr_unique_id = self._mac or self._normalized_mac
         self._attr_device_info = build_client_device_info(config_entry, device)
 

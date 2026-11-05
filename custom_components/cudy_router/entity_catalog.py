@@ -598,6 +598,7 @@ def _mesh_candidates(
         ]
 
     main_led_status = mesh_data.get("main_router_led_status")
+    main_led_supported = module_available(device_model, MODULE_MESH, data)
     candidates.append(
         _candidate(
             registry=registry,
@@ -609,8 +610,10 @@ def _mesh_candidates(
             module=MODULE_MESH,
             key="main_router_led_status",
             source="coordinator_data",
-            status="available" if main_led_status is not None else "blocked",
-            reason=None if main_led_status is not None else "empty_value",
+            # The switch is created even when the router reports no LED
+            # status (firmware upgraded in place); state is then optimistic.
+            status="available" if main_led_supported else "blocked",
+            reason=None if main_led_supported else "unsupported_model",
             sample_value=transform_value("main_router_led_status", main_led_status)
             if main_led_status is not None
             else None,
