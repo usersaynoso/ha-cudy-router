@@ -25,6 +25,7 @@ from .const import (
     MODULE_WISP,
     OPTIONS_AUTO_ADD_CONNECTED_DEVICES,
     OPTIONS_DEVICELIST,
+    OPTIONS_TRACK_GUEST_NETWORK,
     SECTION_DEVICE_LIST,
 )
 from .coordinator import CudyRouterDataUpdateCoordinator
@@ -283,6 +284,8 @@ async def async_setup_entry(
     for sensor_key in _WAN_REMOVED_SENSOR_KEYS:
         _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")
     _remove_sensor_by_unique_id(f"{config_entry.entry_id}-sms-messages")
+    if not config_entry.options.get(OPTIONS_TRACK_GUEST_NETWORK, False):
+        _remove_sensor_by_unique_id(f"{config_entry.entry_id}-devices-guest_clients")
     for sensor_key in _WAN_DUPLICATE_MODEM_KEYS:
         if _module_entry_has_value(coordinator.data, MODULE_MODEM, sensor_key):
             _remove_sensor_by_unique_id(f"{config_entry.entry_id}-{MODULE_WAN}-{sensor_key}")

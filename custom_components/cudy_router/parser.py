@@ -1088,6 +1088,28 @@ def parse_lan_status(input_html: str) -> dict[str, Any]:
     }
 
 
+def _first_int(raw_data: dict[str, Any], keys: tuple[str, ...]) -> int | None:
+    """Return the first integer found under any of the keys, keeping zero."""
+    for key in keys:
+        value = as_int(raw_data.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _devices_status_header_total(input_html: str) -> int | None:
+    """Read the total from a ``Devices | <count>`` table header row."""
+    if not input_html:
+        return None
+    soup = BeautifulSoup(input_html, "html.parser")
+    for row in soup.select("thead tr"):
+        cells = [cell.get_text(strip=True) for cell in row.find_all("th")]
+        cells = [cell for cell in cells if cell]
+        if len(cells) == 2 and cells[0].lower() in ("devices", "clients"):
+            return as_int(cells[1])
+    return None
+
+
 def parse_devices_status(input_html: str) -> dict[str, Any]:
     """Parses connected devices status summary."""
     raw_data = parse_tables(input_html)
@@ -1099,44 +1121,60 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
             _LOGGER.debug("Devices status %s = '%s'", k, raw_data.get(k))
 
     # Try multiple possible key names for client counts
-    wifi_2g = (
-        as_int(raw_data.get("2.4G Clients"))
-        or as_int(raw_data.get("2.4G clients"))
-        or as_int(raw_data.get("2.4GHz Clients"))
-        or as_int(raw_data.get("WiFi 2.4G Clients"))
-        or as_int(raw_data.get("Wireless 2.4G"))
-        or as_int(raw_data.get("2.4G"))
-        or as_int(raw_data.get("2.4 GHz"))
-        or as_int(raw_data.get("2.4GHz"))
-        or as_int(raw_data.get("WLAN 2.4G"))
-        or as_int(raw_data.get("Wi-Fi 2.4G"))
-        or as_int(raw_data.get("2.4G WiFi"))  # Cudy P5 format
+    wifi_2g = _first_int(
+        raw_data,
+        (
+            "2.4G Clients",
+            "2.4G clients",
+            "2.4GHz Clients",
+            "WiFi 2.4G Clients",
+            "Wireless 2.4G",
+            "2.4G",
+            "2.4 GHz",
+            "2.4GHz",
+            "WLAN 2.4G",
+            "Wi-Fi 2.4G",
+            "2.4G WiFi",  # Cudy P5 format
+        ),
     )
-    wifi_5g = (
-        as_int(raw_data.get("5G Clients"))
-        or as_int(raw_data.get("5G clients"))
-        or as_int(raw_data.get("5GHz Clients"))
-        or as_int(raw_data.get("WiFi 5G Clients"))
-        or as_int(raw_data.get("Wireless 5G"))
-        or as_int(raw_data.get("5G"))
-        or as_int(raw_data.get("5 GHz"))
-        or as_int(raw_data.get("5GHz"))
-        or as_int(raw_data.get("WLAN 5G"))
-        or as_int(raw_data.get("Wi-Fi 5G"))
-        or as_int(raw_data.get("5G WiFi"))  # Cudy P5 format
+    wifi_5g = _first_int(
+        raw_data,
+        (
+            "5G Clients",
+            "5G clients",
+            "5GHz Clients",
+            "WiFi 5G Clients",
+            "Wireless 5G",
+            "5G",
+            "5 GHz",
+            "5GHz",
+            "WLAN 5G",
+            "Wi-Fi 5G",
+            "5G WiFi",  # Cudy P5 format
+        ),
     )
+    wifi_6g = _first_int(raw_data, ("6G WiFi", "6G Clients", "6GHz Clients", "Wi-Fi 6G"))
     wired = as_int(raw_data.get("Wired"))
-    total = (
-        as_int(raw_data.get("Total Clients"))
-        or as_int(raw_data.get("Total clients"))
-        or as_int(raw_data.get("Total"))
-        or as_int(raw_data.get("Connected Clients"))
-        or as_int(raw_data.get("Online Clients"))
-        or as_int(raw_data.get("All Clients"))
-        or as_int(raw_data.get("Clients"))
-        or as_int(raw_data.get("Online"))
-        or as_int(raw_data.get("Connected"))
+    mesh = as_int(raw_data.get("Mesh"))
+    # Guest rows such as "2.4G Guest Network" only appear while guests are connected
+    guest_counts = [as_int(value) for key, value in raw_data.items() if "guest" in key.lower()]
+    guest = sum(count for count in guest_counts if count is not None) if guest_counts else None
+    total = _first_int(
+        raw_data,
+        (
+            "Total Clients",
+            "Total clients",
+            "Total",
+            "Connected Clients",
+            "Online Clients",
+            "All Clients",
+            "Clients",
+            "Online",
+            "Connected",
+        ),
     )
+    if total is None:
+        total = _devices_status_header_total(input_html)
 
     # Try to extract from JavaScript if table parsing didn't work
     if input_html and (wifi_2g is None and wifi_5g is None and total is None):
@@ -1174,22 +1212,30 @@ def parse_devices_status(input_html: str) -> dict[str, Any]:
 
     # Calculate total if not provided explicitly but we have 2G and 5G counts
     if total is None and (wifi_2g is not None or wifi_5g is not None):
-        total = (wifi_2g or 0) + (wifi_5g or 0) + (wired or 0)
+        total = sum(count or 0 for count in (wifi_2g, wifi_5g, wifi_6g, wired, mesh, guest))
 
     _LOGGER.debug(
-        "Devices status parsed: wifi_2g=%s, wifi_5g=%s, wired=%s, total=%s",
+        "Devices status parsed: wifi_2g=%s, wifi_5g=%s, wifi_6g=%s, wired=%s, mesh=%s, guest=%s, total=%s",
         wifi_2g,
         wifi_5g,
+        wifi_6g,
         wired,
+        mesh,
+        guest,
         total,
     )
 
-    return {
+    data = {
         "wifi_2g_clients": {"value": wifi_2g},
         "wifi_5g_clients": {"value": wifi_5g},
         "wired_clients": {"value": wired},
         "total_clients": {"value": total},
     }
+    if wifi_6g is not None:
+        data["wifi_6g_clients"] = {"value": wifi_6g}
+    if guest is not None:
+        data["status_guest_clients"] = {"value": guest}
+    return data
 
 
 def parse_data_size_bytes(size_str: str) -> int | None:

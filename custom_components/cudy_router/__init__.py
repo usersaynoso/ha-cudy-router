@@ -60,6 +60,7 @@ from .sms import async_send_sms_message, coordinator_supports_sms
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: Final[list[Platform]] = [
+    Platform.BINARY_SENSOR,
     Platform.SENSOR,
     Platform.SWITCH,
     Platform.SELECT,

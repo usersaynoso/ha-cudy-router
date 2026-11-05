@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from .bs4_compat import BeautifulSoup
 from .const import (
@@ -28,8 +29,17 @@ from .const import (
     MODULE_WIFI_2G,
     MODULE_WIFI_5G,
     OPTIONS_DEVICELIST,
+    OPTIONS_TRACK_GUEST_NETWORK,
+    SECTION_DEVICE_LIST,
 )
 from .features import existing_feature
+from .guest_network import (
+    GUEST_NETWORK_SETTINGS_PATH,
+    build_guest_clients,
+    lan_network,
+    parse_arp_ips,
+    parse_guest_network_enabled,
+)
 from .parser import (
     parse_data_usage,
     parse_devices,
@@ -459,6 +469,7 @@ async def collect_router_data(
                 data[MODULE_CELLULAR_SETTINGS] = cellular_settings
 
     # Connected devices
+    arp_status_html: str | None = None
     if existing_feature(device_model, MODULE_DEVICES) is True:
         data[MODULE_DEVICES] = parse_devices(
             await hass.async_add_executor_job(router.get, "admin/network/devices/devlist?detail=1"),
@@ -1134,4 +1145,34 @@ async def collect_router_data(
         mesh_data["mesh_count"] = {"value": len(mesh_data.get("mesh_devices", {}))}
         data[MODULE_MESH] = mesh_data
 
+    if options and options.get(OPTIONS_TRACK_GUEST_NETWORK) and isinstance(data.get(MODULE_DEVICES), dict):
+        await _collect_guest_clients(router, hass, data, arp_status_html)
+
     return data
+
+
+async def _collect_guest_clients(
+    router: Any,
+    hass: HomeAssistant,
+    data: dict[str, Any],
+    arp_status_html: str | None,
+) -> None:
+    """Count guest Wi-Fi clients from the connected-device list."""
+    devices_data = data[MODULE_DEVICES]
+    lan_data = data.get(MODULE_LAN) or {}
+    main_lan = lan_network(
+        _entry_value(lan_data, "ip_address") or urlsplit(str(getattr(router, "base_url", ""))).hostname,
+        _entry_value(lan_data, "subnet_mask"),
+    )
+    guest_settings_html = await hass.async_add_executor_job(
+        router.get,
+        GUEST_NETWORK_SETTINGS_PATH,
+        True,
+    )
+    devices_data["guest_clients"] = build_guest_clients(
+        devices_data.get(SECTION_DEVICE_LIST) or [],
+        main_lan,
+        parse_guest_network_enabled(guest_settings_html),
+        _entry_value(devices_data, "status_guest_clients"),
+        parse_arp_ips(arp_status_html),
+    )

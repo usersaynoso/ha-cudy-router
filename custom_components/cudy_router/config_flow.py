@@ -34,6 +34,7 @@ from .const import (
     OPTIONS_AUTO_ADD_DEVICE_TRACKERS,
     OPTIONS_DEVICELIST,
     OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR,
+    OPTIONS_TRACK_GUEST_NETWORK,
     OPTIONS_TRACKED_DEVICE_MACS,
     SECTION_DEVICE_LIST,
     normalize_scan_interval,
@@ -251,6 +252,7 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
                 False,
             ),
             OPTIONS_TRACKED_DEVICE_MACS: options.get(OPTIONS_TRACKED_DEVICE_MACS, []),
+            OPTIONS_TRACK_GUEST_NETWORK: options.get(OPTIONS_TRACK_GUEST_NETWORK, False),
             CONF_SCAN_INTERVAL: normalize_scan_interval(
                 options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
             ),
@@ -333,6 +335,10 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
                     options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                 )
             )
+            self._pending_options[OPTIONS_TRACK_GUEST_NETWORK] = user_input.get(
+                OPTIONS_TRACK_GUEST_NETWORK,
+                options.get(OPTIONS_TRACK_GUEST_NETWORK, False),
+            )
             if self._supports_sms():
                 self._pending_options[OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR] = user_input.get(
                     OPTIONS_SHOW_SMS_PANEL_IN_SIDEBAR,
@@ -349,6 +355,7 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
         schema_fields: dict[Any, Any] = {
             vol.Optional(OPTIONS_AUTO_ADD_CONNECTED_DEVICES): selector.BooleanSelector(),
             vol.Optional(OPTIONS_AUTO_ADD_DEVICE_TRACKERS): selector.BooleanSelector(),
+            vol.Optional(OPTIONS_TRACK_GUEST_NETWORK): selector.BooleanSelector(),
             vol.Optional(CONF_SCAN_INTERVAL): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     mode=selector.NumberSelectorMode.BOX,
@@ -375,6 +382,7 @@ class CudyRouterOptionsFlowHandler(OptionsFlow):
                 OPTIONS_AUTO_ADD_DEVICE_TRACKERS,
                 False,
             ),
+            OPTIONS_TRACK_GUEST_NETWORK: options.get(OPTIONS_TRACK_GUEST_NETWORK, False),
             CONF_SCAN_INTERVAL: normalize_scan_interval(
                 options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
             ),

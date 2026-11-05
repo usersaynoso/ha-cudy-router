@@ -95,6 +95,22 @@ def _ensure_homeassistant_stub() -> None:
         sensor_module.SensorStateClass = SensorStateClass
         sys.modules["homeassistant.components.sensor"] = sensor_module
 
+    binary_sensor_module = sys.modules.get("homeassistant.components.binary_sensor")
+    if binary_sensor_module is None:
+        binary_sensor_module = types.ModuleType("homeassistant.components.binary_sensor")
+
+        class BinarySensorDeviceClass:
+            OCCUPANCY = "occupancy"
+
+        class BinarySensorEntity:
+            @property
+            def unique_id(self):
+                return getattr(self, "_attr_unique_id", None)
+
+        binary_sensor_module.BinarySensorDeviceClass = BinarySensorDeviceClass
+        binary_sensor_module.BinarySensorEntity = BinarySensorEntity
+        sys.modules["homeassistant.components.binary_sensor"] = binary_sensor_module
+
     switch_module = sys.modules.get("homeassistant.components.switch")
     if switch_module is None:
         switch_module = types.ModuleType("homeassistant.components.switch")

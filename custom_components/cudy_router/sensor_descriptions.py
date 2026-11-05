@@ -627,6 +627,20 @@ SENSOR_TYPES: dict[tuple[str, str], CudyRouterSensorEntityDescription] = {
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:account",
     ),
+    ("devices", "wifi_6g_clients"): CudyRouterSensorEntityDescription(
+        key="wifi_6g_clients",
+        module="devices",
+        name_suffix="WiFi 6G clients",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:account",
+    ),
+    ("devices", "guest_clients"): CudyRouterSensorEntityDescription(
+        key="guest_clients",
+        module="devices",
+        name_suffix="Guest network clients",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:account-multiple-outline",
+    ),
     ("devices", "wired_clients"): CudyRouterSensorEntityDescription(
         key="wired_clients",
         module="devices",

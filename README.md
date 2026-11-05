@@ -92,6 +92,7 @@ Open **Settings > Devices & Services > Cudy Router > Configure** to change:
 | --- | --- | --- |
 | Automatically add connected devices | Off | Creates client devices and live per-client entities for every connected device. When off, pick specific clients manually. |
 | Automatically add device trackers | Off | Creates `device_tracker` entities for connected devices with a MAC address. Automatic connected-device cleanup does not remove trackers. |
+| Track guest Wi-Fi clients | Off | Adds a **Guest network clients** sensor and a **Guests present** binary sensor for the router's guest Wi-Fi, including guests joined through a mesh unit. It only adds the count and does not change client device or tracker creation. |
 | Show Cudy SMS in sidebar | On | Shows the SMS panel link in the sidebar. The panel stays available by URL when off. |
 | Update interval | 60 seconds | How often the router is polled, in seconds. |
 
@@ -99,13 +100,14 @@ Open **Settings > Devices & Services > Cudy Router > Configure** to change:
 
 ## What It Creates
 
-The integration creates entities on these Home Assistant platforms: `sensor`, `switch`, `select`, `button`, `text`, and `device_tracker`.
+The integration creates entities on these Home Assistant platforms: `sensor`, `binary_sensor`, `switch`, `select`, `button`, `text`, and `device_tracker`.
 
 Entity availability depends on the router model and firmware. Not every router exposes every page or field.
 
 - **Main router device:** modem/cellular, WAN, traffic, system, CPU/RAM usage when supported, SMS, Wi-Fi, LAN, DHCP, VPN, load balancing, Mesh devices connected, settings, diagnostics, and reboot controls.
 - **Mesh node devices:** node identity, firmware, status, IP address, backhaul, connected-device count, LED control, and reboot controls.
 - **Connected client devices:** IP address, connection type, signal, online time, internet access, DNS filter, VPN control, and optional tracking.
+- **Guest Wi-Fi (optional):** with **Track guest Wi-Fi clients** on, a guest client count (with guest hostnames as attributes) and a **Guests present** occupancy sensor for "nobody home" automations. A guest has to appear in both the router's device list and its ARP table to count, because the router keeps departed guests in its device list for several minutes.
 - **SMS panel:** SMS-capable routers expose an admin-only sidebar panel at `/cudy-router-sms` for inbox, outbox, replies, and composing SMS messages.
 - **WISP (supported models):** a **WISP scan** button, a **WISP network** picker, a write-only **WISP password** field, and a **WISP connect** button.
 

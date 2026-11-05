@@ -38,12 +38,14 @@
         "data": {
           "auto_add_connected_devices": "Ajouter automatiquement des appareils connectés",
           "auto_add_device_trackers": "Ajouter automatiquement des trackers d'appareils pour les appareils connectés",
+          "track_guest_network": "Suivre les clients du Wi-Fi invité",
           "show_sms_panel_in_sidebar": "Afficher les SMS de Cudy dans la barre latérale",
           "scan_interval": "Intervalle de mise à jour"
         },
         "data_description": {
           "auto_add_connected_devices": "Créez des appareils clients et des entités client en direct pour chaque appareil actuellement connecté. Désactivé par défaut pour les nouvelles intégrations. Activez cette option pour créer automatiquement des appareils clients et des entités en direct par client, ou désactivez-la pour les créer uniquement pour les appareils répertoriés ci-dessous.",
           "auto_add_device_trackers": "Créez des entités device_tracker pour chaque appareil actuellement connecté avec une adresse MAC. Désactivé par défaut. Activez cette option si vous souhaitez des trackers de présence en plus des entités clientes en direct.",
+          "track_guest_network": "Crée un capteur Clients du réseau invité et un capteur binaire Invités présents qui comptent les appareils connectés au Wi-Fi invité du routeur, y compris les invités connectés via une unité mesh. Désactivé par défaut. Cette option ajoute uniquement le comptage des invités ; elle ne modifie pas la création des appareils clients ou des trackers.",
           "show_sms_panel_in_sidebar": "Affichez le lien du panneau SMS Cudy dans la barre latérale de Home Assistant. Désactivez cette option pour que la page SMS reste disponible uniquement par URL directe.",
           "scan_interval": "À quelle fréquence interroger le routeur pour les mises à jour (en secondes)"
         },

@@ -90,7 +90,7 @@ def test_readme_summarizes_major_user_facing_features() -> None:
     """README should summarize the integration surface without full reference detail."""
     source = _readme()
 
-    assert "sensor`, `switch`, `select`, `button`, `text`, and `device_tracker`" in source
+    assert "sensor`, `binary_sensor`, `switch`, `select`, `button`, `text`, and `device_tracker`" in source
     assert "modem/cellular, WAN, LAN, DHCP, VPN, load balancing, Wi-Fi, SMS" in source
     assert "Mesh node support" in source
     assert "Connected client devices" in source
