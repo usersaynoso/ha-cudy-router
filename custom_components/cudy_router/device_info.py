@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import (
     CONNECTION_NETWORK_MAC,
     DeviceInfo,
+    async_entries_for_config_entry,
     async_get as async_get_device_registry,
 )
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -160,12 +161,17 @@ def async_ensure_client_entity_device(
     """Ensure a client entity is linked to a device-registry entry."""
     device_info = build_client_device_info(config_entry, device)
     device_registry = async_get_device_registry(hass)
+    # via_device (krotka identyfikatora) jest przestarzałe od HA 2026 – registry chce id urządzenia nadrzędnego.
+    via = device_info.get("via_device")
+    via_device = (
+        device_registry.async_get_device_by_identifier(via, config_entry.entry_id) if via else None
+    )
     registry_device = device_registry.async_get_or_create(
         config_entry_id=config_entry.entry_id,
         identifiers=device_info["identifiers"],
         connections=device_info.get("connections"),
         name=device_info.get("name"),
-        via_device=device_info.get("via_device"),
+        via_device_id=via_device.id if via_device else None,
     )
 
     entity_registry = async_get_entity_registry(hass)
@@ -346,9 +352,7 @@ def async_cleanup_stale_tracker_entities(
         is not None
     }
 
-    for device in list(device_registry.devices.values()):
-        if config_entry.entry_id not in getattr(device, "config_entries", set()):
-            continue
+    for device in async_entries_for_config_entry(device_registry, config_entry.entry_id):
 
         matching_identifier = next(
             (
@@ -396,7 +400,7 @@ def known_client_devices(
             continue
 
         device = (
-            device_registry.devices.get(entry.device_id)
+            device_registry.async_get(entry.device_id)
             if getattr(entry, "device_id", None)
             else None
         )
@@ -420,9 +424,7 @@ def known_client_devices(
         if entry_domain == "switch" and feature_key is not None:
             client["switch_features"].add(feature_key)
 
-    for device in list(device_registry.devices.values()):
-        if config_entry.entry_id not in getattr(device, "config_entries", set()):
-            continue
+    for device in async_entries_for_config_entry(device_registry, config_entry.entry_id):
 
         matching_identifier = next(
             (
@@ -556,9 +558,7 @@ def _async_cleanup_stale_client_entities(
         is not None
     }
 
-    for device in list(device_registry.devices.values()):
-        if config_entry.entry_id not in getattr(device, "config_entries", set()):
-            continue
+    for device in async_entries_for_config_entry(device_registry, config_entry.entry_id):
 
         matching_identifier = next(
             (
