@@ -181,6 +181,7 @@ def test_stale_client_cleanup_removes_only_missing_client_entities() -> None:
 
     registry.async_remove = _remove
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     device_info.async_cleanup_stale_client_entities(
@@ -237,6 +238,7 @@ def test_stale_client_cleanup_keeps_shared_client_device_when_tracker_entity_rem
 
     registry.async_remove = _remove
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     device_info.async_cleanup_stale_client_entities(
@@ -329,6 +331,7 @@ def test_stale_client_cleanup_falls_back_to_entity_id_when_domain_is_missing() -
 
     registry.async_remove = _remove
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     device_info.async_cleanup_stale_client_entities(
@@ -385,6 +388,7 @@ def test_stale_client_cleanup_removes_device_after_sensor_and_switch_pruning() -
 
     registry.async_remove = _remove
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     device_info.async_cleanup_stale_client_entities(
@@ -444,6 +448,7 @@ def test_known_client_devices_collect_names_and_switch_features() -> None:
     )
 
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     known_clients = device_info.known_client_devices(
@@ -478,6 +483,7 @@ def test_known_client_devices_ignore_non_client_domains_with_mac_like_unique_ids
     )
 
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     known_clients = device_info.known_client_devices(
@@ -514,6 +520,7 @@ def test_known_tracker_clients_reads_tracker_entities_from_registries() -> None:
     )
 
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     known_clients = device_info.known_tracker_clients(
@@ -555,6 +562,7 @@ def test_known_tracker_clients_reads_legacy_mac_unique_ids() -> None:
     )
 
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     known_clients = device_info.known_tracker_clients(
@@ -646,6 +654,7 @@ def test_known_tracker_clients_ignore_plain_client_devices_without_tracker_entit
     registry = SimpleNamespace(entities={})
 
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     known_clients = device_info.known_tracker_clients(
@@ -713,6 +722,7 @@ def test_stale_tracker_cleanup_removes_only_disallowed_tracker_entities() -> Non
 
     registry.async_remove = _remove
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     device_info.async_cleanup_stale_tracker_entities(
@@ -757,6 +767,7 @@ def test_stale_tracker_cleanup_removes_legacy_mac_unique_id_entities() -> None:
 
     registry.async_remove = _remove
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     device_info.async_cleanup_stale_tracker_entities(
@@ -800,6 +811,7 @@ def test_stale_tracker_cleanup_prunes_noncanonical_duplicates_for_allowed_macs()
 
     registry.async_remove = _remove
     device_info.async_get_entity_registry = lambda hass: registry
+    device_registry.async_get = device_registry.devices.get
     device_info.async_get_device_registry = lambda hass: device_registry
 
     device_info.async_cleanup_stale_tracker_entities(
@@ -810,3 +822,122 @@ def test_stale_tracker_cleanup_prunes_noncanonical_duplicates_for_allowed_macs()
     )
 
     assert registry.removed == ["device_tracker.client_duplicate"]
+
+
+def _entry_with_router_device(router_device_id: str | None, *, entry_id: str = "entry-1"):
+    return SimpleNamespace(
+        entry_id=entry_id,
+        data={"model": "P5"},
+        runtime_data=SimpleNamespace(router_device_id=router_device_id),
+    )
+
+
+def test_client_and_mesh_device_info_link_by_router_device_id_when_registered() -> None:
+    """On Home Assistant 2026.8+ child devices link to the router by device id, not identifier."""
+    config_entry = _entry_with_router_device("router-device-id")
+    coordinator = SimpleNamespace(config_entry=config_entry, data={})
+
+    client_info = device_info.build_client_device_info(
+        config_entry,
+        {"hostname": "Living Room TV", "mac": "AA:BB:CC:DD:EE:42"},
+    )
+    mesh_info = device_info.build_mesh_device_info(
+        coordinator,
+        "AA:BB:CC:DD:EE:11",
+        {"name": "Bedroom", "mac_address": "AA:BB:CC:DD:EE:11"},
+    )
+
+    for info in (client_info, mesh_info):
+        assert info["via_device_id"] == "router-device-id"
+        assert "via_device" not in info
+
+
+def test_client_device_info_falls_back_to_via_device_without_router_device_id() -> None:
+    """Older Home Assistant releases keep the identifier-based router link."""
+    info = device_info.build_client_device_info(
+        _entry_with_router_device(None),
+        {"hostname": "Living Room TV", "mac": "AA:BB:CC:DD:EE:42"},
+    )
+
+    assert info["via_device"] == ("cudy_router", "entry-1")
+    assert "via_device_id" not in info
+
+
+def test_async_ensure_client_entity_device_links_by_router_device_id(monkeypatch) -> None:
+    """Directly registered client devices should use via_device_id when it is available."""
+    create_calls: list[dict[str, object]] = []
+    device_registry = SimpleNamespace(
+        async_get_or_create=lambda **kwargs: (
+            create_calls.append(kwargs) or SimpleNamespace(id="client_tracker")
+        )
+    )
+    registry = SimpleNamespace(entities={})
+    registry.async_get_entity_id = lambda domain, platform, unique_id: None
+
+    monkeypatch.setattr(device_info, "async_get_entity_registry", lambda hass: registry)
+    monkeypatch.setattr(device_info, "async_get_device_registry", lambda hass: device_registry)
+
+    device_info.async_ensure_client_entity_device(
+        object(),
+        _entry_with_router_device("router-device-id"),
+        "device_tracker",
+        "AA:BB:CC:DD:EE:42",
+        {"hostname": "Living Room TV", "mac": "AA:BB:CC:DD:EE:42"},
+    )
+
+    assert create_calls[0]["via_device_id"] == "router-device-id"
+    assert "via_device" not in create_calls[0]
+
+
+def test_async_register_router_device_returns_id_when_registry_supports_via_device_id(monkeypatch) -> None:
+    """The router device is registered up front and its id kept for child devices."""
+    create_calls: list[dict[str, object]] = []
+
+    class _Registry:
+        def async_get_or_create(self, *, config_entry_id, via_device_id=None, **kwargs):
+            create_calls.append({"config_entry_id": config_entry_id, **kwargs})
+            return SimpleNamespace(id="router-device-id")
+
+    monkeypatch.setattr(device_info, "async_get_device_registry", lambda hass: _Registry())
+    coordinator = _coordinator({"system": {"firmware_version": {"value": "2.4.25"}}})
+
+    assert device_info.async_register_router_device(object(), coordinator) == "router-device-id"
+    assert create_calls[0]["config_entry_id"] == "entry-1"
+    assert create_calls[0]["identifiers"] == {("cudy_router", "entry-1")}
+    assert create_calls[0]["sw_version"] == "2.4.25"
+
+
+def test_async_register_router_device_returns_none_on_older_registry(monkeypatch) -> None:
+    """Before Home Assistant 2026.8 there is no via_device_id, so child devices keep via_device."""
+
+    class _LegacyRegistry:
+        def async_get_or_create(self, *, config_entry_id, via_device=None, **kwargs):
+            return SimpleNamespace(id="router-device-id")
+
+    monkeypatch.setattr(device_info, "async_get_device_registry", lambda hass: _LegacyRegistry())
+
+    assert device_info.async_register_router_device(object(), _coordinator({})) is None
+
+
+def test_setup_registers_router_device_before_forwarding_platforms() -> None:
+    """Child entities can only link by device id once the router device id is known."""
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1] / "custom_components" / "cudy_router" / "__init__.py"
+    ).read_text()
+    register = source.index("coordinator.router_device_id = async_register_router_device(")
+    forward = source.index("await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)")
+    assert register < forward
+
+
+def test_device_info_avoids_deprecated_device_registry_access() -> None:
+    """Home Assistant 2026.11 warns on registry mapping access and DeviceEntry.config_entries."""
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1] / "custom_components" / "cudy_router" / "device_info.py"
+    ).read_text()
+    assert "devices.values()" not in source
+    assert "devices.get(" not in source
+    assert '"config_entries"' not in source

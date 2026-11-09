@@ -33,6 +33,7 @@ class CudyRouterDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config_entry = entry
         self.host: str = entry.data[CONF_HOST]
         self.api = api
+        self.router_device_id: str | None = None
         scan_interval = normalize_scan_interval(
             entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )

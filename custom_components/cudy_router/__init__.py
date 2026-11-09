@@ -39,6 +39,7 @@ from .coordinator import CudyRouterDataUpdateCoordinator
 from .device_info import (
     async_cleanup_stale_client_entities,
     async_cleanup_stale_tracker_entities,
+    async_register_router_device,
     known_client_devices,
     known_tracker_clients,
 )
@@ -203,6 +204,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CudyRouterConfigEntry) -
     coordinator = CudyRouterDataUpdateCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
 
+    coordinator.router_device_id = async_register_router_device(hass, coordinator)
     entry.runtime_data = coordinator
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
