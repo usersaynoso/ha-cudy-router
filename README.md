@@ -128,8 +128,12 @@ Entity availability depends on the router model and firmware. Not every router e
 - `cudy_router.restart_5g_connection`
 - `cudy_router.switch_5g_band`
 - `cudy_router.send_sms`
+- `cudy_router.get_sms` (returns messages with their full text as a response)
+- `cudy_router.delete_sms` (deletes messages by their `cfg` id)
 - `cudy_router.send_at_command`
 - `cudy_router.generate_debug_report` (diagnostics; see Troubleshooting)
+
+SMS-capable routers also fire a `cudy_router_sms_received` event for each new inbox message, with `entry_id`, `cfg`, `phone`, `text`, `timestamp` and `received_at`, so an automation can react to an SMS with an event trigger. Messages already in the inbox when Home Assistant starts are not reported.
 
 Use the optional `entry_id` field to target a specific router when you have multiple Cudy Router entries. See [Services and Example Calls](https://github.com/usersaynoso/ha-cudy-router/wiki/Services-and-Example-Calls) for examples.
 

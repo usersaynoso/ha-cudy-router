@@ -74,6 +74,38 @@
     }
   },
   "services": {
+    "get_sms": {
+      "name": "Get SMS",
+      "description": "Reads SMS messages with their full text and returns them as a response, for use in automations.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry ID",
+          "description": "The config entry ID of the router (optional if only one router is configured)."
+        },
+        "folder": {
+          "name": "Folder",
+          "description": "Which mailbox to read: inbox, outbox or all."
+        },
+        "unread_only": {
+          "name": "Unread only",
+          "description": "Only return inbox messages that the router still marks as unread."
+        }
+      }
+    },
+    "delete_sms": {
+      "name": "Delete SMS",
+      "description": "Deletes one or more SMS messages from the router by their cfg ID.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry ID",
+          "description": "The config entry ID of the router (optional if only one router is configured)."
+        },
+        "cfg": {
+          "name": "Message ID",
+          "description": "The cfg ID of the message, as returned by Get SMS or the SMS received event. A list deletes several messages."
+        }
+      }
+    },
     "reboot_router": {
       "name": "Reboot router",
       "description": "Reboots the Cudy router.",

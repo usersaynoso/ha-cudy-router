@@ -56,7 +56,15 @@ from .device_tracking import (
 )
 from .model_names import resolve_model_name
 from .router import CudyRouter
-from .sms import async_send_sms_message, coordinator_supports_sms
+from .sms import (
+    SMS_FOLDERS,
+    SmsReceivedTracker,
+    SmsUnavailableError,
+    async_delete_sms_messages,
+    async_get_sms_messages,
+    async_send_sms_message,
+    coordinator_supports_sms,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,6 +85,8 @@ SERVICE_SWITCH_BAND: Final = "switch_5g_band"
 SERVICE_SEND_SMS: Final = "send_sms"
 SERVICE_SEND_AT_COMMAND: Final = "send_at_command"
 SERVICE_GENERATE_DEBUG_REPORT: Final = "generate_debug_report"
+SERVICE_GET_SMS: Final = "get_sms"
+SERVICE_DELETE_SMS: Final = "delete_sms"
 
 ATTR_ENTRY_ID: Final = "entry_id"
 ATTR_BAND: Final = "band"
@@ -85,6 +95,9 @@ ATTR_MESSAGE: Final = "message"
 ATTR_COMMAND: Final = "command"
 ATTR_INCLUDE_HTML: Final = "include_html"
 ATTR_MAX_HTML_CHARS: Final = "max_html_chars"
+ATTR_FOLDER: Final = "folder"
+ATTR_UNREAD_ONLY: Final = "unread_only"
+ATTR_CFG: Final = "cfg"
 
 # Service schemas
 SERVICE_REBOOT_SCHEMA: Final = vol.Schema(
@@ -129,6 +142,21 @@ SERVICE_GENERATE_DEBUG_REPORT_SCHEMA: Final = vol.Schema(
             vol.Coerce(int),
             vol.Range(min=0, max=20000),
         ),
+    }
+)
+
+SERVICE_GET_SMS_SCHEMA: Final = vol.Schema(
+    {
+        vol.Optional(ATTR_ENTRY_ID): cv.string,
+        vol.Optional(ATTR_FOLDER, default="inbox"): vol.In(SMS_FOLDERS),
+        vol.Optional(ATTR_UNREAD_ONLY, default=False): cv.boolean,
+    }
+)
+
+SERVICE_DELETE_SMS_SCHEMA: Final = vol.Schema(
+    {
+        vol.Optional(ATTR_ENTRY_ID): cv.string,
+        vol.Required(ATTR_CFG): vol.All(cv.ensure_list, [cv.string]),
     }
 )
 
@@ -210,6 +238,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: CudyRouterConfigEntry) -
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    if coordinator_supports_sms(coordinator):
+        _async_track_received_sms(hass, entry, coordinator)
+
     # Register services
     await _async_setup_services(hass)
     await async_refresh_frontend(hass)
@@ -218,6 +249,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: CudyRouterConfigEntry) -
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     return True
+
+
+def _async_track_received_sms(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: CudyRouterDataUpdateCoordinator,
+) -> None:
+    """Fire cudy_router_sms_received for new inbox messages after each poll."""
+    tracker = SmsReceivedTracker(hass, coordinator)
+
+    def _schedule_check() -> None:
+        if tracker.needs_check():
+            entry.async_create_background_task(
+                hass,
+                tracker.async_check(),
+                f"{DOMAIN} sms received check",
+            )
+
+    entry.async_on_unload(coordinator.async_add_listener(_schedule_check))
+    # Record the messages already in the inbox so they are not reported as new.
+    _schedule_check()
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -361,6 +413,36 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
         )
         _LOGGER.info("AT command '%s' result: %s", command, result)
 
+    def _sms_coordinator(call: ServiceCall) -> CudyRouterDataUpdateCoordinator:
+        coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
+        if not coordinator:
+            raise HomeAssistantError("No Cudy Router coordinator found")
+        if not coordinator_supports_sms(coordinator):
+            raise HomeAssistantError("The selected Cudy Router does not support SMS")
+        return coordinator
+
+    async def handle_get_sms(call: ServiceCall) -> dict[str, Any]:
+        """Return SMS messages with their full text."""
+        coordinator = _sms_coordinator(call)
+        try:
+            return await async_get_sms_messages(
+                hass,
+                coordinator,
+                call.data[ATTR_FOLDER],
+                call.data[ATTR_UNREAD_ONLY],
+            )
+        except SmsUnavailableError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_delete_sms(call: ServiceCall) -> dict[str, Any]:
+        """Delete one or more SMS messages by cfg id."""
+        coordinator = _sms_coordinator(call)
+        result = await async_delete_sms_messages(hass, coordinator, call.data[ATTR_CFG])
+        if result["failed"]:
+            details = ", ".join(f"{item['cfg']}: {item['message']}" for item in result["failed"])
+            raise HomeAssistantError(f"Could not delete SMS ({details})")
+        return result
+
     async def handle_generate_debug_report(call: ServiceCall) -> dict[str, str]:
         """Handle the generate debug report service call."""
         coordinator = _get_coordinator(hass, call.data.get(ATTR_ENTRY_ID))
@@ -419,6 +501,20 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_SEND_AT_COMMAND,
         handle_send_at_command,
         SERVICE_SEND_AT_COMMAND_SCHEMA,
+    )
+
+    _register_service_once(
+        SERVICE_GET_SMS,
+        handle_get_sms,
+        SERVICE_GET_SMS_SCHEMA,
+        supports_response=SupportsResponse.ONLY if SupportsResponse is not None else None,
+    )
+
+    _register_service_once(
+        SERVICE_DELETE_SMS,
+        handle_delete_sms,
+        SERVICE_DELETE_SMS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL if SupportsResponse is not None else None,
     )
 
     _register_service_once(
