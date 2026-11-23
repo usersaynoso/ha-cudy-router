@@ -115,3 +115,52 @@ generate_debug_report:
           min: 0
           max: 20000
           mode: box
+
+get_sms:
+  name: Get SMS
+  description: Read SMS messages with their full text, for use in automations. Returns the messages as a response.
+  fields:
+    folder:
+      name: Folder
+      description: Which mailbox to read.
+      required: false
+      default: inbox
+      selector:
+        select:
+          options:
+            - inbox
+            - outbox
+            - all
+    unread_only:
+      name: Unread only
+      description: Only return inbox messages the router still marks as unread.
+      required: false
+      default: false
+      selector:
+        boolean:
+    entry_id:
+      name: Config entry ID
+      description: Optional config entry id to target a specific router instance
+      required: false
+      example: "abcd1234"
+      selector:
+        text:
+
+delete_sms:
+  name: Delete SMS
+  description: Delete one or more SMS messages from the router by their cfg id.
+  fields:
+    cfg:
+      name: Message id
+      description: The cfg id of the message (as returned by get_sms or the SMS received event). A list deletes several.
+      required: true
+      example: "cfg10a53f"
+      selector:
+        text:
+    entry_id:
+      name: Config entry ID
+      description: Optional config entry id to target a specific router instance
+      required: false
+      example: "abcd1234"
+      selector:
+        text:

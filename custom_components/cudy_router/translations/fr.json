@@ -72,6 +72,38 @@
     }
   },
   "services": {
+    "get_sms": {
+      "name": "Lire les SMS",
+      "description": "Lit les SMS avec leur texte complet et les renvoie en réponse, pour les automatisations.",
+      "fields": {
+        "entry_id": {
+          "name": "ID d'entrée de configuration",
+          "description": "L'ID d'entrée de configuration du routeur (facultatif si un seul routeur est configuré)."
+        },
+        "folder": {
+          "name": "Dossier",
+          "description": "La boîte à lire : inbox (réception), outbox (envoi) ou all (les deux)."
+        },
+        "unread_only": {
+          "name": "Non lus uniquement",
+          "description": "Renvoie uniquement les messages reçus que le routeur marque encore comme non lus."
+        }
+      }
+    },
+    "delete_sms": {
+      "name": "Supprimer des SMS",
+      "description": "Supprime un ou plusieurs SMS du routeur à partir de leur identifiant cfg.",
+      "fields": {
+        "entry_id": {
+          "name": "ID d'entrée de configuration",
+          "description": "L'ID d'entrée de configuration du routeur (facultatif si un seul routeur est configuré)."
+        },
+        "cfg": {
+          "name": "Identifiant du message",
+          "description": "L'identifiant cfg du message, tel que renvoyé par Lire les SMS ou par l'événement de SMS reçu. Une liste supprime plusieurs messages."
+        }
+      }
+    },
     "reboot_router": {
       "name": "Redémarrer le routeur",
       "description": "Redémarre le routeur Cudy.",

@@ -2,6 +2,8 @@
 
 DOMAIN = "cudy_router"
 
+EVENT_SMS_RECEIVED = "cudy_router_sms_received"
+
 DEFAULT_SCAN_INTERVAL = 60
 MIN_SCAN_INTERVAL = 15
 MAX_SCAN_INTERVAL = 3600
