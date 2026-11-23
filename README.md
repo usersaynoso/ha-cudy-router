@@ -36,11 +36,13 @@ It connects directly to the router over your local network, reads the same statu
 
 | Level | Models |
 | --- | --- |
-| Tested on real hardware | Cudy P5, Cudy P4 |
+| Tested on real hardware | Cudy P5, Cudy P4, Cudy LT700 |
 | Mapped from emulator or firmware page behavior | Several other routers, 4G/5G routers, mesh devices, and extenders |
 | Unknown models | Best-effort dynamic detection |
 
 The **Cudy P5** and **Cudy P4** have been tested on real hardware.
+
+The **Cudy LT700** (V1.0, firmware 2.4.21) has also been tested on real hardware with a 4G SIM, including the cellular and Wi-Fi sensors, mesh devices, and sending, reading and deleting SMS.
 
 The integration includes a model capability map so unsupported module families stay hidden instead of showing dead or non-functional entities.
 

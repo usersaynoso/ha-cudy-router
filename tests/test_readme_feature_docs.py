@@ -81,6 +81,7 @@ def test_readme_keeps_current_supported_status_warning() -> None:
     source = _readme()
 
     assert "The **Cudy P5** and **Cudy P4** have been tested on real hardware." in source
+    assert "The **Cudy LT700** (V1.0, firmware 2.4.21) has also been tested on real hardware" in source
     assert "model capability map" in source
     assert "have **not** been tested on real hardware yet" in source
     assert f"{WIKI_BASE_URL}/Supported-Routers-and-Compatibility" in source
