@@ -59,7 +59,7 @@ def test_agents_requires_plain_language_release_notes() -> None:
     assert "plain, non-technical language" in source
     assert "what changed, what users may notice" in source
     assert "avoid internal jargon" in source
-    assert "light touch of humour" in source
+    assert "light touch of humour at the end of the first paragraph" in source
 
 
 def test_agents_requires_hacs_rest_release_list_verification() -> None:

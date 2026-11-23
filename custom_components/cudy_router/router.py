@@ -96,6 +96,34 @@ def _extract_hidden(html: str, name: str) -> str:
     return match.group(1) if match else ""
 
 
+_SMS_SEND_PATH = "admin/network/gcom/sms/sendsms"
+
+
+def _encode_sms_hex(value: str) -> str:
+    """Encode text the way the LuCI SMS page does: UTF-16BE as uppercase hex."""
+    return value.encode("utf-16-be").hex().upper()
+
+
+def _sms_send_follow_up_path(location: str) -> str | None:
+    """Return the LuCI path of a send-SMS redirect, or None if it is not one."""
+    if _SMS_SEND_PATH not in location:
+        return None
+    parsed = urllib.parse.urlsplit(location)
+    path = parsed.path
+    marker = "/cgi-bin/luci/"
+    if marker in path:
+        path = path.split(marker, 1)[1]
+    path = path.lstrip("/")
+    if not path.startswith(_SMS_SEND_PATH):
+        return None
+    return f"{path}?{parsed.query}" if parsed.query else path
+
+
+def _sms_form_is_multipart(html: str) -> bool:
+    """Return whether the SMS form posts as multipart/form-data."""
+    return bool(re.search(r'enctype=["\']multipart/form-data["\']', html, re.IGNORECASE))
+
+
 def _extract_model(html: str) -> str:
     """Extract device model in page"""
     match = re.search(r"<span>HW: ([a-zA-Z0-9 \-\.]+)<\/span>", html)
@@ -1689,6 +1717,13 @@ class CudyRouter:
     def send_sms(self, phone_number: str, message: str) -> tuple[int, str]:
         """Send an SMS via the router's LuCI web interface.
 
+        Most firmware sends the message when the form is posted. Some, such as
+        the LT450 on 1.15.x, only store it in the Outbox on that POST and send it
+        with a follow-up GET to ``sendsms`` (the browser follows a redirect to
+        it). That follow-up is only made when the router shows it uses this
+        two-step flow, so firmware that already sends on POST never gets a
+        second, duplicate send.
+
         Args:
             phone_number: The destination phone number (e.g. +441234567890)
             message: The SMS text content (max ~70 chars for single SMS)
@@ -1714,6 +1749,10 @@ class CudyRouter:
                 _LOGGER.error("SMS send: no token found on smsnew page")
                 return 0, "No token on SMS page"
 
+            # Use the form's own timeclock value (the browser sends it empty on
+            # firmware that has it); keep the historical "0" when it is absent.
+            timeclock = _extract_hidden(html, "timeclock") if 'name="timeclock"' in html else "0"
+
             # POST the SMS
             # Form fields from router:
             #   name="cbid.smsnew.1.phone"   -> phone number
@@ -1721,26 +1760,62 @@ class CudyRouter:
             #   name="cbid.smsnew.1.send"    -> submit button value="Send"
             post_fields = {
                 "token": token,
-                "timeclock": "0",
+                "timeclock": timeclock,
                 "cbi.submit": "1",
                 "cbid.smsnew.1.phone": phone_number,
                 "cbid.smsnew.1.content": message,
                 "cbid.smsnew.1.send": "Send",
             }
-            r = self._luci_post(
-                page_with_query,
-                timeout=DEFAULT_POST_TIMEOUT,
-                headers={
-                    **headers,
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Origin": self.base_url,
-                },
-                data=urllib.parse.urlencode(post_fields),
-            )
+            post_headers = {**headers, "Origin": self.base_url}
+            if _sms_form_is_multipart(html):
+                # Let requests build the multipart body and boundary header.
+                r = self._luci_post(
+                    page_with_query,
+                    timeout=DEFAULT_POST_TIMEOUT,
+                    headers=post_headers,
+                    files={key: (None, value) for key, value in post_fields.items()},
+                )
+            else:
+                r = self._luci_post(
+                    page_with_query,
+                    timeout=DEFAULT_POST_TIMEOUT,
+                    headers={
+                        **post_headers,
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    data=urllib.parse.urlencode(post_fields),
+                )
             if not r:
                 return 0, "Failed to submit SMS request"
             _LOGGER.debug("SMS send response: %s", r.status_code)
-            return r.status_code, r.text[:220]
+
+            location = (getattr(r, "headers", None) or {}).get("Location", "") or ""
+            follow_up = _sms_send_follow_up_path(location)
+            if follow_up is None and _SMS_SEND_PATH in (r.text or ""):
+                # The POST response sends via script rather than a redirect:
+                # build the same request the web UI makes.
+                follow_up = (
+                    f"{_SMS_SEND_PATH}?iface=4g"
+                    f"&phone={_encode_sms_hex(phone_number)}"
+                    f"&content={_encode_sms_hex(message)}"
+                )
+            if follow_up is None:
+                return r.status_code, r.text[:220]
+
+            _LOGGER.debug("SMS send: router stores on POST, sending via sendsms")
+            send_resp = self._request(
+                "GET",
+                self._luci_url(follow_up),
+                timeout=DEFAULT_POST_TIMEOUT,
+                headers=headers,
+                allow_redirects=False,
+                # Never repeat this request: a retry could send the SMS twice.
+                retries=0,
+                reauth_on_403=False,
+            )
+            if not send_resp:
+                return 0, "The router saved the SMS but did not confirm sending it"
+            return send_resp.status_code, send_resp.text[:220]
         except Exception as e:
             _LOGGER.error("SMS send failed: %s", e)
             return 0, str(e)[:220]

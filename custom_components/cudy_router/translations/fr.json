@@ -197,7 +197,7 @@
     },
     "switch": {
       "mesh_led": {
-        "name": "LED"
+        "name": "DEL"
       }
     },
     "button": {
