@@ -1,0 +1,212 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "O dispositivo já está configurado",
+            "reauth_successful": "A nova autenticação foi concluída com sucesso."
+        },
+        "error": {
+            "cannot_connect": "Não foi possível ligar ao router",
+            "invalid_auth": "Autenticação inválida. Verifique o nome de utilizador e a palavra-passe.",
+            "unknown": "Erro inesperado"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "host": "Endereço IP do router",
+                    "password": "Palavra-passe",
+                    "username": "Nome de utilizador"
+                },
+                "data_description": {
+                    "host": "O endereço IP do seu router (por exemplo, 192.168.10.1)"
+                },
+                "description": "Introduza os dados de ligação do seu router Cudy.",
+                "title": "Adicionar novo router"
+            },
+            "reauth_confirm": {
+                "data": {
+                    "password": "Palavra-passe",
+                    "username": "Nome de utilizador"
+                },
+                "description": "Atualize as credenciais guardadas para este router.",
+                "title": "Voltar a ligar ao router Cudy"
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "auto_add_connected_devices": "Adicionar automaticamente os dispositivos ligados",
+                    "auto_add_device_trackers": "Adicionar automaticamente rastreadores para os dispositivos ligados",
+                    "track_guest_network": "Acompanhar clientes da rede Wi-Fi de convidados",
+                    "show_sms_panel_in_sidebar": "Mostrar o Cudy SMS na barra lateral",
+                    "scan_interval": "Intervalo de atualização"
+                },
+                "data_description": {
+                    "auto_add_connected_devices": "Cria dispositivos de cliente e entidades em tempo real para todos os dispositivos ligados neste momento. Desativado por omissão em novas integrações. Ative esta opção para criar automaticamente os dispositivos de cliente e as entidades em tempo real de cada cliente, ou deixe-a desativada para os criar apenas para os dispositivos indicados abaixo.",
+                    "auto_add_device_trackers": "Cria entidades device_tracker para todos os dispositivos ligados neste momento que tenham endereço MAC. Desativado por omissão. Ative esta opção se quiser rastreadores de presença além das entidades em tempo real de cada cliente.",
+                    "track_guest_network": "Cria um sensor Clientes da rede de convidados e um sensor binário Convidados presentes que contam os dispositivos na rede Wi-Fi de convidados do router, incluindo os ligados através de uma unidade mesh. Desativado por omissão. Isto só adiciona a contagem de convidados; não altera a forma como os dispositivos de cliente ou os rastreadores são criados.",
+                    "show_sms_panel_in_sidebar": "Mostra a ligação para o painel Cudy SMS na barra lateral do Home Assistant. Desative para que a página de SMS fique disponível apenas através do URL direto.",
+                    "scan_interval": "Com que frequência o router é consultado para obter atualizações (em segundos)"
+                },
+                "title": "Configurar router Cudy"
+            },
+            "manual_devices": {
+                "data": {
+                    "device_list": "Adicionar manualmente dispositivos ligados"
+                },
+                "data_description": {
+                    "device_list": "Escolha clientes ligados a partir de uma lista quando a deteção automática de dispositivos ligados estiver desativada. Os dispositivos escolhidos manualmente mantêm-se no Home Assistant quando estão desligados e ficam indisponíveis até o cliente voltar a ligar-se. Os valores antigos em texto continuam a ser respeitados até guardar esta seleção."
+                },
+                "title": "Escolher dispositivos ligados manualmente"
+            },
+            "trackers": {
+                "data": {
+                    "tracked_device_macs": "Dispositivos rastreados"
+                },
+                "data_description": {
+                    "tracked_device_macs": "Escolha os clientes ligados que devem ter sempre uma entidade device_tracker. Quando a deteção automática de dispositivos ligados está desativada, esta lista mostra os dispositivos escolhidos manualmente no passo anterior ou, se não tiver escolhido nenhum, todos os clientes ligados neste momento. Os rastreadores escolhidos mantêm-se disponíveis entre recarregamentos e mostram away/not_home quando o cliente está desligado."
+                },
+                "title": "Escolher dispositivos rastreados"
+            }
+        }
+    },
+    "services": {
+        "get_sms": {
+            "name": "Ler SMS",
+            "description": "Lê as mensagens SMS com o texto completo e devolve-as como resposta, para utilizar em automações.",
+            "fields": {
+                "entry_id": {
+                    "name": "ID da entrada de configuração",
+                    "description": "O ID da entrada de configuração do router (opcional se só houver um router configurado)."
+                },
+                "folder": {
+                    "name": "Pasta",
+                    "description": "A caixa de mensagens a ler: inbox (recebidas), outbox (enviadas) ou all (ambas)."
+                },
+                "unread_only": {
+                    "name": "Só não lidas",
+                    "description": "Devolve apenas as mensagens recebidas que o router ainda marca como não lidas."
+                }
+            }
+        },
+        "delete_sms": {
+            "name": "Apagar SMS",
+            "description": "Apaga uma ou mais mensagens SMS do router a partir do respetivo ID cfg.",
+            "fields": {
+                "entry_id": {
+                    "name": "ID da entrada de configuração",
+                    "description": "O ID da entrada de configuração do router (opcional se só houver um router configurado)."
+                },
+                "cfg": {
+                    "name": "ID da mensagem",
+                    "description": "O ID cfg da mensagem, tal como devolvido por Ler SMS ou pelo evento de SMS recebido. Uma lista apaga várias mensagens."
+                }
+            }
+        },
+        "reboot_router": {
+            "name": "Reiniciar router",
+            "description": "Reinicia o router Cudy.",
+            "fields": {
+                "entry_id": {
+                    "name": "ID da entrada de configuração",
+                    "description": "O ID da entrada de configuração do router (opcional se só houver um router configurado)."
+                }
+            }
+        },
+        "restart_5g_connection": {
+            "name": "Reiniciar ligação 5G",
+            "description": "Reinicia a ligação do modem 5G, provocando uma reposição do modem.",
+            "fields": {
+                "entry_id": {
+                    "name": "ID da entrada de configuração",
+                    "description": "O ID da entrada de configuração do router (opcional se só houver um router configurado)."
+                }
+            }
+        },
+        "switch_5g_band": {
+            "name": "Mudar banda 5G",
+            "description": "Altera a definição de banda 5G do router.",
+            "fields": {
+                "entry_id": {
+                    "name": "ID da entrada de configuração",
+                    "description": "O ID da entrada de configuração do router (opcional se só houver um router configurado)."
+                },
+                "band": {
+                    "name": "Banda",
+                    "description": "O valor da banda a utilizar (por exemplo, 'auto', '5g-only', 'lte-only')."
+                }
+            }
+        },
+        "send_sms": {
+            "name": "Enviar SMS",
+            "description": "Envia uma mensagem SMS através do modem móvel do router.",
+            "fields": {
+                "entry_id": {
+                    "name": "ID da entrada de configuração",
+                    "description": "O ID da entrada de configuração do router (opcional se só houver um router configurado)."
+                },
+                "phone_number": {
+                    "name": "Número de telefone",
+                    "description": "O número de destino com o indicativo do país (por exemplo, +351912345678)."
+                },
+                "message": {
+                    "name": "Mensagem",
+                    "description": "O texto da mensagem SMS."
+                }
+            }
+        },
+        "send_at_command": {
+            "name": "Enviar comando AT",
+            "description": "Envia um comando AT diretamente para o modem móvel do router.",
+            "fields": {
+                "entry_id": {
+                    "name": "ID da entrada de configuração",
+                    "description": "O ID da entrada de configuração do router (opcional se só houver um router configurado)."
+                },
+                "command": {
+                    "name": "Comando",
+                    "description": "O comando AT a executar (por exemplo, 'AT+CSQ')."
+                }
+            }
+        }
+    },
+    "entity": {
+        "sensor": {
+            "mesh_count": {
+                "name": "Dispositivos mesh"
+            },
+            "mesh_name": {
+                "name": "Nome"
+            },
+            "mesh_model": {
+                "name": "Modelo"
+            },
+            "mesh_mac_address": {
+                "name": "Endereço MAC"
+            },
+            "mesh_firmware_version": {
+                "name": "Firmware"
+            },
+            "mesh_status": {
+                "name": "Estado"
+            },
+            "mesh_ip_address": {
+                "name": "Endereço IP"
+            }
+        },
+        "switch": {
+            "mesh_led": {
+                "name": "LED"
+            }
+        },
+        "button": {
+            "reboot": {
+                "name": "Reiniciar"
+            },
+            "mesh_reboot": {
+                "name": "Reiniciar"
+            }
+        }
+    }
+}

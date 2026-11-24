@@ -24,6 +24,11 @@ def test_french_translation_ships() -> None:
     assert (TRANSLATIONS_DIR / "fr.json").is_file()
 
 
+def test_portuguese_translation_ships() -> None:
+    """European Portuguese (pt) translation."""
+    assert (TRANSLATIONS_DIR / "pt.json").is_file()
+
+
 def test_translations_match_english_keys_and_placeholders() -> None:
     english = _flatten(json.loads((TRANSLATIONS_DIR / "en.json").read_text(encoding="utf-8")))
     for path in TRANSLATIONS_DIR.glob("*.json"):
